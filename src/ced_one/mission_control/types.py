@@ -46,6 +46,13 @@ class MissionRequest:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     status: RequestStatus = RequestStatus.RECEIVED
     approval_required: bool = False
+    risk_tags: list[str] = field(default_factory=list)
+    scope: str | None = None
+
+    def with_metadata(self, **kwargs: Any) -> "MissionRequest":
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        return self
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -72,6 +79,51 @@ class RouteDecision:
     confidence: float
     rationale: str
     status: str = "decision"
+    classification: str | None = None
+    specialist_name: str | None = None
+    capability_name: str | None = None
+
+
+@dataclass
+class RequestClassification:
+    domain_tags: list[str] = field(default_factory=list)
+    risk_level: str = "low"
+    confidence: float = 0.0
+    division_hint: str | None = None
+    rationale: str = ""
+
+
+@dataclass
+class DivisionResolutionResult:
+    division_name: str | None
+    is_supported: bool
+    is_routeable: bool
+    confidence: float
+    rationale: str
+    specialist_name: str | None = None
+    capability_name: str | None = None
+    status: str = "resolved"
+
+
+@dataclass
+class BusinessDivisionResolver:
+    name: str
+    scope: str | None = None
+
+    def supports_request(self, request: MissionRequest, classification: RequestClassification | None = None) -> bool:
+        return True
+
+    def resolve(self, request: MissionRequest, classification: RequestClassification | None = None) -> DivisionResolutionResult:
+        return DivisionResolutionResult(
+            division_name=self.name,
+            is_supported=True,
+            is_routeable=True,
+            confidence=0.5,
+            rationale="Generic resolver support for a business division.",
+            specialist_name=None,
+            capability_name=None,
+            status="resolved",
+        )
 
 
 @dataclass
