@@ -5,6 +5,15 @@ from ced_one.mission_control.flow import MissionControlFlow
 from ced_one.mission_control.orchestrator import MissionControlOrchestrator
 from ced_one.mission_control.registry import DivisionRegistry
 from ced_one.mission_control.service import MissionControlService
+from ced_one.mission_control.tasks import (
+    MissionTask,
+    MissionTaskGraph,
+    MissionTerminalState,
+    TaskAuditEvent,
+    TaskAuditLog,
+    TaskDependency,
+    TaskLifecycleState,
+)
 from ced_one.mission_control.types import (
     ApprovalState,
     AuthorityValidationResult,
@@ -32,4 +41,11 @@ __all__ = [
     "RequestClassification",
     "BusinessDivisionResolver",
     "DivisionResolutionResult",
+    "MissionTask",
+    "MissionTaskGraph",
+    "MissionTerminalState",
+    "TaskAuditEvent",
+    "TaskAuditLog",
+    "TaskDependency",
+    "TaskLifecycleState",
 ]
