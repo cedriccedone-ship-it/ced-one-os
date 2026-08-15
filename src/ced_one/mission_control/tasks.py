@@ -76,7 +76,11 @@ class MissionTask:
             TaskLifecycleState.COMPLETED: {ApprovalState.APPROVED, ApprovalState.NOT_REQUIRED},
             TaskLifecycleState.FAILED: {ApprovalState.APPROVED, ApprovalState.NOT_REQUIRED, ApprovalState.REJECTED},
             TaskLifecycleState.RETRY_PENDING: {ApprovalState.APPROVED, ApprovalState.NOT_REQUIRED, ApprovalState.PENDING},
-            TaskLifecycleState.REJECTED: {ApprovalState.REJECTED},
+            TaskLifecycleState.REJECTED: {
+                ApprovalState.REJECTED,
+                ApprovalState.APPROVED,
+                ApprovalState.NOT_REQUIRED,
+            },
             TaskLifecycleState.CANCELLED: {ApprovalState.NOT_REQUIRED, ApprovalState.APPROVED, ApprovalState.REJECTED, ApprovalState.PENDING},
         }
         return approval_state in valid_map.get(task_state, set())

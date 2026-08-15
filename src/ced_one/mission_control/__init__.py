@@ -48,4 +48,11 @@ __all__ = [
     "TaskAuditLog",
     "TaskDependency",
     "TaskLifecycleState",
+    "ExecutionOutcome",
+    "CapabilityExecutionContract",
+    "SpecialistExecutionContract",
+    "StructuredExecutionResult",
+    "BaseExecutionRuntime",
+    "LocalMockExecutionRuntime",
+    "MissionExecutionDispatcher",
 ]
