@@ -28,15 +28,30 @@ class PolicyEvaluationContext:
     specialist_binding: str | None
     capability_binding: str | None
     adapter_binding: str | None
-    permission_scope: str
-    execution_mode: str
-    risk_impact_classification: RiskImpactClassification
-    policy_id: str
-    policy_version: int
-    evaluated_at: datetime
+    connector_binding: str | None = None
+    connector_version: str | None = None
+    permission_scope: str = "standard"
+    execution_mode: str = "local"
+    risk_impact_classification: RiskImpactClassification | None = None
+    policy_id: str = "policy_default"
+    policy_version: int = 1
+    evaluated_at: datetime | None = None
     task_context: dict[str, Any] = field(default_factory=dict)
     adapter_type: str | None = None
     context_fingerprint: str | None = None
+
+    def __post_init__(self):
+        if self.risk_impact_classification is None:
+            self.risk_impact_classification = RiskImpactClassification(
+                classification_source="system",
+                classification_version="1",
+                classified_at=datetime.now(timezone.utc),
+                risk_level="low",
+                impact_level="limited",
+                classification_context={},
+            )
+        if self.evaluated_at is None:
+            self.evaluated_at = datetime.now(timezone.utc)
 
     def compute_fingerprint(self) -> str:
         raw = (
@@ -76,13 +91,28 @@ class AuthorizationSnapshot:
     specialist_binding: str | None
     capability_binding: str | None
     adapter_binding: str | None
-    permission_scope: str
-    execution_mode: str
-    risk_impact_classification: RiskImpactClassification
-    policy_id: str
-    policy_version: int
-    evaluated_at: datetime
+    connector_binding: str | None = None
+    connector_version: str | None = None
+    permission_scope: str = "standard"
+    execution_mode: str = "local"
+    risk_impact_classification: RiskImpactClassification | None = None
+    policy_id: str = "policy_default"
+    policy_version: int = 1
+    evaluated_at: datetime | None = None
     context_fingerprint: str | None = None
+
+    def __post_init__(self):
+        if self.risk_impact_classification is None:
+            self.risk_impact_classification = RiskImpactClassification(
+                classification_source="system",
+                classification_version="1",
+                classified_at=datetime.now(timezone.utc),
+                risk_level="low",
+                impact_level="limited",
+                classification_context={},
+            )
+        if self.evaluated_at is None:
+            self.evaluated_at = datetime.now(timezone.utc)
 
     def to_context(self) -> PolicyEvaluationContext:
         return PolicyEvaluationContext(
@@ -94,6 +124,8 @@ class AuthorizationSnapshot:
             specialist_binding=self.specialist_binding,
             capability_binding=self.capability_binding,
             adapter_binding=self.adapter_binding,
+            connector_binding=self.connector_binding,
+            connector_version=self.connector_version,
             permission_scope=self.permission_scope,
             execution_mode=self.execution_mode,
             risk_impact_classification=self.risk_impact_classification,
@@ -120,6 +152,10 @@ class AuthorizationSnapshot:
         if self.capability_binding != current_context.capability_binding:
             return False
         if self.adapter_binding != current_context.adapter_binding:
+            return False
+        if self.connector_binding != current_context.connector_binding:
+            return False
+        if self.connector_version != current_context.connector_version:
             return False
         if self.permission_scope != current_context.permission_scope:
             return False
