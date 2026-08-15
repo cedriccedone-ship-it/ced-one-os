@@ -68,8 +68,8 @@ class MissionTask:
     @staticmethod
     def validate_compatibility(task_state: TaskLifecycleState, approval_state: ApprovalState) -> bool:
         valid_map = {
-            TaskLifecycleState.PENDING: {ApprovalState.NOT_REQUIRED, ApprovalState.PENDING},
-            TaskLifecycleState.BLOCKED: {ApprovalState.PENDING, ApprovalState.APPROVED, ApprovalState.NOT_REQUIRED},
+            TaskLifecycleState.PENDING: {ApprovalState.NOT_REQUIRED, ApprovalState.PENDING, ApprovalState.ESCALATED},
+            TaskLifecycleState.BLOCKED: {ApprovalState.PENDING, ApprovalState.APPROVED, ApprovalState.NOT_REQUIRED, ApprovalState.ESCALATED},
             TaskLifecycleState.READY: {ApprovalState.APPROVED, ApprovalState.NOT_REQUIRED},
             TaskLifecycleState.ASSIGNED: {ApprovalState.APPROVED, ApprovalState.NOT_REQUIRED},
             TaskLifecycleState.IN_PROGRESS: {ApprovalState.APPROVED, ApprovalState.NOT_REQUIRED},
