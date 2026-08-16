@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-VALID_TIMEFRAMES = {"M1", "M5", "M15", "H1", "H4", "D1"}
+VALID_TIMEFRAMES = {"M1", "M5", "M15", "M30", "H1", "H4", "D1"}
 
 
 @dataclass
@@ -444,16 +444,49 @@ class MarketAnalysisSpecialist:
             metadata={"status": "completed", "validation_errors": [], "source": "synthetic_test_contract"},
         )
 
+    def observe_market_context(
+        self,
+        payload: dict[str, Any],
+        *,
+        evaluation_time: datetime | None = None,
+        max_age_seconds: int = 300,
+    ) -> Any:
+        from ced_one.business_divisions.trading.market_context import MarketContextAggregator
+
+        input_payload = dict(payload)
+        input_payload.setdefault("symbol", "XAUUSD")
+        input_payload.setdefault("max_age_seconds", max_age_seconds)
+        if evaluation_time is not None:
+            input_payload["evaluation_time"] = evaluation_time.isoformat().replace("+00:00", "Z")
+        if "timeframes" not in input_payload:
+            input_payload["timeframes"] = {}
+        aggregator = MarketContextAggregator()
+        return aggregator.aggregate(input_payload)
+
     @staticmethod
     def _derive_bias(payload: MarketObservationInput) -> str:
         midpoint = (payload.recent_high + payload.recent_low) / 2.0
+        range_size = payload.recent_high - payload.recent_low
+        neutral_band = min(5.0, max(2.0, range_size * 0.2))
+
         if payload.current_price >= payload.recent_high:
             return "bullish"
         if payload.current_price <= payload.recent_low:
             return "bearish"
+
+        if (
+            abs(payload.current_price - midpoint) <= neutral_band
+            and abs(payload.close - midpoint) <= neutral_band
+            and abs(payload.close - payload.open) <= (neutral_band * 2.0)
+        ):
+            return "neutral"
         if payload.close > payload.open and payload.close > midpoint:
             return "bullish"
         if payload.close < payload.open and payload.close < midpoint:
+            return "bearish"
+        if payload.current_price > midpoint:
+            return "bullish"
+        if payload.current_price < midpoint:
             return "bearish"
         return "neutral"
 

@@ -6,6 +6,7 @@ shape and does not implement any trading execution behavior.
 
 from ced_one.business_divisions.trading.capabilities import ANALYSIS, COORDINATION, MARKET_OBSERVATION, TradingCapability
 from ced_one.business_divisions.trading.division import TradingDivision
+from ced_one.business_divisions.trading.market_context import MarketContextAggregator, MarketContextInput, MarketContextResult, MarketContextValidator
 from ced_one.business_divisions.trading.market_observation import (
     MarketAnalysisSpecialist,
     MarketObservationInput,
@@ -24,6 +25,10 @@ __all__ = [
     "MarketObservationInput",
     "MarketObservationResult",
     "MarketObservationValidator",
+    "MarketContextInput",
+    "MarketContextResult",
+    "MarketContextValidator",
+    "MarketContextAggregator",
     "MARKET_ANALYST",
     "RISK_SPECIALIST",
     "COORDINATION",
