@@ -13,6 +13,7 @@ from ced_one.business_divisions.trading.market_observation import (
     MarketObservationResult,
     MarketObservationValidator,
 )
+from ced_one.business_divisions.trading.market_structure import MarketStructureAnalyzer, MarketStructureInput, MarketStructureResult, MarketStructureValidator
 from ced_one.business_divisions.trading.resolver import TradingDivisionResolver
 from ced_one.business_divisions.trading.specialists import MARKET_ANALYST, RISK_SPECIALIST, TradingSpecialist
 
@@ -29,6 +30,10 @@ __all__ = [
     "MarketContextResult",
     "MarketContextValidator",
     "MarketContextAggregator",
+    "MarketStructureInput",
+    "MarketStructureResult",
+    "MarketStructureValidator",
+    "MarketStructureAnalyzer",
     "MARKET_ANALYST",
     "RISK_SPECIALIST",
     "COORDINATION",

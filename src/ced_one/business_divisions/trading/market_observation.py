@@ -463,6 +463,24 @@ class MarketAnalysisSpecialist:
         aggregator = MarketContextAggregator()
         return aggregator.aggregate(input_payload)
 
+    def analyze_market_structure(
+        self,
+        payload: dict[str, Any],
+        *,
+        evaluation_time: datetime | None = None,
+        max_age_seconds: int = 300,
+    ) -> Any:
+        from ced_one.business_divisions.trading.market_structure import MarketStructureAnalyzer
+
+        input_payload = dict(payload)
+        input_payload.setdefault("symbol", "XAUUSD")
+        if evaluation_time is not None:
+            input_payload["evaluation_time"] = evaluation_time.isoformat().replace("+00:00", "Z")
+        if "candle_history" not in input_payload:
+            input_payload["candle_history"] = []
+        analyzer = MarketStructureAnalyzer()
+        return analyzer.analyze(input_payload, evaluation_time=evaluation_time, max_age_seconds=max_age_seconds)
+
     @staticmethod
     def _derive_bias(payload: MarketObservationInput) -> str:
         midpoint = (payload.recent_high + payload.recent_low) / 2.0
