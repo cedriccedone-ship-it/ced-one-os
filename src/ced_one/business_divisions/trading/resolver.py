@@ -29,7 +29,7 @@ class TradingDivisionResolver(BusinessDivision):
         return ["market_analyst", "risk_specialist", "coordination_specialist"]
 
     def get_capability_names(self) -> list[str]:
-        return ["coordination", "analysis", "risk_review"]
+        return ["coordination", "analysis", "market_observation", "risk_review"]
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -72,7 +72,7 @@ class TradingDivisionResolver(BusinessDivision):
             confidence=0.9,
             rationale="Trading Division accepted the request for domain-specific routing.",
             specialist_name="market_analyst",
-            capability_name="coordination",
+            capability_name="market_observation",
             status="resolved",
         )
 
@@ -86,10 +86,11 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_capability(self, request: MissionRequest) -> dict[str, Any]:
         return {
-            "name": "coordination",
+            "name": "market_observation",
             "division_name": self.name,
-            "contract": "generic_coordination",
-            "rationale": "Trading Division selected a generic coordination capability for the routing example.",
+            "contract": "trading.market_observation.v1",
+            "permission_scope": "read_only",
+            "rationale": "Trading Division selected the market observation capability for the controlled XAUUSD observation slice.",
         }
 
 

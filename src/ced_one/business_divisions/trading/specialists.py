@@ -4,12 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ced_one.business_divisions.trading.market_observation import MarketAnalysisSpecialist as _MarketAnalysisSpecialist
+
 
 @dataclass(frozen=True)
 class TradingSpecialist:
     name: str
     permission_scope: str
     responsibility: str
+
+
+class MarketAnalysisSpecialist(_MarketAnalysisSpecialist):
+    """Compatibility wrapper around the deterministic XAUUSD market observation implementation."""
+
+    pass
 
 
 MARKET_ANALYST = TradingSpecialist(
@@ -25,4 +33,4 @@ RISK_SPECIALIST = TradingSpecialist(
 )
 
 
-__all__ = ["TradingSpecialist", "MARKET_ANALYST", "RISK_SPECIALIST"]
+__all__ = ["TradingSpecialist", "MarketAnalysisSpecialist", "MARKET_ANALYST", "RISK_SPECIALIST"]
