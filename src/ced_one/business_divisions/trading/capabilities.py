@@ -38,5 +38,12 @@ MARKET_OBSERVATION = TradingCapability(
     division_name="trading",
 )
 
+VOLATILITY_RANGE = TradingCapability(
+    name="volatility_range",
+    contract="trading.volatility_range.v1",
+    responsibility="Perform deterministic realized volatility and range intelligence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
 
-__all__ = ["TradingCapability", "COORDINATION", "ANALYSIS", "MARKET_OBSERVATION"]
+__all__ = ["TradingCapability", "COORDINATION", "ANALYSIS", "MARKET_OBSERVATION", "VOLATILITY_RANGE"]

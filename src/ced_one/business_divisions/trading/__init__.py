@@ -25,7 +25,16 @@ from ced_one.business_divisions.trading.market_observation import (
 )
 from ced_one.business_divisions.trading.market_structure import MarketStructureAnalyzer, MarketStructureInput, MarketStructureResult, MarketStructureValidator
 from ced_one.business_divisions.trading.resolver import TradingDivisionResolver
-from ced_one.business_divisions.trading.specialists import MARKET_ANALYST, RISK_SPECIALIST, TradingSpecialist
+from ced_one.business_divisions.trading.specialists import MARKET_ANALYST, RISK_SPECIALIST, TradingSpecialist, VOLATILITY_ANALYST, VolatilityRangeSpecialist
+from ced_one.business_divisions.trading.volatility_range import (
+    VOLATILITY_RANGE,
+    VolatilityRangeAnalyzer,
+    VolatilityRangeCapability,
+    VolatilityRangeConfig,
+    VolatilityRangeInput,
+    VolatilityRangeResult,
+    VolatilityRangeValidator,
+)
 
 __all__ = [
     "TradingDivision",
@@ -40,6 +49,14 @@ __all__ = [
     "CandleIntelligenceSpecialist",
     "CandleIntelligenceValidator",
     "CANDLE_INTELLIGENCE",
+    "VolatilityRangeAnalyzer",
+    "VolatilityRangeCapability",
+    "VolatilityRangeConfig",
+    "VolatilityRangeInput",
+    "VolatilityRangeResult",
+    "VolatilityRangeSpecialist",
+    "VolatilityRangeValidator",
+    "VOLATILITY_RANGE",
     "MarketAnalysisSpecialist",
     "MarketObservationInput",
     "MarketObservationResult",
@@ -54,6 +71,7 @@ __all__ = [
     "MarketStructureAnalyzer",
     "MARKET_ANALYST",
     "RISK_SPECIALIST",
+    "VOLATILITY_ANALYST",
     "COORDINATION",
     "ANALYSIS",
     "MARKET_OBSERVATION",

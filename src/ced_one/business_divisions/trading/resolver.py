@@ -26,10 +26,10 @@ class TradingDivisionResolver(BusinessDivision):
         return self.scope
 
     def get_specialist_names(self) -> list[str]:
-        return ["market_analyst", "risk_specialist", "coordination_specialist"]
+        return ["market_analyst", "volatility_analyst", "risk_specialist", "coordination_specialist"]
 
     def get_capability_names(self) -> list[str]:
-        return ["coordination", "analysis", "market_observation", "risk_review"]
+        return ["coordination", "analysis", "market_observation", "volatility_range", "risk_review"]
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -65,18 +65,33 @@ class TradingDivisionResolver(BusinessDivision):
                 status="unsupported",
             )
 
+        text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        specialist_name = "market_analyst"
+        capability_name = "market_observation"
+        if "volatility" in text or "range" in text:
+            specialist_name = "volatility_analyst"
+            capability_name = "volatility_range"
+
         return DivisionResolutionResult(
             division_name=self.name,
             is_supported=True,
             is_routeable=True,
             confidence=0.9,
             rationale="Trading Division accepted the request for domain-specific routing.",
-            specialist_name="market_analyst",
-            capability_name="market_observation",
+            specialist_name=specialist_name,
+            capability_name=capability_name,
             status="resolved",
         )
 
     def resolve_specialist(self, request: MissionRequest) -> dict[str, Any]:
+        text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if "volatility" in text or "range" in text:
+            return {
+                "name": "volatility_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the volatility analyst for the realized range test.",
+            }
         return {
             "name": "market_analyst",
             "division_name": self.name,
@@ -85,6 +100,15 @@ class TradingDivisionResolver(BusinessDivision):
         }
 
     def resolve_capability(self, request: MissionRequest) -> dict[str, Any]:
+        text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if "volatility" in text or "range" in text:
+            return {
+                "name": "volatility_range",
+                "division_name": self.name,
+                "contract": "trading.volatility_range.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the volatility and range capability for the controlled XAUUSD volatility slice.",
+            }
         return {
             "name": "market_observation",
             "division_name": self.name,

@@ -29,10 +29,10 @@ class TradingDivision(BusinessDivision):
         return self.scope
 
     def get_specialist_names(self) -> Iterable[str]:
-        return ["market_analyst"]
+        return ["market_analyst", "volatility_analyst"]
 
     def get_capability_names(self) -> Iterable[str]:
-        return ["market_observation"]
+        return ["market_observation", "volatility_range"]
 
     def describe(self) -> dict[str, Any]:
         return {

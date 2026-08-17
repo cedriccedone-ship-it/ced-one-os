@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ced_one.business_divisions.trading.market_observation import MarketAnalysisSpecialist as _MarketAnalysisSpecialist
+from ced_one.business_divisions.trading.volatility_range import VolatilityRangeSpecialist as _VolatilityRangeSpecialist
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,12 @@ class TradingSpecialist:
 
 class MarketAnalysisSpecialist(_MarketAnalysisSpecialist):
     """Compatibility wrapper around the deterministic XAUUSD market observation implementation."""
+
+    pass
+
+
+class VolatilityRangeSpecialist(_VolatilityRangeSpecialist):
+    """Compatibility wrapper around the deterministic XAUUSD volatility and range implementation."""
 
     pass
 
@@ -32,5 +39,11 @@ RISK_SPECIALIST = TradingSpecialist(
     responsibility="Assess risk boundaries without executing external actions.",
 )
 
+VOLATILITY_ANALYST = TradingSpecialist(
+    name="volatility_analyst",
+    permission_scope="read_only",
+    responsibility="Review deterministic realized volatility and range context for the trading business division.",
+)
 
-__all__ = ["TradingSpecialist", "MarketAnalysisSpecialist", "MARKET_ANALYST", "RISK_SPECIALIST"]
+
+__all__ = ["TradingSpecialist", "MarketAnalysisSpecialist", "VolatilityRangeSpecialist", "MARKET_ANALYST", "RISK_SPECIALIST", "VOLATILITY_ANALYST"]
