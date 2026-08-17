@@ -117,6 +117,19 @@ def test_trading_vertical_slice_v6_equal_high_exact_tolerance_clusters_and_outsi
     assert len(_find_levels(outside_result, "equal_high_cluster")) == 0
 
 
+def test_trading_vertical_slice_v6_single_member_cannot_create_cluster():
+    candles = [
+        _candle("2026-08-16T00:00:00Z", open_price=100.0, high=105.0, low=99.0, close=103.0),
+        _candle("2026-08-16T01:00:00Z", open_price=103.0, high=110.0, low=98.0, close=106.0),
+        _candle("2026-08-16T02:00:00Z", open_price=103.0, high=104.0, low=97.0, close=102.0),
+        _candle("2026-08-16T03:00:00Z", open_price=102.0, high=109.0, low=96.0, close=104.0),
+    ]
+    result = LiquidityIntelligenceAnalyzer().analyze(_payload(candles, config={"minimum_cluster_members": 2}))
+
+    assert len(_find_levels(result, "equal_high_cluster")) == 0
+    assert len(_find_levels(result, "confirmed_swing_high_level")) >= 1
+
+
 def test_trading_vertical_slice_v6_equal_low_cluster_and_no_multi_cluster_membership():
     candles = [
         _candle("2026-08-16T00:00:00Z", open_price=110.0, high=114.0, low=102.0, close=108.0),

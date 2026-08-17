@@ -26,10 +26,25 @@ class TradingDivisionResolver(BusinessDivision):
         return self.scope
 
     def get_specialist_names(self) -> list[str]:
-        return ["market_analyst", "volatility_analyst", "liquidity_analyst", "risk_specialist", "coordination_specialist"]
+        return [
+            "market_analyst",
+            "volatility_analyst",
+            "liquidity_analyst",
+            "fvg_imbalance_analyst",
+            "risk_specialist",
+            "coordination_specialist",
+        ]
 
     def get_capability_names(self) -> list[str]:
-        return ["coordination", "analysis", "market_observation", "volatility_range", "liquidity_intelligence", "risk_review"]
+        return [
+            "coordination",
+            "analysis",
+            "market_observation",
+            "volatility_range",
+            "liquidity_intelligence",
+            "fvg_imbalance_intelligence",
+            "risk_review",
+        ]
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -74,6 +89,9 @@ class TradingDivisionResolver(BusinessDivision):
         elif "liquidity" in text:
             specialist_name = "liquidity_analyst"
             capability_name = "liquidity_intelligence"
+        elif "imbalance" in text or "fair value gap" in text or "fvg" in text:
+            specialist_name = "fvg_imbalance_analyst"
+            capability_name = "fvg_imbalance_intelligence"
 
         return DivisionResolutionResult(
             division_name=self.name,
@@ -102,6 +120,13 @@ class TradingDivisionResolver(BusinessDivision):
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the liquidity analyst for the deterministic liquidity test.",
             }
+        if "imbalance" in text or "fair value gap" in text or "fvg" in text:
+            return {
+                "name": "fvg_imbalance_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the fvg and imbalance analyst for deterministic imbalance intelligence.",
+            }
         return {
             "name": "market_analyst",
             "division_name": self.name,
@@ -126,6 +151,14 @@ class TradingDivisionResolver(BusinessDivision):
                 "contract": "trading.liquidity_intelligence.v1",
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the liquidity intelligence capability for the controlled XAUUSD liquidity slice.",
+            }
+        if "imbalance" in text or "fair value gap" in text or "fvg" in text:
+            return {
+                "name": "fvg_imbalance_intelligence",
+                "division_name": self.name,
+                "contract": "trading.fvg_imbalance_intelligence.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the fvg and imbalance intelligence capability for the controlled XAUUSD imbalance slice.",
             }
         return {
             "name": "market_observation",

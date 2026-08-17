@@ -54,4 +54,20 @@ LIQUIDITY_INTELLIGENCE = TradingCapability(
     division_name="trading",
 )
 
-__all__ = ["TradingCapability", "COORDINATION", "ANALYSIS", "MARKET_OBSERVATION", "VOLATILITY_RANGE", "LIQUIDITY_INTELLIGENCE"]
+FVG_IMBALANCE_INTELLIGENCE = TradingCapability(
+    name="fvg_imbalance_intelligence",
+    contract="trading.fvg_imbalance_intelligence.v1",
+    responsibility="Perform deterministic factual fair value gap and imbalance intelligence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
+__all__ = [
+    "TradingCapability",
+    "COORDINATION",
+    "ANALYSIS",
+    "MARKET_OBSERVATION",
+    "VOLATILITY_RANGE",
+    "LIQUIDITY_INTELLIGENCE",
+    "FVG_IMBALANCE_INTELLIGENCE",
+]

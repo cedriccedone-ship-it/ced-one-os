@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ced_one.business_divisions.trading.fvg_imbalance_intelligence import FVGImbalanceIntelligenceSpecialist as _FVGImbalanceIntelligenceSpecialist
 from ced_one.business_divisions.trading.liquidity_intelligence import LiquidityIntelligenceSpecialist as _LiquidityIntelligenceSpecialist
 from ced_one.business_divisions.trading.market_observation import MarketAnalysisSpecialist as _MarketAnalysisSpecialist
 from ced_one.business_divisions.trading.volatility_range import VolatilityRangeSpecialist as _VolatilityRangeSpecialist
@@ -34,6 +35,12 @@ class LiquidityIntelligenceSpecialist(_LiquidityIntelligenceSpecialist):
     pass
 
 
+class FVGImbalanceIntelligenceSpecialist(_FVGImbalanceIntelligenceSpecialist):
+    """Compatibility wrapper around the deterministic XAUUSD FVG and imbalance implementation."""
+
+    pass
+
+
 MARKET_ANALYST = TradingSpecialist(
     name="market_analyst",
     permission_scope="read_only",
@@ -58,14 +65,22 @@ LIQUIDITY_ANALYST = TradingSpecialist(
     responsibility="Review deterministic factual liquidity context for the trading business division.",
 )
 
+FVG_IMBALANCE_ANALYST = TradingSpecialist(
+    name="fvg_imbalance_analyst",
+    permission_scope="read_only",
+    responsibility="Review deterministic factual fair value gap and imbalance context for the trading business division.",
+)
+
 
 __all__ = [
     "TradingSpecialist",
     "MarketAnalysisSpecialist",
     "VolatilityRangeSpecialist",
     "LiquidityIntelligenceSpecialist",
+    "FVGImbalanceIntelligenceSpecialist",
     "MARKET_ANALYST",
     "RISK_SPECIALIST",
     "VOLATILITY_ANALYST",
     "LIQUIDITY_ANALYST",
+    "FVG_IMBALANCE_ANALYST",
 ]
