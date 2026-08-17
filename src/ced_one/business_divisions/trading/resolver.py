@@ -31,6 +31,7 @@ class TradingDivisionResolver(BusinessDivision):
             "volatility_analyst",
             "liquidity_analyst",
             "fvg_imbalance_analyst",
+            "displacement_analyst",
             "risk_specialist",
             "coordination_specialist",
         ]
@@ -43,6 +44,7 @@ class TradingDivisionResolver(BusinessDivision):
             "volatility_range",
             "liquidity_intelligence",
             "fvg_imbalance_intelligence",
+            "displacement_intelligence",
             "risk_review",
         ]
 
@@ -92,6 +94,9 @@ class TradingDivisionResolver(BusinessDivision):
         elif "imbalance" in text or "fair value gap" in text or "fvg" in text:
             specialist_name = "fvg_imbalance_analyst"
             capability_name = "fvg_imbalance_intelligence"
+        elif "displacement" in text:
+            specialist_name = "displacement_analyst"
+            capability_name = "displacement_intelligence"
 
         return DivisionResolutionResult(
             division_name=self.name,
@@ -127,6 +132,13 @@ class TradingDivisionResolver(BusinessDivision):
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the fvg and imbalance analyst for deterministic imbalance intelligence.",
             }
+        if "displacement" in text:
+            return {
+                "name": "displacement_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the displacement analyst for deterministic displacement intelligence.",
+            }
         return {
             "name": "market_analyst",
             "division_name": self.name,
@@ -159,6 +171,14 @@ class TradingDivisionResolver(BusinessDivision):
                 "contract": "trading.fvg_imbalance_intelligence.v1",
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the fvg and imbalance intelligence capability for the controlled XAUUSD imbalance slice.",
+            }
+        if "displacement" in text:
+            return {
+                "name": "displacement_intelligence",
+                "division_name": self.name,
+                "contract": "trading.displacement_intelligence.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the displacement intelligence capability for the controlled XAUUSD displacement slice.",
             }
         return {
             "name": "market_observation",

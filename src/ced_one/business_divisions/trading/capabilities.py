@@ -62,6 +62,14 @@ FVG_IMBALANCE_INTELLIGENCE = TradingCapability(
     division_name="trading",
 )
 
+DISPLACEMENT_INTELLIGENCE = TradingCapability(
+    name="displacement_intelligence",
+    contract="trading.displacement_intelligence.v1",
+    responsibility="Perform deterministic factual displacement intelligence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 __all__ = [
     "TradingCapability",
     "COORDINATION",
@@ -70,4 +78,5 @@ __all__ = [
     "VOLATILITY_RANGE",
     "LIQUIDITY_INTELLIGENCE",
     "FVG_IMBALANCE_INTELLIGENCE",
+    "DISPLACEMENT_INTELLIGENCE",
 ]

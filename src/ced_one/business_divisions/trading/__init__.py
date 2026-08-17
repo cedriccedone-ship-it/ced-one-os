@@ -7,6 +7,7 @@ shape and does not implement any trading execution behavior.
 from ced_one.business_divisions.trading.capabilities import (
     ANALYSIS,
     COORDINATION,
+    DISPLACEMENT_INTELLIGENCE,
     FVG_IMBALANCE_INTELLIGENCE,
     LIQUIDITY_INTELLIGENCE,
     MARKET_OBSERVATION,
@@ -33,15 +34,27 @@ from ced_one.business_divisions.trading.market_observation import (
 from ced_one.business_divisions.trading.market_structure import MarketStructureAnalyzer, MarketStructureInput, MarketStructureResult, MarketStructureValidator
 from ced_one.business_divisions.trading.resolver import TradingDivisionResolver
 from ced_one.business_divisions.trading.specialists import (
+    DISPLACEMENT_ANALYST,
     FVG_IMBALANCE_ANALYST,
     LIQUIDITY_ANALYST,
     MARKET_ANALYST,
     RISK_SPECIALIST,
     TradingSpecialist,
     VOLATILITY_ANALYST,
+    DisplacementIntelligenceSpecialist,
     FVGImbalanceIntelligenceSpecialist,
     LiquidityIntelligenceSpecialist,
     VolatilityRangeSpecialist,
+)
+from ced_one.business_divisions.trading.displacement_intelligence import (
+    DISPLACEMENT_INTELLIGENCE as DISPLACEMENT_INTELLIGENCE_ANALYZER,
+    DisplacementIntelligenceAnalyzer,
+    DisplacementIntelligenceCapability,
+    DisplacementIntelligenceSpecialist as CoreDisplacementIntelligenceSpecialist,
+    DisplacementIntelligenceConfig,
+    DisplacementIntelligenceInput,
+    DisplacementIntelligenceValidator,
+    DisplacementIntelligenceResult,
 )
 from ced_one.business_divisions.trading.fvg_imbalance_intelligence import (
     FVG_IMBALANCE_INTELLIGENCE as FVG_IMBALANCE_INTELLIGENCE_ANALYZER,
@@ -104,6 +117,16 @@ __all__ = [
     "FVGIntelligenceValidator",
     "FVG_IMBALANCE_INTELLIGENCE_ANALYZER",
     "FVG_IMBALANCE_INTELLIGENCE",
+    "DisplacementIntelligenceAnalyzer",
+    "DisplacementIntelligenceCapability",
+    "DisplacementIntelligenceConfig",
+    "DisplacementIntelligenceInput",
+    "DisplacementIntelligenceResult",
+    "DisplacementIntelligenceSpecialist",
+    "CoreDisplacementIntelligenceSpecialist",
+    "DisplacementIntelligenceValidator",
+    "DISPLACEMENT_INTELLIGENCE_ANALYZER",
+    "DISPLACEMENT_INTELLIGENCE",
     "VolatilityRangeAnalyzer",
     "VolatilityRangeCapability",
     "VolatilityRangeConfig",
@@ -127,6 +150,7 @@ __all__ = [
     "MARKET_ANALYST",
     "LIQUIDITY_ANALYST",
     "FVG_IMBALANCE_ANALYST",
+    "DISPLACEMENT_ANALYST",
     "RISK_SPECIALIST",
     "VOLATILITY_ANALYST",
     "COORDINATION",

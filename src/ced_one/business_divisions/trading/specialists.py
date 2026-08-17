@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ced_one.business_divisions.trading.displacement_intelligence import DisplacementIntelligenceSpecialist as _DisplacementIntelligenceSpecialist
 from ced_one.business_divisions.trading.fvg_imbalance_intelligence import FVGImbalanceIntelligenceSpecialist as _FVGImbalanceIntelligenceSpecialist
 from ced_one.business_divisions.trading.liquidity_intelligence import LiquidityIntelligenceSpecialist as _LiquidityIntelligenceSpecialist
 from ced_one.business_divisions.trading.market_observation import MarketAnalysisSpecialist as _MarketAnalysisSpecialist
@@ -41,6 +42,12 @@ class FVGImbalanceIntelligenceSpecialist(_FVGImbalanceIntelligenceSpecialist):
     pass
 
 
+class DisplacementIntelligenceSpecialist(_DisplacementIntelligenceSpecialist):
+    """Compatibility wrapper around the deterministic XAUUSD displacement implementation."""
+
+    pass
+
+
 MARKET_ANALYST = TradingSpecialist(
     name="market_analyst",
     permission_scope="read_only",
@@ -71,6 +78,12 @@ FVG_IMBALANCE_ANALYST = TradingSpecialist(
     responsibility="Review deterministic factual fair value gap and imbalance context for the trading business division.",
 )
 
+DISPLACEMENT_ANALYST = TradingSpecialist(
+    name="displacement_analyst",
+    permission_scope="read_only",
+    responsibility="Review deterministic factual displacement context for the trading business division.",
+)
+
 
 __all__ = [
     "TradingSpecialist",
@@ -78,9 +91,11 @@ __all__ = [
     "VolatilityRangeSpecialist",
     "LiquidityIntelligenceSpecialist",
     "FVGImbalanceIntelligenceSpecialist",
+    "DisplacementIntelligenceSpecialist",
     "MARKET_ANALYST",
     "RISK_SPECIALIST",
     "VOLATILITY_ANALYST",
     "LIQUIDITY_ANALYST",
     "FVG_IMBALANCE_ANALYST",
+    "DISPLACEMENT_ANALYST",
 ]
