@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ced_one.business_divisions.trading.liquidity_intelligence import LiquidityIntelligenceSpecialist as _LiquidityIntelligenceSpecialist
 from ced_one.business_divisions.trading.market_observation import MarketAnalysisSpecialist as _MarketAnalysisSpecialist
 from ced_one.business_divisions.trading.volatility_range import VolatilityRangeSpecialist as _VolatilityRangeSpecialist
 
@@ -27,6 +28,12 @@ class VolatilityRangeSpecialist(_VolatilityRangeSpecialist):
     pass
 
 
+class LiquidityIntelligenceSpecialist(_LiquidityIntelligenceSpecialist):
+    """Compatibility wrapper around the deterministic XAUUSD liquidity implementation."""
+
+    pass
+
+
 MARKET_ANALYST = TradingSpecialist(
     name="market_analyst",
     permission_scope="read_only",
@@ -45,5 +52,20 @@ VOLATILITY_ANALYST = TradingSpecialist(
     responsibility="Review deterministic realized volatility and range context for the trading business division.",
 )
 
+LIQUIDITY_ANALYST = TradingSpecialist(
+    name="liquidity_analyst",
+    permission_scope="read_only",
+    responsibility="Review deterministic factual liquidity context for the trading business division.",
+)
 
-__all__ = ["TradingSpecialist", "MarketAnalysisSpecialist", "VolatilityRangeSpecialist", "MARKET_ANALYST", "RISK_SPECIALIST", "VOLATILITY_ANALYST"]
+
+__all__ = [
+    "TradingSpecialist",
+    "MarketAnalysisSpecialist",
+    "VolatilityRangeSpecialist",
+    "LiquidityIntelligenceSpecialist",
+    "MARKET_ANALYST",
+    "RISK_SPECIALIST",
+    "VOLATILITY_ANALYST",
+    "LIQUIDITY_ANALYST",
+]

@@ -26,10 +26,10 @@ class TradingDivisionResolver(BusinessDivision):
         return self.scope
 
     def get_specialist_names(self) -> list[str]:
-        return ["market_analyst", "volatility_analyst", "risk_specialist", "coordination_specialist"]
+        return ["market_analyst", "volatility_analyst", "liquidity_analyst", "risk_specialist", "coordination_specialist"]
 
     def get_capability_names(self) -> list[str]:
-        return ["coordination", "analysis", "market_observation", "volatility_range", "risk_review"]
+        return ["coordination", "analysis", "market_observation", "volatility_range", "liquidity_intelligence", "risk_review"]
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -71,6 +71,9 @@ class TradingDivisionResolver(BusinessDivision):
         if "volatility" in text or "range" in text:
             specialist_name = "volatility_analyst"
             capability_name = "volatility_range"
+        elif "liquidity" in text:
+            specialist_name = "liquidity_analyst"
+            capability_name = "liquidity_intelligence"
 
         return DivisionResolutionResult(
             division_name=self.name,
@@ -92,6 +95,13 @@ class TradingDivisionResolver(BusinessDivision):
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the volatility analyst for the realized range test.",
             }
+        if "liquidity" in text:
+            return {
+                "name": "liquidity_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the liquidity analyst for the deterministic liquidity test.",
+            }
         return {
             "name": "market_analyst",
             "division_name": self.name,
@@ -108,6 +118,14 @@ class TradingDivisionResolver(BusinessDivision):
                 "contract": "trading.volatility_range.v1",
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the volatility and range capability for the controlled XAUUSD volatility slice.",
+            }
+        if "liquidity" in text:
+            return {
+                "name": "liquidity_intelligence",
+                "division_name": self.name,
+                "contract": "trading.liquidity_intelligence.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the liquidity intelligence capability for the controlled XAUUSD liquidity slice.",
             }
         return {
             "name": "market_observation",

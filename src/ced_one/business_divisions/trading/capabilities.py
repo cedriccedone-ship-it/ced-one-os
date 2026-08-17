@@ -46,4 +46,12 @@ VOLATILITY_RANGE = TradingCapability(
     division_name="trading",
 )
 
-__all__ = ["TradingCapability", "COORDINATION", "ANALYSIS", "MARKET_OBSERVATION", "VOLATILITY_RANGE"]
+LIQUIDITY_INTELLIGENCE = TradingCapability(
+    name="liquidity_intelligence",
+    contract="trading.liquidity_intelligence.v1",
+    responsibility="Perform deterministic factual liquidity intelligence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
+__all__ = ["TradingCapability", "COORDINATION", "ANALYSIS", "MARKET_OBSERVATION", "VOLATILITY_RANGE", "LIQUIDITY_INTELLIGENCE"]
