@@ -5,6 +5,16 @@ shape and does not implement any trading execution behavior.
 """
 
 from ced_one.business_divisions.trading.capabilities import ANALYSIS, COORDINATION, MARKET_OBSERVATION, TradingCapability
+from ced_one.business_divisions.trading.candle_intelligence import (
+    CANDLE_INTELLIGENCE,
+    CandleIntelligenceAnalyzer,
+    CandleIntelligenceCapability,
+    CandleIntelligenceConfig,
+    CandleIntelligenceInput,
+    CandleIntelligenceResult,
+    CandleIntelligenceSpecialist,
+    CandleIntelligenceValidator,
+)
 from ced_one.business_divisions.trading.division import TradingDivision
 from ced_one.business_divisions.trading.market_context import MarketContextAggregator, MarketContextInput, MarketContextResult, MarketContextValidator
 from ced_one.business_divisions.trading.market_observation import (
@@ -22,6 +32,14 @@ __all__ = [
     "TradingDivisionResolver",
     "TradingSpecialist",
     "TradingCapability",
+    "CandleIntelligenceAnalyzer",
+    "CandleIntelligenceCapability",
+    "CandleIntelligenceConfig",
+    "CandleIntelligenceInput",
+    "CandleIntelligenceResult",
+    "CandleIntelligenceSpecialist",
+    "CandleIntelligenceValidator",
+    "CANDLE_INTELLIGENCE",
     "MarketAnalysisSpecialist",
     "MarketObservationInput",
     "MarketObservationResult",
