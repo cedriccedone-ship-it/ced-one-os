@@ -30,6 +30,7 @@ class TradingDivisionResolver(BusinessDivision):
             "market_analyst",
             "volatility_analyst",
             "liquidity_analyst",
+            "liquidity_events_analyst",
             "fvg_imbalance_analyst",
             "displacement_analyst",
             "risk_specialist",
@@ -43,6 +44,7 @@ class TradingDivisionResolver(BusinessDivision):
             "market_observation",
             "volatility_range",
             "liquidity_intelligence",
+            "liquidity_events",
             "fvg_imbalance_intelligence",
             "displacement_intelligence",
             "risk_review",
@@ -88,6 +90,9 @@ class TradingDivisionResolver(BusinessDivision):
         if "volatility" in text or "range" in text:
             specialist_name = "volatility_analyst"
             capability_name = "volatility_range"
+        elif any(term in text for term in ["liquidity event", "liquidity sweep", "liquidity sweeps", "sweep", "sweeps", "close beyond"]):
+            specialist_name = "liquidity_events_analyst"
+            capability_name = "liquidity_events"
         elif "liquidity" in text:
             specialist_name = "liquidity_analyst"
             capability_name = "liquidity_intelligence"
@@ -117,6 +122,13 @@ class TradingDivisionResolver(BusinessDivision):
                 "division_name": self.name,
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the volatility analyst for the realized range test.",
+            }
+        if any(term in text for term in ["liquidity event", "liquidity sweep", "liquidity sweeps", "sweep", "sweeps", "close beyond"]):
+            return {
+                "name": "liquidity_events_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the liquidity events analyst for deterministic liquidity event intelligence.",
             }
         if "liquidity" in text:
             return {
@@ -155,6 +167,14 @@ class TradingDivisionResolver(BusinessDivision):
                 "contract": "trading.volatility_range.v1",
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the volatility and range capability for the controlled XAUUSD volatility slice.",
+            }
+        if any(term in text for term in ["liquidity event", "liquidity sweep", "liquidity sweeps", "sweep", "sweeps", "close beyond"]):
+            return {
+                "name": "liquidity_events",
+                "division_name": self.name,
+                "contract": "trading.liquidity_events.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the liquidity events capability for deterministic liquidity event intelligence.",
             }
         if "liquidity" in text:
             return {

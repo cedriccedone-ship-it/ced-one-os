@@ -70,6 +70,14 @@ DISPLACEMENT_INTELLIGENCE = TradingCapability(
     division_name="trading",
 )
 
+LIQUIDITY_EVENTS = TradingCapability(
+    name="liquidity_events",
+    contract="trading.liquidity_events.v1",
+    responsibility="Perform deterministic factual liquidity touch, sweep, and close-beyond event intelligence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 __all__ = [
     "TradingCapability",
     "COORDINATION",
@@ -79,4 +87,5 @@ __all__ = [
     "LIQUIDITY_INTELLIGENCE",
     "FVG_IMBALANCE_INTELLIGENCE",
     "DISPLACEMENT_INTELLIGENCE",
+    "LIQUIDITY_EVENTS",
 ]

@@ -10,6 +10,7 @@ from ced_one.business_divisions.trading.capabilities import (
     DISPLACEMENT_INTELLIGENCE,
     FVG_IMBALANCE_INTELLIGENCE,
     LIQUIDITY_INTELLIGENCE,
+    LIQUIDITY_EVENTS,
     MARKET_OBSERVATION,
     TradingCapability,
 )
@@ -37,6 +38,7 @@ from ced_one.business_divisions.trading.specialists import (
     DISPLACEMENT_ANALYST,
     FVG_IMBALANCE_ANALYST,
     LIQUIDITY_ANALYST,
+    LIQUIDITY_EVENTS_ANALYST,
     MARKET_ANALYST,
     RISK_SPECIALIST,
     TradingSpecialist,
@@ -44,6 +46,7 @@ from ced_one.business_divisions.trading.specialists import (
     DisplacementIntelligenceSpecialist,
     FVGImbalanceIntelligenceSpecialist,
     LiquidityIntelligenceSpecialist,
+    LiquidityEventsSpecialist,
     VolatilityRangeSpecialist,
 )
 from ced_one.business_divisions.trading.displacement_intelligence import (
@@ -74,6 +77,15 @@ from ced_one.business_divisions.trading.liquidity_intelligence import (
     LiquidityIntelligenceInput,
     LiquidityIntelligenceResult,
     LiquidityIntelligenceValidator,
+)
+from ced_one.business_divisions.trading.liquidity_events import (
+    LIQUIDITY_EVENTS as LIQUIDITY_EVENTS_ANALYZER,
+    LiquidityEventsAnalyzer,
+    LiquidityEventsCapability,
+    LiquidityEventsConfig,
+    LiquidityEventsInput,
+    LiquidityEventsResult,
+    LiquidityEventsValidator,
 )
 from ced_one.business_divisions.trading.volatility_range import (
     VOLATILITY_RANGE,
@@ -107,6 +119,15 @@ __all__ = [
     "LiquidityIntelligenceValidator",
     "LIQUIDITY_INTELLIGENCE_ANALYZER",
     "LIQUIDITY_INTELLIGENCE",
+    "LiquidityEventsAnalyzer",
+    "LiquidityEventsCapability",
+    "LiquidityEventsConfig",
+    "LiquidityEventsInput",
+    "LiquidityEventsResult",
+    "LiquidityEventsSpecialist",
+    "LiquidityEventsValidator",
+    "LIQUIDITY_EVENTS_ANALYZER",
+    "LIQUIDITY_EVENTS",
     "FVGImbalanceIntelligenceAnalyzer",
     "FVGImbalanceIntelligenceCapability",
     "FVGIntelligenceConfig",
@@ -149,6 +170,7 @@ __all__ = [
     "MarketStructureAnalyzer",
     "MARKET_ANALYST",
     "LIQUIDITY_ANALYST",
+    "LIQUIDITY_EVENTS_ANALYST",
     "FVG_IMBALANCE_ANALYST",
     "DISPLACEMENT_ANALYST",
     "RISK_SPECIALIST",
