@@ -9,6 +9,7 @@ from ced_one.business_divisions.trading.fvg_imbalance_intelligence import FVGImb
 from ced_one.business_divisions.trading.liquidity_intelligence import LiquidityIntelligenceSpecialist as _LiquidityIntelligenceSpecialist
 from ced_one.business_divisions.trading.liquidity_events import LiquidityEventsSpecialist as _LiquidityEventsSpecialist
 from ced_one.business_divisions.trading.order_block_intelligence import OrderBlockIntelligenceSpecialist as _OrderBlockIntelligenceSpecialist
+from ced_one.business_divisions.trading.structural_dealing_range_intelligence import StructuralDealingRangeIntelligenceSpecialist as _StructuralDealingRangeIntelligenceSpecialist
 from ced_one.business_divisions.trading.market_observation import MarketAnalysisSpecialist as _MarketAnalysisSpecialist
 from ced_one.business_divisions.trading.volatility_range import VolatilityRangeSpecialist as _VolatilityRangeSpecialist
 
@@ -62,6 +63,12 @@ class OrderBlockIntelligenceSpecialist(_OrderBlockIntelligenceSpecialist):
     pass
 
 
+class StructuralDealingRangeIntelligenceSpecialist(_StructuralDealingRangeIntelligenceSpecialist):
+    """Compatibility wrapper around deterministic structural dealing ranges."""
+
+    pass
+
+
 MARKET_ANALYST = TradingSpecialist(
     name="market_analyst",
     permission_scope="read_only",
@@ -110,6 +117,12 @@ ORDER_BLOCK_ANALYST = TradingSpecialist(
     responsibility="Review deterministic factual order block origin and interaction context for the trading business division.",
 )
 
+STRUCTURAL_DEALING_RANGE_ANALYST = TradingSpecialist(
+    name="structural_dealing_range_analyst",
+    permission_scope="read_only",
+    responsibility="Review deterministic factual structural dealing range context for the trading business division.",
+)
+
 
 __all__ = [
     "TradingSpecialist",
@@ -127,4 +140,6 @@ __all__ = [
     "LIQUIDITY_EVENTS_ANALYST",
     "OrderBlockIntelligenceSpecialist",
     "ORDER_BLOCK_ANALYST",
+    "StructuralDealingRangeIntelligenceSpecialist",
+    "STRUCTURAL_DEALING_RANGE_ANALYST",
 ]

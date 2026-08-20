@@ -89,7 +89,10 @@ class TradingDivisionResolver(BusinessDivision):
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
         specialist_name = "market_analyst"
         capability_name = "market_observation"
-        if "volatility" in text or "range" in text:
+        if any(term in text for term in ["structural dealing range", "dealing range structure", "structural range", "market structure range"]):
+            specialist_name = "structural_dealing_range_analyst"
+            capability_name = "structural_dealing_range_intelligence"
+        elif "volatility" in text or "range" in text:
             specialist_name = "volatility_analyst"
             capability_name = "volatility_range"
         elif any(term in text for term in ["liquidity event", "liquidity sweep", "liquidity sweeps", "sweep", "sweeps", "close beyond"]):
@@ -121,6 +124,13 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_specialist(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if any(term in text for term in ["structural dealing range", "dealing range structure", "structural range", "market structure range"]):
+            return {
+                "name": "structural_dealing_range_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the structural dealing range analyst for deterministic range construction.",
+            }
         if "volatility" in text or "range" in text:
             return {
                 "name": "volatility_analyst",
@@ -172,6 +182,14 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_capability(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if any(term in text for term in ["structural dealing range", "dealing range structure", "structural range", "market structure range"]):
+            return {
+                "name": "structural_dealing_range_intelligence",
+                "division_name": self.name,
+                "contract": "trading.structural_dealing_range_intelligence.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the structural dealing range capability for deterministic range construction.",
+            }
         if "volatility" in text or "range" in text:
             return {
                 "name": "volatility_range",

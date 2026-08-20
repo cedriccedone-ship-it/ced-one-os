@@ -86,6 +86,14 @@ ORDER_BLOCK_INTELLIGENCE = TradingCapability(
     division_name="trading",
 )
 
+STRUCTURAL_DEALING_RANGE_INTELLIGENCE = TradingCapability(
+    name="structural_dealing_range_intelligence",
+    contract="trading.structural_dealing_range_intelligence.v1",
+    responsibility="Perform deterministic factual structural dealing range construction from confirmed market-structure pivot evidence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 __all__ = [
     "TradingCapability",
     "COORDINATION",
@@ -97,4 +105,5 @@ __all__ = [
     "DISPLACEMENT_INTELLIGENCE",
     "LIQUIDITY_EVENTS",
     "ORDER_BLOCK_INTELLIGENCE",
+    "STRUCTURAL_DEALING_RANGE_INTELLIGENCE",
 ]

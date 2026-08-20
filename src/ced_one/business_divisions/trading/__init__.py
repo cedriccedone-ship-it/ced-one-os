@@ -12,6 +12,7 @@ from ced_one.business_divisions.trading.capabilities import (
     LIQUIDITY_INTELLIGENCE,
     LIQUIDITY_EVENTS,
     ORDER_BLOCK_INTELLIGENCE,
+    STRUCTURAL_DEALING_RANGE_INTELLIGENCE,
     MARKET_OBSERVATION,
     TradingCapability,
 )
@@ -50,6 +51,8 @@ from ced_one.business_divisions.trading.specialists import (
     LiquidityEventsSpecialist,
     ORDER_BLOCK_ANALYST,
     OrderBlockIntelligenceSpecialist,
+    STRUCTURAL_DEALING_RANGE_ANALYST,
+    StructuralDealingRangeIntelligenceSpecialist,
     VolatilityRangeSpecialist,
 )
 from ced_one.business_divisions.trading.displacement_intelligence import (
@@ -98,6 +101,15 @@ from ced_one.business_divisions.trading.order_block_intelligence import (
     OrderBlockIntelligenceInput,
     OrderBlockIntelligenceResult,
     OrderBlockIntelligenceValidator,
+)
+from ced_one.business_divisions.trading.structural_dealing_range_intelligence import (
+    STRUCTURAL_DEALING_RANGE_INTELLIGENCE as STRUCTURAL_DEALING_RANGE_INTELLIGENCE_ANALYZER,
+    StructuralDealingRangeAnalyzer,
+    StructuralDealingRangeConfig,
+    StructuralDealingRangeInput,
+    StructuralDealingRangeResult,
+    StructuralDealingRangeValidator,
+    StructuralDealingRangeIntelligenceCapability,
 )
 from ced_one.business_divisions.trading.volatility_range import (
     VOLATILITY_RANGE,
@@ -149,6 +161,15 @@ __all__ = [
     "OrderBlockIntelligenceValidator",
     "ORDER_BLOCK_INTELLIGENCE_ANALYZER",
     "ORDER_BLOCK_INTELLIGENCE",
+    "StructuralDealingRangeAnalyzer",
+    "StructuralDealingRangeConfig",
+    "StructuralDealingRangeInput",
+    "StructuralDealingRangeResult",
+    "StructuralDealingRangeValidator",
+    "StructuralDealingRangeIntelligenceCapability",
+    "StructuralDealingRangeIntelligenceSpecialist",
+    "STRUCTURAL_DEALING_RANGE_INTELLIGENCE_ANALYZER",
+    "STRUCTURAL_DEALING_RANGE_INTELLIGENCE",
     "FVGImbalanceIntelligenceAnalyzer",
     "FVGImbalanceIntelligenceCapability",
     "FVGIntelligenceConfig",
@@ -193,6 +214,7 @@ __all__ = [
     "LIQUIDITY_ANALYST",
     "LIQUIDITY_EVENTS_ANALYST",
     "ORDER_BLOCK_ANALYST",
+    "STRUCTURAL_DEALING_RANGE_ANALYST",
     "FVG_IMBALANCE_ANALYST",
     "DISPLACEMENT_ANALYST",
     "RISK_SPECIALIST",
