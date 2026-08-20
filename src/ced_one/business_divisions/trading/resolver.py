@@ -31,6 +31,7 @@ class TradingDivisionResolver(BusinessDivision):
             "volatility_analyst",
             "liquidity_analyst",
             "liquidity_events_analyst",
+            "order_block_analyst",
             "fvg_imbalance_analyst",
             "displacement_analyst",
             "risk_specialist",
@@ -45,6 +46,7 @@ class TradingDivisionResolver(BusinessDivision):
             "volatility_range",
             "liquidity_intelligence",
             "liquidity_events",
+            "order_block_intelligence",
             "fvg_imbalance_intelligence",
             "displacement_intelligence",
             "risk_review",
@@ -99,6 +101,9 @@ class TradingDivisionResolver(BusinessDivision):
         elif "imbalance" in text or "fair value gap" in text or "fvg" in text:
             specialist_name = "fvg_imbalance_analyst"
             capability_name = "fvg_imbalance_intelligence"
+        elif any(term in text for term in ["order block", "orderblock", "displacement origin", "order block after displacement"]):
+            specialist_name = "order_block_analyst"
+            capability_name = "order_block_intelligence"
         elif "displacement" in text:
             specialist_name = "displacement_analyst"
             capability_name = "displacement_intelligence"
@@ -143,6 +148,13 @@ class TradingDivisionResolver(BusinessDivision):
                 "division_name": self.name,
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the fvg and imbalance analyst for deterministic imbalance intelligence.",
+            }
+        if any(term in text for term in ["order block", "orderblock", "displacement origin", "order block after displacement"]):
+            return {
+                "name": "order_block_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the order block analyst for deterministic order block origin intelligence.",
             }
         if "displacement" in text:
             return {
@@ -191,6 +203,14 @@ class TradingDivisionResolver(BusinessDivision):
                 "contract": "trading.fvg_imbalance_intelligence.v1",
                 "permission_scope": "read_only",
                 "rationale": "Trading Division selected the fvg and imbalance intelligence capability for the controlled XAUUSD imbalance slice.",
+            }
+        if any(term in text for term in ["order block", "orderblock", "displacement origin", "order block after displacement"]):
+            return {
+                "name": "order_block_intelligence",
+                "division_name": self.name,
+                "contract": "trading.order_block_intelligence.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the order block intelligence capability for deterministic order block origin intelligence.",
             }
         if "displacement" in text:
             return {

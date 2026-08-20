@@ -8,6 +8,7 @@ from ced_one.business_divisions.trading.displacement_intelligence import Displac
 from ced_one.business_divisions.trading.fvg_imbalance_intelligence import FVGImbalanceIntelligenceSpecialist as _FVGImbalanceIntelligenceSpecialist
 from ced_one.business_divisions.trading.liquidity_intelligence import LiquidityIntelligenceSpecialist as _LiquidityIntelligenceSpecialist
 from ced_one.business_divisions.trading.liquidity_events import LiquidityEventsSpecialist as _LiquidityEventsSpecialist
+from ced_one.business_divisions.trading.order_block_intelligence import OrderBlockIntelligenceSpecialist as _OrderBlockIntelligenceSpecialist
 from ced_one.business_divisions.trading.market_observation import MarketAnalysisSpecialist as _MarketAnalysisSpecialist
 from ced_one.business_divisions.trading.volatility_range import VolatilityRangeSpecialist as _VolatilityRangeSpecialist
 
@@ -55,6 +56,12 @@ class LiquidityEventsSpecialist(_LiquidityEventsSpecialist):
     pass
 
 
+class OrderBlockIntelligenceSpecialist(_OrderBlockIntelligenceSpecialist):
+    """Compatibility wrapper around deterministic order block intelligence."""
+
+    pass
+
+
 MARKET_ANALYST = TradingSpecialist(
     name="market_analyst",
     permission_scope="read_only",
@@ -97,6 +104,12 @@ LIQUIDITY_EVENTS_ANALYST = TradingSpecialist(
     responsibility="Review deterministic factual liquidity touch, sweep, and close-beyond events for the trading business division.",
 )
 
+ORDER_BLOCK_ANALYST = TradingSpecialist(
+    name="order_block_analyst",
+    permission_scope="read_only",
+    responsibility="Review deterministic factual order block origin and interaction context for the trading business division.",
+)
+
 
 __all__ = [
     "TradingSpecialist",
@@ -112,4 +125,6 @@ __all__ = [
     "FVG_IMBALANCE_ANALYST",
     "DISPLACEMENT_ANALYST",
     "LIQUIDITY_EVENTS_ANALYST",
+    "OrderBlockIntelligenceSpecialist",
+    "ORDER_BLOCK_ANALYST",
 ]

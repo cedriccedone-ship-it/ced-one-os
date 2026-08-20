@@ -78,6 +78,14 @@ LIQUIDITY_EVENTS = TradingCapability(
     division_name="trading",
 )
 
+ORDER_BLOCK_INTELLIGENCE = TradingCapability(
+    name="order_block_intelligence",
+    contract="trading.order_block_intelligence.v1",
+    responsibility="Perform deterministic factual order block origin and subsequent interaction intelligence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 __all__ = [
     "TradingCapability",
     "COORDINATION",
@@ -88,4 +96,5 @@ __all__ = [
     "FVG_IMBALANCE_INTELLIGENCE",
     "DISPLACEMENT_INTELLIGENCE",
     "LIQUIDITY_EVENTS",
+    "ORDER_BLOCK_INTELLIGENCE",
 ]

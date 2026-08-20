@@ -11,6 +11,7 @@ from ced_one.business_divisions.trading.capabilities import (
     FVG_IMBALANCE_INTELLIGENCE,
     LIQUIDITY_INTELLIGENCE,
     LIQUIDITY_EVENTS,
+    ORDER_BLOCK_INTELLIGENCE,
     MARKET_OBSERVATION,
     TradingCapability,
 )
@@ -47,6 +48,8 @@ from ced_one.business_divisions.trading.specialists import (
     FVGImbalanceIntelligenceSpecialist,
     LiquidityIntelligenceSpecialist,
     LiquidityEventsSpecialist,
+    ORDER_BLOCK_ANALYST,
+    OrderBlockIntelligenceSpecialist,
     VolatilityRangeSpecialist,
 )
 from ced_one.business_divisions.trading.displacement_intelligence import (
@@ -86,6 +89,15 @@ from ced_one.business_divisions.trading.liquidity_events import (
     LiquidityEventsInput,
     LiquidityEventsResult,
     LiquidityEventsValidator,
+)
+from ced_one.business_divisions.trading.order_block_intelligence import (
+    ORDER_BLOCK_INTELLIGENCE as ORDER_BLOCK_INTELLIGENCE_ANALYZER,
+    OrderBlockIntelligenceAnalyzer,
+    OrderBlockIntelligenceCapability,
+    OrderBlockIntelligenceConfig,
+    OrderBlockIntelligenceInput,
+    OrderBlockIntelligenceResult,
+    OrderBlockIntelligenceValidator,
 )
 from ced_one.business_divisions.trading.volatility_range import (
     VOLATILITY_RANGE,
@@ -128,6 +140,15 @@ __all__ = [
     "LiquidityEventsValidator",
     "LIQUIDITY_EVENTS_ANALYZER",
     "LIQUIDITY_EVENTS",
+    "OrderBlockIntelligenceAnalyzer",
+    "OrderBlockIntelligenceCapability",
+    "OrderBlockIntelligenceConfig",
+    "OrderBlockIntelligenceInput",
+    "OrderBlockIntelligenceResult",
+    "OrderBlockIntelligenceSpecialist",
+    "OrderBlockIntelligenceValidator",
+    "ORDER_BLOCK_INTELLIGENCE_ANALYZER",
+    "ORDER_BLOCK_INTELLIGENCE",
     "FVGImbalanceIntelligenceAnalyzer",
     "FVGImbalanceIntelligenceCapability",
     "FVGIntelligenceConfig",
@@ -171,6 +192,7 @@ __all__ = [
     "MARKET_ANALYST",
     "LIQUIDITY_ANALYST",
     "LIQUIDITY_EVENTS_ANALYST",
+    "ORDER_BLOCK_ANALYST",
     "FVG_IMBALANCE_ANALYST",
     "DISPLACEMENT_ANALYST",
     "RISK_SPECIALIST",
