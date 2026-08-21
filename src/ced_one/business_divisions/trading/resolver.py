@@ -89,7 +89,10 @@ class TradingDivisionResolver(BusinessDivision):
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
         specialist_name = "market_analyst"
         capability_name = "market_observation"
-        if any(term in text for term in ["structural dealing range", "dealing range structure", "structural range", "market structure range"]):
+        if any(term in text for term in ["premium discount", "premium/discount", "range position", "price in range", "premium", "discount", "equilibrium"]):
+            specialist_name = "premium_discount_analyst"
+            capability_name = "premium_discount_intelligence"
+        elif any(term in text for term in ["structural dealing range", "dealing range structure", "structural range", "market structure range"]):
             specialist_name = "structural_dealing_range_analyst"
             capability_name = "structural_dealing_range_intelligence"
         elif "volatility" in text or "range" in text:
@@ -124,6 +127,13 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_specialist(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if any(term in text for term in ["premium discount", "premium/discount", "range position", "price in range", "premium", "discount", "equilibrium"]):
+            return {
+                "name": "premium_discount_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the premium and discount analyst for deterministic current range geometry.",
+            }
         if any(term in text for term in ["structural dealing range", "dealing range structure", "structural range", "market structure range"]):
             return {
                 "name": "structural_dealing_range_analyst",
@@ -182,6 +192,14 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_capability(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if any(term in text for term in ["premium discount", "premium/discount", "range position", "price in range", "premium", "discount", "equilibrium"]):
+            return {
+                "name": "premium_discount_intelligence",
+                "division_name": self.name,
+                "contract": "trading.premium_discount_intelligence.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the premium and discount capability for deterministic current range geometry.",
+            }
         if any(term in text for term in ["structural dealing range", "dealing range structure", "structural range", "market structure range"]):
             return {
                 "name": "structural_dealing_range_intelligence",

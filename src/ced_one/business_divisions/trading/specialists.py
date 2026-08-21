@@ -9,6 +9,7 @@ from ced_one.business_divisions.trading.fvg_imbalance_intelligence import FVGImb
 from ced_one.business_divisions.trading.liquidity_intelligence import LiquidityIntelligenceSpecialist as _LiquidityIntelligenceSpecialist
 from ced_one.business_divisions.trading.liquidity_events import LiquidityEventsSpecialist as _LiquidityEventsSpecialist
 from ced_one.business_divisions.trading.order_block_intelligence import OrderBlockIntelligenceSpecialist as _OrderBlockIntelligenceSpecialist
+from ced_one.business_divisions.trading.premium_discount_intelligence import PremiumDiscountIntelligenceSpecialist as _PremiumDiscountIntelligenceSpecialist
 from ced_one.business_divisions.trading.structural_dealing_range_intelligence import StructuralDealingRangeIntelligenceSpecialist as _StructuralDealingRangeIntelligenceSpecialist
 from ced_one.business_divisions.trading.market_observation import MarketAnalysisSpecialist as _MarketAnalysisSpecialist
 from ced_one.business_divisions.trading.volatility_range import VolatilityRangeSpecialist as _VolatilityRangeSpecialist
@@ -69,6 +70,12 @@ class StructuralDealingRangeIntelligenceSpecialist(_StructuralDealingRangeIntell
     pass
 
 
+class PremiumDiscountIntelligenceSpecialist(_PremiumDiscountIntelligenceSpecialist):
+    """Compatibility wrapper around deterministic current premium/discount geometry."""
+
+    pass
+
+
 MARKET_ANALYST = TradingSpecialist(
     name="market_analyst",
     permission_scope="read_only",
@@ -123,6 +130,12 @@ STRUCTURAL_DEALING_RANGE_ANALYST = TradingSpecialist(
     responsibility="Review deterministic factual structural dealing range context for the trading business division.",
 )
 
+PREMIUM_DISCOUNT_ANALYST = TradingSpecialist(
+    name="premium_discount_analyst",
+    permission_scope="read_only",
+    responsibility="Review deterministic factual current premium and discount geometry for the trading business division.",
+)
+
 
 __all__ = [
     "TradingSpecialist",
@@ -142,4 +155,6 @@ __all__ = [
     "ORDER_BLOCK_ANALYST",
     "StructuralDealingRangeIntelligenceSpecialist",
     "STRUCTURAL_DEALING_RANGE_ANALYST",
+    "PremiumDiscountIntelligenceSpecialist",
+    "PREMIUM_DISCOUNT_ANALYST",
 ]

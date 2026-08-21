@@ -12,6 +12,7 @@ from ced_one.business_divisions.trading.capabilities import (
     LIQUIDITY_INTELLIGENCE,
     LIQUIDITY_EVENTS,
     ORDER_BLOCK_INTELLIGENCE,
+    PREMIUM_DISCOUNT_INTELLIGENCE,
     STRUCTURAL_DEALING_RANGE_INTELLIGENCE,
     MARKET_OBSERVATION,
     TradingCapability,
@@ -102,6 +103,15 @@ from ced_one.business_divisions.trading.order_block_intelligence import (
     OrderBlockIntelligenceResult,
     OrderBlockIntelligenceValidator,
 )
+from ced_one.business_divisions.trading.premium_discount_intelligence import (
+    PREMIUM_DISCOUNT_INTELLIGENCE as PREMIUM_DISCOUNT_INTELLIGENCE_ANALYZER,
+    PremiumDiscountAnalyzer,
+    PremiumDiscountIntelligenceCapability,
+    PremiumDiscountIntelligenceSpecialist,
+    PremiumDiscountObservationInput,
+    PremiumDiscountResult,
+    PremiumDiscountValidator,
+)
 from ced_one.business_divisions.trading.structural_dealing_range_intelligence import (
     STRUCTURAL_DEALING_RANGE_INTELLIGENCE as STRUCTURAL_DEALING_RANGE_INTELLIGENCE_ANALYZER,
     StructuralDealingRangeAnalyzer,
@@ -170,6 +180,14 @@ __all__ = [
     "StructuralDealingRangeIntelligenceSpecialist",
     "STRUCTURAL_DEALING_RANGE_INTELLIGENCE_ANALYZER",
     "STRUCTURAL_DEALING_RANGE_INTELLIGENCE",
+    "PremiumDiscountAnalyzer",
+    "PremiumDiscountIntelligenceCapability",
+    "PremiumDiscountIntelligenceSpecialist",
+    "PremiumDiscountObservationInput",
+    "PremiumDiscountResult",
+    "PremiumDiscountValidator",
+    "PREMIUM_DISCOUNT_INTELLIGENCE_ANALYZER",
+    "PREMIUM_DISCOUNT_INTELLIGENCE",
     "FVGImbalanceIntelligenceAnalyzer",
     "FVGImbalanceIntelligenceCapability",
     "FVGIntelligenceConfig",

@@ -94,6 +94,14 @@ STRUCTURAL_DEALING_RANGE_INTELLIGENCE = TradingCapability(
     division_name="trading",
 )
 
+PREMIUM_DISCOUNT_INTELLIGENCE = TradingCapability(
+    name="premium_discount_intelligence",
+    contract="trading.premium_discount_intelligence.v1",
+    responsibility="Perform deterministic factual current-close classification within the authoritative structural dealing range for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 __all__ = [
     "TradingCapability",
     "COORDINATION",
@@ -106,4 +114,5 @@ __all__ = [
     "LIQUIDITY_EVENTS",
     "ORDER_BLOCK_INTELLIGENCE",
     "STRUCTURAL_DEALING_RANGE_INTELLIGENCE",
+    "PREMIUM_DISCOUNT_INTELLIGENCE",
 ]
