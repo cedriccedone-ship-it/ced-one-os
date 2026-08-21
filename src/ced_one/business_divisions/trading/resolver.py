@@ -28,28 +28,31 @@ class TradingDivisionResolver(BusinessDivision):
     def get_specialist_names(self) -> list[str]:
         return [
             "market_analyst",
+            "market_structure_analyst",
+            "candle_analyst",
             "volatility_analyst",
             "liquidity_analyst",
             "liquidity_events_analyst",
-            "order_block_analyst",
             "fvg_imbalance_analyst",
             "displacement_analyst",
-            "risk_specialist",
-            "coordination_specialist",
+            "order_block_analyst",
+            "structural_dealing_range_analyst",
+            "premium_discount_analyst",
         ]
 
     def get_capability_names(self) -> list[str]:
         return [
-            "coordination",
-            "analysis",
             "market_observation",
+            "market_structure",
+            "candle_intelligence",
             "volatility_range",
             "liquidity_intelligence",
             "liquidity_events",
-            "order_block_intelligence",
             "fvg_imbalance_intelligence",
             "displacement_intelligence",
-            "risk_review",
+            "order_block_intelligence",
+            "structural_dealing_range_intelligence",
+            "premium_discount_intelligence",
         ]
 
     def describe(self) -> dict[str, Any]:
@@ -89,7 +92,13 @@ class TradingDivisionResolver(BusinessDivision):
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
         specialist_name = "market_analyst"
         capability_name = "market_observation"
-        if any(term in text for term in ["premium discount", "premium/discount", "range position", "price in range", "premium", "discount", "equilibrium"]):
+        if any(term in text for term in ["market structure intelligence", "swing structure"]):
+            specialist_name = "market_structure_analyst"
+            capability_name = "market_structure"
+        elif any(term in text for term in ["candle intelligence", "candle morphology", "candle analysis"]):
+            specialist_name = "candle_analyst"
+            capability_name = "candle_intelligence"
+        elif any(term in text for term in ["premium discount", "premium/discount", "range position", "price in range", "premium", "discount", "equilibrium"]):
             specialist_name = "premium_discount_analyst"
             capability_name = "premium_discount_intelligence"
         elif any(term in text for term in ["structural dealing range", "dealing range structure", "structural range", "market structure range"]):
@@ -127,6 +136,20 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_specialist(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if any(term in text for term in ["market structure intelligence", "swing structure"]):
+            return {
+                "name": "market_structure_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the market structure analyst for deterministic market structure intelligence.",
+            }
+        if any(term in text for term in ["candle intelligence", "candle morphology", "candle analysis"]):
+            return {
+                "name": "candle_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the candle analyst for deterministic candle intelligence.",
+            }
         if any(term in text for term in ["premium discount", "premium/discount", "range position", "price in range", "premium", "discount", "equilibrium"]):
             return {
                 "name": "premium_discount_analyst",
@@ -192,6 +215,22 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_capability(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if any(term in text for term in ["market structure intelligence", "swing structure"]):
+            return {
+                "name": "market_structure",
+                "division_name": self.name,
+                "contract": "trading.market_structure.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the market structure capability for deterministic structure intelligence.",
+            }
+        if any(term in text for term in ["candle intelligence", "candle morphology", "candle analysis"]):
+            return {
+                "name": "candle_intelligence",
+                "division_name": self.name,
+                "contract": "trading.candle_intelligence.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the candle intelligence capability for deterministic candle morphology.",
+            }
         if any(term in text for term in ["premium discount", "premium/discount", "range position", "price in range", "premium", "discount", "equilibrium"]):
             return {
                 "name": "premium_discount_intelligence",

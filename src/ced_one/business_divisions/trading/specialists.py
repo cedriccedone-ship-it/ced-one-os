@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ced_one.business_divisions.trading.displacement_intelligence import DisplacementIntelligenceSpecialist as _DisplacementIntelligenceSpecialist
+from ced_one.business_divisions.trading.candle_intelligence import CandleIntelligenceSpecialist as _CandleIntelligenceSpecialist
 from ced_one.business_divisions.trading.fvg_imbalance_intelligence import FVGImbalanceIntelligenceSpecialist as _FVGImbalanceIntelligenceSpecialist
 from ced_one.business_divisions.trading.liquidity_intelligence import LiquidityIntelligenceSpecialist as _LiquidityIntelligenceSpecialist
 from ced_one.business_divisions.trading.liquidity_events import LiquidityEventsSpecialist as _LiquidityEventsSpecialist
@@ -12,6 +13,7 @@ from ced_one.business_divisions.trading.order_block_intelligence import OrderBlo
 from ced_one.business_divisions.trading.premium_discount_intelligence import PremiumDiscountIntelligenceSpecialist as _PremiumDiscountIntelligenceSpecialist
 from ced_one.business_divisions.trading.structural_dealing_range_intelligence import StructuralDealingRangeIntelligenceSpecialist as _StructuralDealingRangeIntelligenceSpecialist
 from ced_one.business_divisions.trading.market_observation import MarketAnalysisSpecialist as _MarketAnalysisSpecialist
+from ced_one.business_divisions.trading.market_structure import MarketStructureAnalyzer
 from ced_one.business_divisions.trading.volatility_range import VolatilityRangeSpecialist as _VolatilityRangeSpecialist
 
 
@@ -24,6 +26,42 @@ class TradingSpecialist:
 
 class MarketAnalysisSpecialist(_MarketAnalysisSpecialist):
     """Compatibility wrapper around the deterministic XAUUSD market observation implementation."""
+
+    pass
+
+
+class MarketStructureSpecialist:
+    """Read-only wrapper around the authoritative market-structure analyzer."""
+
+    name = "market_structure_analyst"
+    division_name = "trading"
+    capability_name = "market_structure"
+    permission_scope = "read_only"
+
+    def validate_binding(self, *, division_name: str, specialist_name: str, capability_name: str, permission_scope: str) -> bool:
+        return division_name == "trading" and specialist_name == self.name and capability_name == self.capability_name and permission_scope == "read_only"
+
+    def can_mutate_task_lifecycle(self) -> bool:
+        return False
+
+    def is_final_authority(self) -> bool:
+        return False
+
+    def requires_external_execution(self) -> bool:
+        return False
+
+    def requires_live_market_data(self) -> bool:
+        return False
+
+    def requires_external_ai(self) -> bool:
+        return False
+
+    def analyze_market_structure(self, payload, **kwargs):
+        return MarketStructureAnalyzer().analyze(payload, **kwargs)
+
+
+class CandleIntelligenceSpecialist(_CandleIntelligenceSpecialist):
+    """Compatibility surface for the existing candle-intelligence specialist."""
 
     pass
 
@@ -140,6 +178,8 @@ PREMIUM_DISCOUNT_ANALYST = TradingSpecialist(
 __all__ = [
     "TradingSpecialist",
     "MarketAnalysisSpecialist",
+    "MarketStructureSpecialist",
+    "CandleIntelligenceSpecialist",
     "VolatilityRangeSpecialist",
     "LiquidityIntelligenceSpecialist",
     "FVGImbalanceIntelligenceSpecialist",

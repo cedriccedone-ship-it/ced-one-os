@@ -38,6 +38,22 @@ MARKET_OBSERVATION = TradingCapability(
     division_name="trading",
 )
 
+MARKET_STRUCTURE = TradingCapability(
+    name="market_structure",
+    contract="trading.market_structure.v1",
+    responsibility="Perform deterministic factual market-structure and pivot intelligence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
+CANDLE_INTELLIGENCE = TradingCapability(
+    name="candle_intelligence",
+    contract="trading.candle_intelligence.v1",
+    responsibility="Perform deterministic factual candle morphology and sequence intelligence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 VOLATILITY_RANGE = TradingCapability(
     name="volatility_range",
     contract="trading.volatility_range.v1",
@@ -107,6 +123,8 @@ __all__ = [
     "COORDINATION",
     "ANALYSIS",
     "MARKET_OBSERVATION",
+    "MARKET_STRUCTURE",
+    "CANDLE_INTELLIGENCE",
     "VOLATILITY_RANGE",
     "LIQUIDITY_INTELLIGENCE",
     "FVG_IMBALANCE_INTELLIGENCE",

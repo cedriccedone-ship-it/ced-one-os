@@ -11,6 +11,7 @@ from ced_one.business_divisions.trading.capabilities import (
     FVG_IMBALANCE_INTELLIGENCE,
     LIQUIDITY_INTELLIGENCE,
     LIQUIDITY_EVENTS,
+    MARKET_STRUCTURE,
     ORDER_BLOCK_INTELLIGENCE,
     PREMIUM_DISCOUNT_INTELLIGENCE,
     STRUCTURAL_DEALING_RANGE_INTELLIGENCE,
@@ -27,6 +28,7 @@ from ced_one.business_divisions.trading.candle_intelligence import (
     CandleIntelligenceSpecialist,
     CandleIntelligenceValidator,
 )
+from ced_one.business_divisions.trading.capabilities import CANDLE_INTELLIGENCE as CANDLE_INTELLIGENCE_CAPABILITY
 from ced_one.business_divisions.trading.division import TradingDivision
 from ced_one.business_divisions.trading.market_context import MarketContextAggregator, MarketContextInput, MarketContextResult, MarketContextValidator
 from ced_one.business_divisions.trading.market_observation import (
@@ -50,6 +52,7 @@ from ced_one.business_divisions.trading.specialists import (
     FVGImbalanceIntelligenceSpecialist,
     LiquidityIntelligenceSpecialist,
     LiquidityEventsSpecialist,
+    MarketStructureSpecialist,
     ORDER_BLOCK_ANALYST,
     OrderBlockIntelligenceSpecialist,
     STRUCTURAL_DEALING_RANGE_ANALYST,
@@ -143,6 +146,8 @@ __all__ = [
     "CandleIntelligenceResult",
     "CandleIntelligenceSpecialist",
     "CandleIntelligenceValidator",
+    "MARKET_STRUCTURE",
+    "CANDLE_INTELLIGENCE_CAPABILITY",
     "CANDLE_INTELLIGENCE",
     "LiquidityIntelligenceAnalyzer",
     "LiquidityIntelligenceCapability",
@@ -217,6 +222,7 @@ __all__ = [
     "VolatilityRangeValidator",
     "VOLATILITY_RANGE",
     "MarketAnalysisSpecialist",
+    "MarketStructureSpecialist",
     "MarketObservationInput",
     "MarketObservationResult",
     "MarketObservationValidator",
