@@ -11,6 +11,7 @@ from ced_one.business_divisions.trading.capabilities import (
     FVG_IMBALANCE_INTELLIGENCE,
     LIQUIDITY_INTELLIGENCE,
     LIQUIDITY_EVENTS,
+    FACTUAL_MARKET_CONTEXT_COMPOSITION,
     MARKET_STRUCTURE,
     ORDER_BLOCK_INTELLIGENCE,
     PREMIUM_DISCOUNT_INTELLIGENCE,
@@ -30,6 +31,12 @@ from ced_one.business_divisions.trading.candle_intelligence import (
 )
 from ced_one.business_divisions.trading.capabilities import CANDLE_INTELLIGENCE as CANDLE_INTELLIGENCE_CAPABILITY
 from ced_one.business_divisions.trading.division import TradingDivision
+from ced_one.business_divisions.trading.factual_market_context_composition import (
+    FACTUAL_MARKET_CONTEXT_COMPOSITION as FACTUAL_MARKET_CONTEXT_COMPOSITION_ANALYZER,
+    FactualMarketContextCompositionAnalyzer,
+    FactualMarketContextCompositionResult,
+    FactualMarketContextSpecialist as CoreFactualMarketContextSpecialist,
+)
 from ced_one.business_divisions.trading.market_context import MarketContextAggregator, MarketContextInput, MarketContextResult, MarketContextValidator
 from ced_one.business_divisions.trading.market_observation import (
     MarketAnalysisSpecialist,
@@ -53,6 +60,7 @@ from ced_one.business_divisions.trading.specialists import (
     LiquidityIntelligenceSpecialist,
     LiquidityEventsSpecialist,
     MarketStructureSpecialist,
+    FactualMarketContextSpecialist,
     ORDER_BLOCK_ANALYST,
     OrderBlockIntelligenceSpecialist,
     STRUCTURAL_DEALING_RANGE_ANALYST,
@@ -148,6 +156,7 @@ __all__ = [
     "CandleIntelligenceValidator",
     "MARKET_STRUCTURE",
     "CANDLE_INTELLIGENCE_CAPABILITY",
+    "FACTUAL_MARKET_CONTEXT_COMPOSITION",
     "CANDLE_INTELLIGENCE",
     "LiquidityIntelligenceAnalyzer",
     "LiquidityIntelligenceCapability",
@@ -223,6 +232,11 @@ __all__ = [
     "VOLATILITY_RANGE",
     "MarketAnalysisSpecialist",
     "MarketStructureSpecialist",
+    "FactualMarketContextCompositionAnalyzer",
+    "FactualMarketContextCompositionResult",
+    "CoreFactualMarketContextSpecialist",
+    "FACTUAL_MARKET_CONTEXT_COMPOSITION_ANALYZER",
+    "FactualMarketContextSpecialist",
     "MarketObservationInput",
     "MarketObservationResult",
     "MarketObservationValidator",

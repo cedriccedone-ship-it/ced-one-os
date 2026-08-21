@@ -118,6 +118,14 @@ PREMIUM_DISCOUNT_INTELLIGENCE = TradingCapability(
     division_name="trading",
 )
 
+FACTUAL_MARKET_CONTEXT_COMPOSITION = TradingCapability(
+    name="factual_market_context_composition",
+    contract="trading.factual_market_context_composition.v1",
+    responsibility="Compose deterministic factual market context from validated Slice #16 intelligence for XAUUSD architecture validation only.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 __all__ = [
     "TradingCapability",
     "COORDINATION",
@@ -133,4 +141,5 @@ __all__ = [
     "ORDER_BLOCK_INTELLIGENCE",
     "STRUCTURAL_DEALING_RANGE_INTELLIGENCE",
     "PREMIUM_DISCOUNT_INTELLIGENCE",
+    "FACTUAL_MARKET_CONTEXT_COMPOSITION",
 ]

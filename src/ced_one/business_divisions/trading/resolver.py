@@ -38,6 +38,7 @@ class TradingDivisionResolver(BusinessDivision):
             "order_block_analyst",
             "structural_dealing_range_analyst",
             "premium_discount_analyst",
+            "factual_market_context_analyst",
         ]
 
     def get_capability_names(self) -> list[str]:
@@ -53,6 +54,7 @@ class TradingDivisionResolver(BusinessDivision):
             "order_block_intelligence",
             "structural_dealing_range_intelligence",
             "premium_discount_intelligence",
+            "factual_market_context_composition",
         ]
 
     def describe(self) -> dict[str, Any]:
@@ -92,7 +94,10 @@ class TradingDivisionResolver(BusinessDivision):
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
         specialist_name = "market_analyst"
         capability_name = "market_observation"
-        if any(term in text for term in ["market structure intelligence", "swing structure"]):
+        if any(term in text for term in ["factual market context", "factual context composition", "compose factual market context"]):
+            specialist_name = "factual_market_context_analyst"
+            capability_name = "factual_market_context_composition"
+        elif any(term in text for term in ["market structure intelligence", "swing structure"]):
             specialist_name = "market_structure_analyst"
             capability_name = "market_structure"
         elif any(term in text for term in ["candle intelligence", "candle morphology", "candle analysis"]):
@@ -136,6 +141,13 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_specialist(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if any(term in text for term in ["factual market context", "factual context composition", "compose factual market context"]):
+            return {
+                "name": "factual_market_context_analyst",
+                "division_name": self.name,
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the factual market context analyst for structured factual composition.",
+            }
         if any(term in text for term in ["market structure intelligence", "swing structure"]):
             return {
                 "name": "market_structure_analyst",
@@ -215,6 +227,14 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_capability(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if any(term in text for term in ["factual market context", "factual context composition", "compose factual market context"]):
+            return {
+                "name": "factual_market_context_composition",
+                "division_name": self.name,
+                "contract": "trading.factual_market_context_composition.v1",
+                "permission_scope": "read_only",
+                "rationale": "Trading Division selected the factual market context composition capability.",
+            }
         if any(term in text for term in ["market structure intelligence", "swing structure"]):
             return {
                 "name": "market_structure",

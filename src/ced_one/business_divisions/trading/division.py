@@ -29,10 +29,10 @@ class TradingDivision(BusinessDivision):
         return self.scope
 
     def get_specialist_names(self) -> Iterable[str]:
-        return ["market_analyst", "market_structure_analyst", "candle_analyst", "volatility_analyst", "liquidity_analyst", "liquidity_events_analyst", "fvg_imbalance_analyst", "displacement_analyst", "order_block_analyst", "structural_dealing_range_analyst", "premium_discount_analyst"]
+        return ["market_analyst", "market_structure_analyst", "candle_analyst", "volatility_analyst", "liquidity_analyst", "liquidity_events_analyst", "fvg_imbalance_analyst", "displacement_analyst", "order_block_analyst", "structural_dealing_range_analyst", "premium_discount_analyst", "factual_market_context_analyst"]
 
     def get_capability_names(self) -> Iterable[str]:
-        return ["market_observation", "market_structure", "candle_intelligence", "volatility_range", "liquidity_intelligence", "liquidity_events", "fvg_imbalance_intelligence", "displacement_intelligence", "order_block_intelligence", "structural_dealing_range_intelligence", "premium_discount_intelligence"]
+        return ["market_observation", "market_structure", "candle_intelligence", "volatility_range", "liquidity_intelligence", "liquidity_events", "fvg_imbalance_intelligence", "displacement_intelligence", "order_block_intelligence", "structural_dealing_range_intelligence", "premium_discount_intelligence", "factual_market_context_composition"]
 
     def describe(self) -> dict[str, Any]:
         return {

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ced_one.business_divisions.trading.displacement_intelligence import DisplacementIntelligenceSpecialist as _DisplacementIntelligenceSpecialist
+from ced_one.business_divisions.trading.factual_market_context_composition import FactualMarketContextSpecialist as _FactualMarketContextSpecialist
 from ced_one.business_divisions.trading.candle_intelligence import CandleIntelligenceSpecialist as _CandleIntelligenceSpecialist
 from ced_one.business_divisions.trading.fvg_imbalance_intelligence import FVGImbalanceIntelligenceSpecialist as _FVGImbalanceIntelligenceSpecialist
 from ced_one.business_divisions.trading.liquidity_intelligence import LiquidityIntelligenceSpecialist as _LiquidityIntelligenceSpecialist
@@ -114,6 +115,12 @@ class PremiumDiscountIntelligenceSpecialist(_PremiumDiscountIntelligenceSpeciali
     pass
 
 
+class FactualMarketContextSpecialist(_FactualMarketContextSpecialist):
+    """Compatibility surface for structured factual context composition."""
+
+    pass
+
+
 MARKET_ANALYST = TradingSpecialist(
     name="market_analyst",
     permission_scope="read_only",
@@ -174,6 +181,12 @@ PREMIUM_DISCOUNT_ANALYST = TradingSpecialist(
     responsibility="Review deterministic factual current premium and discount geometry for the trading business division.",
 )
 
+FACTUAL_MARKET_CONTEXT_ANALYST = TradingSpecialist(
+    name="factual_market_context_analyst",
+    permission_scope="read_only",
+    responsibility="Compose deterministic factual market context without strategy or execution semantics.",
+)
+
 
 __all__ = [
     "TradingSpecialist",
@@ -197,4 +210,6 @@ __all__ = [
     "STRUCTURAL_DEALING_RANGE_ANALYST",
     "PremiumDiscountIntelligenceSpecialist",
     "PREMIUM_DISCOUNT_ANALYST",
+    "FactualMarketContextSpecialist",
+    "FACTUAL_MARKET_CONTEXT_ANALYST",
 ]

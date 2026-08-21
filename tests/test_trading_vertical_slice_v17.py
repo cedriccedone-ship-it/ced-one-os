@@ -27,6 +27,7 @@ OPERATIONAL_CAPABILITIES = [
     "order_block_intelligence",
     "structural_dealing_range_intelligence",
     "premium_discount_intelligence",
+    "factual_market_context_composition",
 ]
 
 OPERATIONAL_SPECIALISTS = [
@@ -41,6 +42,7 @@ OPERATIONAL_SPECIALISTS = [
     "order_block_analyst",
     "structural_dealing_range_analyst",
     "premium_discount_analyst",
+    "factual_market_context_analyst",
 ]
 
 
