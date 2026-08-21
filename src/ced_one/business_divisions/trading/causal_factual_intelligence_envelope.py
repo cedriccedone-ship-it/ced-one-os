@@ -67,6 +67,10 @@ def _hash_id(prefix: str, value: Any) -> str:
     return prefix + hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:24]
 
 
+def _configuration_fingerprint(configuration: dict[str, Any]) -> str:
+    return _hash_id("configuration_", configuration)
+
+
 @dataclass(frozen=True)
 class CausalFactualEnvelopeInput:
     symbol: str
@@ -141,6 +145,12 @@ class CapabilityAdapter:
     dependencies: tuple[str, ...]
     invoke: Callable[[CausalFactualEnvelopeInput, dict[str, Any]], tuple[Any, list[dict[str, Any]]]]
     classify: Callable[[dict[str, Any], list[dict[str, Any]]], tuple[str, str]]
+
+
+class DependencyStateError(ValueError):
+    def __init__(self, availability: str, message: str):
+        super().__init__(message)
+        self.availability = availability
 
 
 def _source_dict(source: Any) -> dict[str, Any]:
@@ -281,34 +291,103 @@ def _classify_premium(result: dict[str, Any], dependencies: list[dict[str, Any]]
     return ("AVAILABLE_PRESENT", "premium_discount_observation_present") if result.get("observation") is not None else ("AVAILABLE_ABSENT", "no_current_range_observation")
 
 
-def _dependency_result(result: Any, contract: str, source: dict[str, Any]) -> dict[str, Any]:
+def _dependency_result(
+    result: Any,
+    adapter: CapabilityAdapter,
+    source: dict[str, Any],
+    configuration: dict[str, Any],
+    dependency_order: int,
+) -> dict[str, Any]:
     result_dict = _result_dict(result)
+    factual_availability, _ = adapter.classify(result_dict, [])
     return {
-        "capability_contract": contract,
-        "capability_rule_version": result_dict.get("evidence", {}).get("structural_range_rule_version") or result_dict.get("evidence", {}).get("liquidity_event_rule_version") or result_dict.get("metadata", {}).get("structure_rule_version") or result_dict.get("metadata", {}).get("identity_scope"),
+        "dependency_order": dependency_order,
+        "capability_name": adapter.name,
+        "capability_contract": adapter.contract,
+        "capability_rule_version": adapter.rule_version,
+        "factual_availability": factual_availability,
         "result_identity": _hash_id("authoritative_result_", result_dict),
+        "authoritative_result_id": _hash_id("authoritative_result_", result_dict),
         "source_snapshot_id": source["source_snapshot_id"],
+        "symbol": source["symbol"],
+        "timeframe": source["timeframe"],
         "requested_evaluation_timestamp": source["requested_evaluation_timestamp"],
         "effective_causal_cutoff": source["effective_causal_cutoff"],
+        "configuration_fingerprint": _configuration_fingerprint(configuration),
         "controlled_invocation": True,
+        "provenance_validation": "validated_controlled_dependency",
     }
 
 
-def _dependent_invoke(dependency_contract: str, dependency_invoke: Callable[[CausalFactualEnvelopeInput, dict[str, Any]], Any], analyzer: Any, required: tuple[str, ...], classify: Callable[[dict[str, Any], list[dict[str, Any]]], tuple[str, str]], forbidden: tuple[str, ...] = ()) -> Callable[[CausalFactualEnvelopeInput, dict[str, Any]], tuple[Any, list[dict[str, Any]]]]:
+def _validate_dependency_record(
+    record: dict[str, Any],
+    adapter: CapabilityAdapter,
+    source: dict[str, Any],
+    configuration: dict[str, Any],
+    dependency_order: int,
+) -> None:
+    expected = {
+        "dependency_order": dependency_order,
+        "capability_name": adapter.name,
+        "capability_contract": adapter.contract,
+        "capability_rule_version": adapter.rule_version,
+        "source_snapshot_id": source["source_snapshot_id"],
+        "symbol": source["symbol"],
+        "timeframe": source["timeframe"],
+        "requested_evaluation_timestamp": source["requested_evaluation_timestamp"],
+        "effective_causal_cutoff": source["effective_causal_cutoff"],
+        "configuration_fingerprint": _configuration_fingerprint(configuration),
+        "controlled_invocation": True,
+        "provenance_validation": "validated_controlled_dependency",
+    }
+    required = set(expected) | {"factual_availability", "authoritative_result_id"}
+    missing = sorted(required - set(record))
+    if missing:
+        raise ValueError(f"Dependency provenance missing fields: {missing}.")
+    for field_name, expected_value in expected.items():
+        if record[field_name] != expected_value:
+            raise ValueError(f"Dependency provenance mismatch: {field_name}.")
+    if record["factual_availability"] not in AVAILABILITY_STATES:
+        raise ValueError("Dependency provenance has unknown factual availability.")
+    if not isinstance(record["authoritative_result_id"], str) or not record["authoritative_result_id"]:
+        raise ValueError("Dependency provenance requires authoritative_result_id.")
+
+
+def _dependent_invoke(dependency_adapter: CapabilityAdapter, analyzer: Any, required: tuple[str, ...], classify: Callable[[dict[str, Any], list[dict[str, Any]]], tuple[str, str]], forbidden: tuple[str, ...] = (), dependency_configuration: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> Callable[[CausalFactualEnvelopeInput, dict[str, Any]], tuple[Any, list[dict[str, Any]]]]:
     def invoke(request: CausalFactualEnvelopeInput, configuration: dict[str, Any]) -> tuple[Any, list[dict[str, Any]]]:
         source = _source_dict(request.causal_source)
-        dependency_result, ignored = dependency_invoke(request, configuration)
-        dependency_record = _dependency_result(dependency_result, dependency_contract, source)
+        dependency_config = configuration if dependency_configuration is None else dependency_configuration(configuration)
+        dependency_request = CausalFactualEnvelopeInput(
+            symbol=request.symbol,
+            timeframe=request.timeframe,
+            requested_evaluation_timestamp=request.requested_evaluation_timestamp,
+            causal_source=request.causal_source,
+            capability=request.capability,
+            context_id=request.context_id,
+        )
+        dependency_result, dependency_records = dependency_adapter.invoke(dependency_request, dependency_config)
+        dependency_result_dict = _result_dict(dependency_result)
+        dependency_availability, _ = dependency_adapter.classify(dependency_result_dict, dependency_records)
+        if dependency_availability in {"UNAVAILABLE", "INVALID", "NOT_EVALUATED"}:
+            raise DependencyStateError(dependency_availability, f"Dependency {dependency_adapter.contract} is {dependency_availability}.")
+        dependency_record = _dependency_result(dependency_result, dependency_adapter, source, dependency_config, 1)
+        _validate_dependency_record(dependency_record, dependency_adapter, source, dependency_config, 1)
         result = analyzer.analyze(_payload(source, configuration))
         result_dict = _result_dict(result)
         _valid_result(result_dict, required, forbidden)
-        return result, [dependency_record]
+        return result, [*dependency_records, dependency_record]
     return invoke
 
 
 def _premium_invoke(request: CausalFactualEnvelopeInput, configuration: dict[str, Any]) -> tuple[Any, list[dict[str, Any]]]:
     source = _source_dict(request.causal_source)
-    market_structure = _market_structure().analyze(_payload(source, {}))
+    market_structure_adapter = ADAPTERS["trading.market_structure.v1"]
+    structural_adapter = ADAPTERS["trading.structural_dealing_range_intelligence.v1"]
+    market_structure, market_structure_dependencies = market_structure_adapter.invoke(request, {})
+    market_structure_dict = _result_dict(market_structure)
+    market_structure_availability, _ = market_structure_adapter.classify(market_structure_dict, market_structure_dependencies)
+    if market_structure_availability in {"UNAVAILABLE", "INVALID", "NOT_EVALUATED"}:
+        raise DependencyStateError(market_structure_availability, f"Dependency {market_structure_adapter.contract} is {market_structure_availability}.")
     structural = _structural_range().analyze(_payload(source, configuration))
     structural_dict = _result_dict(structural)
     observation_timestamp = structural_dict["timestamp"]
@@ -323,10 +402,11 @@ def _premium_invoke(request: CausalFactualEnvelopeInput, configuration: dict[str
     result = _premium_discount().analyze(premium_payload)
     result_dict = _result_dict(result)
     _valid_result(result_dict, ("symbol", "timeframe", "timestamp", "observation", "diagnostics", "evidence", "metadata"))
-    return result, [
-        _dependency_result(market_structure, "trading.market_structure.v1", source),
-        _dependency_result(structural, "trading.structural_dealing_range_intelligence.v1", source),
-    ]
+    market_record = _dependency_result(market_structure, market_structure_adapter, source, {}, 1)
+    structural_record = _dependency_result(structural, structural_adapter, source, configuration, 2)
+    _validate_dependency_record(market_record, market_structure_adapter, source, {}, 1)
+    _validate_dependency_record(structural_record, structural_adapter, source, configuration, 2)
+    return result, [*market_structure_dependencies, market_record, structural_record]
 
 
 def _market_structure():
@@ -391,9 +471,9 @@ def _build_adapters() -> dict[str, CapabilityAdapter]:
         liquidity.contract: liquidity,
         "trading.fvg_imbalance_intelligence.v1": CapabilityAdapter("fvg_imbalance_intelligence", "trading.fvg_imbalance_intelligence.v1", "fvg_imbalance_intelligence_v1", (), _direct_invoke(_fvg(), ("symbol", "timeframe", "fair_value_gaps", "evidence", "metadata"), forbidden), _classify_fvg),
         displacement.contract: displacement,
-        "trading.liquidity_events.v1": CapabilityAdapter("liquidity_events", "trading.liquidity_events.v1", "liquidity_events_v1", (liquidity.contract,), _dependent_invoke(liquidity.contract, liquidity.invoke, _liquidity_events(), ("symbol", "timeframe", "liquidity_events", "level_event_states", "evidence", "metadata"), _classify_events, forbidden), _classify_events),
-        "trading.order_block_intelligence.v1": CapabilityAdapter("order_block_intelligence", "trading.order_block_intelligence.v1", "order_block_intelligence_v1", (displacement.contract,), _dependent_invoke(displacement.contract, displacement.invoke, _order_blocks(), ("symbol", "timeframe", "order_blocks", "evidence", "metadata"), _classify_blocks, forbidden), _classify_blocks),
-        "trading.structural_dealing_range_intelligence.v1": CapabilityAdapter("structural_dealing_range_intelligence", "trading.structural_dealing_range_intelligence.v1", "structural_dealing_range_intelligence_v1", (structure.contract,), _dependent_invoke(structure.contract, structure.invoke, _structural_range(), ("symbol", "timeframe", "structural_ranges", "current_range", "evidence", "metadata"), _classify_range, forbidden), _classify_range),
+        "trading.liquidity_events.v1": CapabilityAdapter("liquidity_events", "trading.liquidity_events.v1", "liquidity_events_v1", (liquidity.contract,), _dependent_invoke(liquidity, _liquidity_events(), ("symbol", "timeframe", "liquidity_events", "level_event_states", "evidence", "metadata"), _classify_events, forbidden, lambda config: {"lookback_candles": config.get("lookback_candles", 100), **(config.get("liquidity_config") or {})}), _classify_events),
+        "trading.order_block_intelligence.v1": CapabilityAdapter("order_block_intelligence", "trading.order_block_intelligence.v1", "order_block_intelligence_v1", (displacement.contract,), _dependent_invoke(displacement, _order_blocks(), ("symbol", "timeframe", "order_blocks", "evidence", "metadata"), _classify_blocks, forbidden, lambda config: {"lookback_candles": config.get("lookback_candles", 100), **(config.get("displacement_config") or {})}), _classify_blocks),
+        "trading.structural_dealing_range_intelligence.v1": CapabilityAdapter("structural_dealing_range_intelligence", "trading.structural_dealing_range_intelligence.v1", "structural_dealing_range_intelligence_v1", (structure.contract,), _dependent_invoke(structure, _structural_range(), ("symbol", "timeframe", "structural_ranges", "current_range", "evidence", "metadata"), _classify_range, forbidden, lambda _config: {}), _classify_range),
         "trading.premium_discount_intelligence.v1": CapabilityAdapter("premium_discount_intelligence", "trading.premium_discount_intelligence.v1", "premium_discount_intelligence_v1", (structure.contract, "trading.structural_dealing_range_intelligence.v1"), _premium_invoke, _classify_premium),
     }
 
@@ -445,6 +525,7 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
         if source_completion == "UNKNOWN":
             return self._failure(base, "UNAVAILABLE", "unknown_source_completion", diagnostics, provenance, source_completion)
         diagnostics["source_usable"] = True
+        provenance["controlled_invocation"] = True
         try:
             result, dependencies = adapter.invoke(request, configuration)
             result_dict = _result_dict(result)
@@ -460,6 +541,9 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
                 evidence={"source_snapshot_id": source["source_snapshot_id"], "source_completion_state": source_completion, "capability": base["capability"], "dependency_provenance": dependencies, "classification_reason": reason, "factual_availability": availability, "provenance_validation": "controlled_invocation"},
                 metadata={"contract": CONTRACT, "rule_version": RULE_VERSION, "identity_scope": IDENTITY_SCOPE, "observation_only": True, "advisory_output": False, "strategy_output": False, "execution_output": False, "authority_scope": "read_only"}, **{key: base[key] for key in ["symbol", "timeframe", "requested_evaluation_timestamp", "effective_causal_cutoff", "source_snapshot_id", "source_completion_state", "context_id", "capability"]}
             )
+        except DependencyStateError as exc:
+            diagnostics["dependency_failure_count"] = len(adapter.dependencies)
+            return self._failure(base, exc.availability, "dependency_" + exc.availability.lower(), diagnostics, {**provenance, "error_type": type(exc).__name__}, source_completion, str(exc))
         except (TypeError, ValueError, KeyError) as exc:
             diagnostics["dependency_failure_count"] = len(adapter.dependencies)
             return self._failure(base, "INVALID", "controlled_invocation_failed", diagnostics, {**provenance, "error_type": type(exc).__name__}, source_completion, str(exc))

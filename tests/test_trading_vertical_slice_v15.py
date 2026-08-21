@@ -48,11 +48,12 @@ def source_result(*, timeframe="H1", availability="AVAILABLE", completion="COMPL
 
 def request(contract: str, *, name: str | None = None, rule_version: str | None = None, configuration=None, source=None, context_id=None):
     adapter = ADAPTERS[contract]
+    selected_source = source or source_result()
     return {
         "symbol": "XAUUSD",
         "timeframe": "H1",
-        "requested_evaluation_timestamp": "2026-08-17T02:00:00Z",
-        "causal_source": source or source_result(),
+        "requested_evaluation_timestamp": selected_source["requested_evaluation_timestamp"],
+        "causal_source": selected_source,
         "capability": {
             "name": adapter.name if name is None else name,
             "contract": contract,
@@ -65,6 +66,27 @@ def request(contract: str, *, name: str | None = None, rule_version: str | None 
 
 def analyze(contract: str, **kwargs):
     return CAUSAL_FACTUAL_INTELLIGENCE_ENVELOPE.analyze(request(contract, **kwargs))
+
+
+def structured_source():
+    rows = [
+        {"timestamp": ts(index), "open": open_price, "high": high, "low": low, "close": close}
+        for index, (open_price, high, low, close) in enumerate([
+            (100.0, 103.0, 96.0, 101.0), (101.0, 104.0, 97.0, 102.0), (102.0, 103.5, 98.0, 101.0),
+            (101.0, 105.0, 99.0, 104.0), (104.0, 104.5, 100.0, 103.0), (103.0, 106.0, 101.0, 105.0),
+            (105.0, 106.2, 101.2, 105.5), (105.5, 107.0, 102.0, 106.0), (106.0, 106.5, 101.8, 105.8),
+            (105.8, 108.0, 103.0, 107.0), (107.0, 108.1, 103.5, 107.5), (107.5, 109.0, 104.0, 108.4),
+        ])
+    ]
+    result = source_result(candles=rows, snapshot_id="source_structured", requested=ts(14))
+    result["effective_causal_cutoff"] = ts(12)
+    return result
+
+
+def displacement_source():
+    rows = [candle(index, close=100, high=101, low=99) for index in range(20)]
+    rows.extend([candle(20, close=100, high=103, low=99), candle(21, close=105, high=106, low=99)])
+    return source_result(candles=rows, snapshot_id="source_displacement", requested=ts(23))
 
 
 def test_v15_allowlist_contains_only_slices_three_through_twelve():
@@ -131,8 +153,14 @@ def test_v15_unknown_source_completion_fails_closed_without_result():
 @pytest.mark.parametrize("field,value", [("symbol", "EURUSD"), ("timeframe", "M5"), ("requested_evaluation_timestamp", "2026-08-17T03:00:00Z")])
 def test_v15_source_pairing_mismatch_is_rejected(field, value):
     source = source_result()
-    source[field] = value
     kwargs = {"source": source}
+    if field == "requested_evaluation_timestamp":
+        request_payload = request("trading.candle_intelligence.v1", source=source)
+        request_payload["requested_evaluation_timestamp"] = value
+        with pytest.raises(ValueError):
+            CAUSAL_FACTUAL_INTELLIGENCE_ENVELOPE.analyze(request_payload)
+        return
+    source[field] = value
     with pytest.raises(ValueError):
         analyze("trading.candle_intelligence.v1", **kwargs)
 
@@ -161,21 +189,21 @@ def test_v15_detached_result_input_is_not_accepted():
 
 
 def test_v15_dependency_provenance_is_retained_for_dependent_capabilities():
-    liquidity_events = analyze("trading.liquidity_events.v1")
-    order_blocks = analyze("trading.order_block_intelligence.v1")
-    structural_range = analyze("trading.structural_dealing_range_intelligence.v1")
+    liquidity_events = analyze("trading.liquidity_events.v1", source=structured_source())
+    order_blocks = analyze("trading.order_block_intelligence.v1", source=displacement_source())
+    structural_range = analyze("trading.structural_dealing_range_intelligence.v1", source=structured_source())
     assert liquidity_events.dependency_provenance[0]["capability_contract"] == "trading.liquidity_intelligence.v1"
     assert order_blocks.dependency_provenance[0]["capability_contract"] == "trading.displacement_intelligence.v1"
     assert structural_range.dependency_provenance[0]["capability_contract"] == "trading.market_structure.v1"
-    assert all(item["source_snapshot_id"] == "source_h1" for item in structural_range.dependency_provenance)
+    assert all(item["source_snapshot_id"] == "source_structured" for item in structural_range.dependency_provenance)
 
 
 def test_v15_premium_discount_preserves_full_dependency_chain():
-    result = analyze("trading.premium_discount_intelligence.v1")
+    result = analyze("trading.premium_discount_intelligence.v1", source=structured_source())
     contracts = [item["capability_contract"] for item in result.dependency_provenance]
     assert contracts == ["trading.market_structure.v1", "trading.structural_dealing_range_intelligence.v1"]
     assert result.provenance["controlled_invocation"] is True
-    assert result.source_snapshot_id == "source_h1"
+    assert result.source_snapshot_id == "source_structured"
 
 
 def test_v15_identity_is_deterministic_and_configuration_sensitive():
@@ -222,3 +250,82 @@ def test_v15_public_shape_preserves_opaque_authoritative_payload():
     }
     assert "candle_direction" in result.authoritative_result
     assert "approved_candle_history" not in result.evidence
+
+
+def test_v15_dependency_records_expose_complete_source_provenance():
+    result = analyze("trading.liquidity_events.v1", source=structured_source())
+    dependency = result.dependency_provenance[0]
+    assert dependency["dependency_order"] == 1
+    assert dependency["capability_name"] == "liquidity_intelligence"
+    assert dependency["capability_contract"] == "trading.liquidity_intelligence.v1"
+    assert dependency["capability_rule_version"] == "liquidity_intelligence_v1"
+    assert dependency["factual_availability"] in AVAILABILITY_STATES
+    assert dependency["authoritative_result_id"] == dependency["result_identity"]
+    assert dependency["source_snapshot_id"] == "source_structured"
+    assert dependency["symbol"] == "XAUUSD"
+    assert dependency["timeframe"] == "H1"
+    assert dependency["requested_evaluation_timestamp"] == ts(14)
+    assert dependency["effective_causal_cutoff"] == ts(12)
+    assert dependency["configuration_fingerprint"].startswith("configuration_")
+    assert dependency["controlled_invocation"] is True
+    assert dependency["provenance_validation"] == "validated_controlled_dependency"
+
+
+@pytest.mark.parametrize("contract", [
+    "trading.liquidity_events.v1",
+    "trading.order_block_intelligence.v1",
+    "trading.structural_dealing_range_intelligence.v1",
+])
+def test_v15_dependent_records_have_expected_order_and_shared_source(contract):
+    result = analyze(contract, source=displacement_source() if contract == "trading.order_block_intelligence.v1" else structured_source())
+    assert [item["dependency_order"] for item in result.dependency_provenance] == [1]
+    expected_source = "source_displacement" if contract == "trading.order_block_intelligence.v1" else "source_structured"
+    assert all(item["source_snapshot_id"] == expected_source for item in result.dependency_provenance)
+    assert all(item["symbol"] == "XAUUSD" and item["timeframe"] == "H1" for item in result.dependency_provenance)
+
+
+def test_v15_premium_dependency_records_are_ordered_and_complete():
+    result = analyze("trading.premium_discount_intelligence.v1", source=structured_source())
+    assert [item["dependency_order"] for item in result.dependency_provenance] == [1, 2]
+    assert [item["capability_name"] for item in result.dependency_provenance] == ["market_structure", "structural_dealing_range_intelligence"]
+    assert all(item["authoritative_result_id"] for item in result.dependency_provenance)
+    assert all(item["source_snapshot_id"] == "source_structured" for item in result.dependency_provenance)
+    assert all(item["controlled_invocation"] for item in result.dependency_provenance)
+
+
+def test_v15_dependency_provenance_is_deterministic_and_identity_sensitive():
+    first = analyze("trading.premium_discount_intelligence.v1", source=structured_source())
+    second = analyze("trading.premium_discount_intelligence.v1", source=structured_source())
+    changed = analyze("trading.premium_discount_intelligence.v1", source=structured_source(), configuration={"maximum_ranges": 1})
+    assert first.dependency_provenance == second.dependency_provenance
+    assert first.factual_envelope_id == second.factual_envelope_id
+    assert first.factual_envelope_id != changed.factual_envelope_id
+
+
+def test_v15_dependent_unavailable_source_does_not_claim_success():
+    result = analyze("trading.structural_dealing_range_intelligence.v1", source=source_result(availability="UNAVAILABLE"))
+    assert result.factual_availability == "UNAVAILABLE"
+    assert result.factual_envelope_id is None
+    assert result.authoritative_result is None
+
+
+def test_v15_unavailable_dependency_propagates_without_becoming_absent():
+    short_source = source_result(candles=[candle(0)])
+    result = analyze("trading.order_block_intelligence.v1", source=short_source)
+    assert result.factual_availability == "UNAVAILABLE"
+    assert result.factual_envelope_id is None
+
+
+def test_v15_dependency_configuration_fingerprint_changes_with_effective_configuration():
+    default = analyze("trading.liquidity_events.v1", source=structured_source())
+    configured = analyze("trading.liquidity_events.v1", source=structured_source(), configuration={"lookback_candles": 50})
+    assert default.dependency_provenance[0]["configuration_fingerprint"] != configured.dependency_provenance[0]["configuration_fingerprint"]
+
+
+def test_v15_source_provenance_fields_cannot_be_detached_from_controlled_source():
+    mismatched = structured_source()
+    mismatched["source_snapshot_id"] = "different_source"
+    result = analyze("trading.structural_dealing_range_intelligence.v1", source=mismatched)
+    assert result.source_snapshot_id == "different_source"
+    assert result.dependency_provenance[0]["source_snapshot_id"] == "different_source"
+    assert result.dependency_provenance[0]["source_snapshot_id"] == result.source_snapshot_id
