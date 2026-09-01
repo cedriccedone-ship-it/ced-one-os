@@ -9,6 +9,7 @@ from ced_one.business_divisions.trading.causal_factual_intelligence_envelope imp
     ADAPTERS,
     AVAILABILITY_STATES,
     CAUSAL_FACTUAL_INTELLIGENCE_ENVELOPE,
+    _configuration_fingerprint,
 )
 from ced_one.business_divisions.trading.causal_snapshot_availability import (
     CausalSnapshotAvailabilityAnalyzer,
@@ -329,3 +330,44 @@ def test_v15_source_provenance_fields_cannot_be_detached_from_controlled_source(
     assert result.source_snapshot_id == "different_source"
     assert result.dependency_provenance[0]["source_snapshot_id"] == "different_source"
     assert result.dependency_provenance[0]["source_snapshot_id"] == result.source_snapshot_id
+
+
+@pytest.mark.parametrize("contract", sorted(ADAPTERS))
+def test_v15_terminal_configuration_fingerprint_uses_effective_adapter_configuration(contract):
+    result = analyze(contract, source=structured_source() if contract in {"trading.structural_dealing_range_intelligence.v1", "trading.premium_discount_intelligence.v1", "trading.liquidity_events.v1"} else None)
+    expected = _configuration_fingerprint(ADAPTERS[contract].normalize_configuration({}))
+    assert result.provenance["configuration_fingerprint"] == expected
+    assert result.evidence["configuration_fingerprint"] == expected
+
+
+def test_v15_terminal_fingerprint_equates_omitted_and_explicit_defaults():
+    default = analyze("trading.candle_intelligence.v1")
+    explicit = analyze(
+        "trading.candle_intelligence.v1",
+        configuration=ADAPTERS["trading.candle_intelligence.v1"].normalize_configuration({}),
+    )
+    assert default.provenance["configuration_fingerprint"] == explicit.provenance["configuration_fingerprint"]
+
+
+def test_v15_terminal_fingerprint_changes_for_material_effective_configuration():
+    default = analyze("trading.candle_intelligence.v1")
+    changed = analyze("trading.candle_intelligence.v1", configuration={"sequence_window": 6})
+    assert default.provenance["configuration_fingerprint"] != changed.provenance["configuration_fingerprint"]
+
+
+def test_v15_nested_configuration_uses_effective_terminal_and_dependency_fingerprints():
+    result = analyze(
+        "trading.liquidity_events.v1",
+        source=structured_source(),
+        configuration={"liquidity_config": {"equal_level_tolerance": 0.75}},
+    )
+    terminal_config = ADAPTERS["trading.liquidity_events.v1"].normalize_configuration({"liquidity_config": {"equal_level_tolerance": 0.75}})
+    dependency_config = terminal_config["liquidity_config"]
+    assert result.provenance["configuration_fingerprint"] == _configuration_fingerprint(terminal_config)
+    assert result.dependency_provenance[0]["configuration_fingerprint"] == _configuration_fingerprint(dependency_config)
+
+
+@pytest.mark.parametrize("contract", ["trading.market_structure.v1", "trading.premium_discount_intelligence.v1"])
+def test_v15_no_configuration_capabilities_have_canonical_empty_fingerprint(contract):
+    result = analyze(contract, source=structured_source())
+    assert result.provenance["configuration_fingerprint"] == _configuration_fingerprint({})

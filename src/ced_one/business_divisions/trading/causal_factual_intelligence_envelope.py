@@ -143,6 +143,7 @@ class CapabilityAdapter:
     contract: str
     rule_version: str
     dependencies: tuple[str, ...]
+    normalize_configuration: Callable[[dict[str, Any]], dict[str, Any]]
     invoke: Callable[[CausalFactualEnvelopeInput, dict[str, Any]], tuple[Any, list[dict[str, Any]]]]
     classify: Callable[[dict[str, Any], list[dict[str, Any]]], tuple[str, str]]
 
@@ -459,22 +460,75 @@ def _premium_discount():
     return PremiumDiscountAnalyzer()
 
 
+def _empty_configuration(_: dict[str, Any]) -> dict[str, Any]:
+    return {}
+
+
+def _candle_configuration(configuration: dict[str, Any]) -> dict[str, Any]:
+    from ced_one.business_divisions.trading.candle_intelligence import CandleIntelligenceConfig
+    return CandleIntelligenceConfig.from_payload(configuration).as_dict()
+
+
+def _volatility_configuration(configuration: dict[str, Any]) -> dict[str, Any]:
+    from ced_one.business_divisions.trading.volatility_range import VolatilityRangeConfig
+    return VolatilityRangeConfig.from_payload(configuration).as_dict()
+
+
+def _liquidity_configuration(configuration: dict[str, Any]) -> dict[str, Any]:
+    from ced_one.business_divisions.trading.liquidity_intelligence import LiquidityIntelligenceConfig
+    return LiquidityIntelligenceConfig.from_payload(configuration).as_dict()
+
+
+def _fvg_configuration(configuration: dict[str, Any]) -> dict[str, Any]:
+    from ced_one.business_divisions.trading.fvg_imbalance_intelligence import FVGIntelligenceConfig
+    return FVGIntelligenceConfig.from_payload(configuration).as_dict()
+
+
+def _displacement_configuration(configuration: dict[str, Any]) -> dict[str, Any]:
+    from ced_one.business_divisions.trading.displacement_intelligence import DisplacementIntelligenceConfig
+    return DisplacementIntelligenceConfig.from_payload(configuration).as_dict()
+
+
+def _liquidity_events_configuration(configuration: dict[str, Any]) -> dict[str, Any]:
+    from ced_one.business_divisions.trading.liquidity_events import LiquidityEventsConfig
+    return LiquidityEventsConfig.from_payload(configuration).as_dict()
+
+
+def _order_block_configuration(configuration: dict[str, Any]) -> dict[str, Any]:
+    from ced_one.business_divisions.trading.order_block_intelligence import OrderBlockIntelligenceConfig
+    return OrderBlockIntelligenceConfig.from_payload(configuration).as_dict()
+
+
+def _invocation_configuration(contract: str, effective_configuration: dict[str, Any]) -> dict[str, Any]:
+    configuration = _canonical(effective_configuration)
+    if contract == "trading.liquidity_events.v1":
+        configuration["liquidity_config"].pop("lookback_candles", None)
+    if contract == "trading.order_block_intelligence.v1":
+        configuration["displacement_config"].pop("lookback_candles", None)
+    return configuration
+
+
+def _structural_range_configuration(configuration: dict[str, Any]) -> dict[str, Any]:
+    from ced_one.business_divisions.trading.structural_dealing_range_intelligence import StructuralDealingRangeConfig
+    return StructuralDealingRangeConfig.from_payload(configuration).as_dict()
+
+
 def _build_adapters() -> dict[str, CapabilityAdapter]:
     forbidden = ("buy", "sell", "entry", "exit", "recommendation", "execution_command")
-    structure = CapabilityAdapter("market_structure", "trading.market_structure.v1", "market_structure_v1", (), _direct_invoke(_market_structure(), ("symbol", "timeframe", "structure_state", "evidence", "metadata"), forbidden), _classify_structure)
-    displacement = CapabilityAdapter("displacement_intelligence", "trading.displacement_intelligence.v1", "displacement_intelligence_v1", (), _direct_invoke(_displacement(), ("symbol", "timeframe", "displacement_events", "displacement_sequences", "evidence", "metadata"), forbidden), _classify_displacement)
-    liquidity = CapabilityAdapter("liquidity_intelligence", "trading.liquidity_intelligence.v1", "liquidity_intelligence_v1", (), _direct_invoke(_liquidity(), ("symbol", "timeframe", "liquidity_levels", "evidence", "metadata"), forbidden), _classify_liquidity)
+    structure = CapabilityAdapter("market_structure", "trading.market_structure.v1", "market_structure_v1", (), _empty_configuration, _direct_invoke(_market_structure(), ("symbol", "timeframe", "structure_state", "evidence", "metadata"), forbidden), _classify_structure)
+    displacement = CapabilityAdapter("displacement_intelligence", "trading.displacement_intelligence.v1", "displacement_intelligence_v1", (), _displacement_configuration, _direct_invoke(_displacement(), ("symbol", "timeframe", "displacement_events", "displacement_sequences", "evidence", "metadata"), forbidden), _classify_displacement)
+    liquidity = CapabilityAdapter("liquidity_intelligence", "trading.liquidity_intelligence.v1", "liquidity_intelligence_v1", (), _liquidity_configuration, _direct_invoke(_liquidity(), ("symbol", "timeframe", "liquidity_levels", "evidence", "metadata"), forbidden), _classify_liquidity)
     return {
         structure.contract: structure,
-        "trading.candle_intelligence.v1": CapabilityAdapter("candle_intelligence", "trading.candle_intelligence.v1", "candle_intelligence_v1", (), _direct_invoke(_candle(), ("symbol", "timeframe", "timestamp", "candle_direction", "evidence", "metadata"), forbidden), _classify_candle),
-        "trading.volatility_range.v1": CapabilityAdapter("volatility_range", "trading.volatility_range.v1", "volatility_range_v1", (), _direct_invoke(_volatility(), ("symbol", "timeframe", "timestamp", "volatility_state", "range_state", "evidence", "metadata"), forbidden), _classify_volatility),
+        "trading.candle_intelligence.v1": CapabilityAdapter("candle_intelligence", "trading.candle_intelligence.v1", "candle_intelligence_v1", (), _candle_configuration, _direct_invoke(_candle(), ("symbol", "timeframe", "timestamp", "candle_direction", "evidence", "metadata"), forbidden), _classify_candle),
+        "trading.volatility_range.v1": CapabilityAdapter("volatility_range", "trading.volatility_range.v1", "volatility_range_v1", (), _volatility_configuration, _direct_invoke(_volatility(), ("symbol", "timeframe", "timestamp", "volatility_state", "range_state", "evidence", "metadata"), forbidden), _classify_volatility),
         liquidity.contract: liquidity,
-        "trading.fvg_imbalance_intelligence.v1": CapabilityAdapter("fvg_imbalance_intelligence", "trading.fvg_imbalance_intelligence.v1", "fvg_imbalance_intelligence_v1", (), _direct_invoke(_fvg(), ("symbol", "timeframe", "fair_value_gaps", "evidence", "metadata"), forbidden), _classify_fvg),
+        "trading.fvg_imbalance_intelligence.v1": CapabilityAdapter("fvg_imbalance_intelligence", "trading.fvg_imbalance_intelligence.v1", "fvg_imbalance_intelligence_v1", (), _fvg_configuration, _direct_invoke(_fvg(), ("symbol", "timeframe", "fair_value_gaps", "evidence", "metadata"), forbidden), _classify_fvg),
         displacement.contract: displacement,
-        "trading.liquidity_events.v1": CapabilityAdapter("liquidity_events", "trading.liquidity_events.v1", "liquidity_events_v1", (liquidity.contract,), _dependent_invoke(liquidity, _liquidity_events(), ("symbol", "timeframe", "liquidity_events", "level_event_states", "evidence", "metadata"), _classify_events, forbidden, lambda config: {"lookback_candles": config.get("lookback_candles", 100), **(config.get("liquidity_config") or {})}), _classify_events),
-        "trading.order_block_intelligence.v1": CapabilityAdapter("order_block_intelligence", "trading.order_block_intelligence.v1", "order_block_intelligence_v1", (displacement.contract,), _dependent_invoke(displacement, _order_blocks(), ("symbol", "timeframe", "order_blocks", "evidence", "metadata"), _classify_blocks, forbidden, lambda config: {"lookback_candles": config.get("lookback_candles", 100), **(config.get("displacement_config") or {})}), _classify_blocks),
-        "trading.structural_dealing_range_intelligence.v1": CapabilityAdapter("structural_dealing_range_intelligence", "trading.structural_dealing_range_intelligence.v1", "structural_dealing_range_intelligence_v1", (structure.contract,), _dependent_invoke(structure, _structural_range(), ("symbol", "timeframe", "structural_ranges", "current_range", "evidence", "metadata"), _classify_range, forbidden, lambda _config: {}), _classify_range),
-        "trading.premium_discount_intelligence.v1": CapabilityAdapter("premium_discount_intelligence", "trading.premium_discount_intelligence.v1", "premium_discount_intelligence_v1", (structure.contract, "trading.structural_dealing_range_intelligence.v1"), _premium_invoke, _classify_premium),
+        "trading.liquidity_events.v1": CapabilityAdapter("liquidity_events", "trading.liquidity_events.v1", "liquidity_events_v1", (liquidity.contract,), _liquidity_events_configuration, _dependent_invoke(liquidity, _liquidity_events(), ("symbol", "timeframe", "liquidity_events", "level_event_states", "evidence", "metadata"), _classify_events, forbidden, lambda config: {"lookback_candles": config["lookback_candles"], **config["liquidity_config"]}), _classify_events),
+        "trading.order_block_intelligence.v1": CapabilityAdapter("order_block_intelligence", "trading.order_block_intelligence.v1", "order_block_intelligence_v1", (displacement.contract,), _order_block_configuration, _dependent_invoke(displacement, _order_blocks(), ("symbol", "timeframe", "order_blocks", "evidence", "metadata"), _classify_blocks, forbidden, lambda config: {"lookback_candles": config["lookback_candles"], **config["displacement_config"]}), _classify_blocks),
+        "trading.structural_dealing_range_intelligence.v1": CapabilityAdapter("structural_dealing_range_intelligence", "trading.structural_dealing_range_intelligence.v1", "structural_dealing_range_intelligence_v1", (structure.contract,), _structural_range_configuration, _dependent_invoke(structure, _structural_range(), ("symbol", "timeframe", "structural_ranges", "current_range", "evidence", "metadata"), _classify_range, forbidden, _empty_configuration), _classify_range),
+        "trading.premium_discount_intelligence.v1": CapabilityAdapter("premium_discount_intelligence", "trading.premium_discount_intelligence.v1", "premium_discount_intelligence_v1", (structure.contract, "trading.structural_dealing_range_intelligence.v1"), _empty_configuration, _premium_invoke, _classify_premium),
     }
 
 
@@ -505,6 +559,9 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
         configuration = capability.get("configuration") or {}
         if not isinstance(configuration, dict):
             raise ValueError("Capability configuration must be a dictionary.")
+        effective_configuration = adapter.normalize_configuration(configuration)
+        invocation_configuration = _invocation_configuration(adapter.contract, effective_configuration)
+        configuration_fingerprint = _configuration_fingerprint(effective_configuration)
         base = {
             "symbol": request.symbol,
             "timeframe": request.timeframe,
@@ -513,12 +570,12 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
             "source_snapshot_id": source["source_snapshot_id"],
             "source_completion_state": source["completion_state"],
             "context_id": request.context_id,
-            "capability": {"name": adapter.name, "contract": adapter.contract, "rule_version": adapter.rule_version, "configuration": dict(configuration)},
+            "capability": {"name": adapter.name, "contract": adapter.contract, "rule_version": adapter.rule_version, "configuration": effective_configuration},
         }
         source_state = source["source_availability"]
         source_completion = source["completion_state"]
         diagnostics = {"controlled_invocation_performed": False, "adapter_selected": True, "source_usable": False, "dependency_count": len(adapter.dependencies), "dependency_invocation_count": 0, "dependency_failure_count": 0, "result_validation_outcome": False, "provenance_validation_outcome": True, "classification_outcome": False}
-        provenance = {"source_contract": SOURCE_CONTRACT, "source_snapshot_id": source["source_snapshot_id"], "controlled_invocation": False, "dependency_contracts": list(adapter.dependencies), "identity_scope": IDENTITY_SCOPE}
+        provenance = {"source_contract": SOURCE_CONTRACT, "source_snapshot_id": source["source_snapshot_id"], "configuration_fingerprint": configuration_fingerprint, "controlled_invocation": False, "dependency_contracts": list(adapter.dependencies), "identity_scope": IDENTITY_SCOPE}
         if source_state in {"INVALID", "UNAVAILABLE", "NOT_EVALUATED"}:
             availability = "INVALID" if source_state == "INVALID" else source_state
             return self._failure(base, availability, f"source_{source_state.lower()}", diagnostics, provenance, source_completion)
@@ -527,7 +584,7 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
         diagnostics["source_usable"] = True
         provenance["controlled_invocation"] = True
         try:
-            result, dependencies = adapter.invoke(request, configuration)
+            result, dependencies = adapter.invoke(request, invocation_configuration)
             result_dict = _result_dict(result)
             availability, reason = adapter.classify(result_dict, dependencies)
             authoritative_id = _hash_id("authoritative_result_", result_dict)
@@ -538,7 +595,7 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
             return CausalFactualIntelligenceEnvelopeResult(
                 factual_envelope_id=envelope_id, factual_availability=availability, authoritative_result=result_dict, authoritative_result_id=authoritative_id,
                 dependency_provenance=dependencies, availability_reason=reason, provenance=provenance, diagnostics=diagnostics,
-                evidence={"source_snapshot_id": source["source_snapshot_id"], "source_completion_state": source_completion, "capability": base["capability"], "dependency_provenance": dependencies, "classification_reason": reason, "factual_availability": availability, "provenance_validation": "controlled_invocation"},
+                evidence={"source_snapshot_id": source["source_snapshot_id"], "source_completion_state": source_completion, "capability": base["capability"], "configuration_fingerprint": configuration_fingerprint, "dependency_provenance": dependencies, "classification_reason": reason, "factual_availability": availability, "provenance_validation": "controlled_invocation"},
                 metadata={"contract": CONTRACT, "rule_version": RULE_VERSION, "identity_scope": IDENTITY_SCOPE, "observation_only": True, "advisory_output": False, "strategy_output": False, "execution_output": False, "authority_scope": "read_only"}, **{key: base[key] for key in ["symbol", "timeframe", "requested_evaluation_timestamp", "effective_causal_cutoff", "source_snapshot_id", "source_completion_state", "context_id", "capability"]}
             )
         except DependencyStateError as exc:
@@ -550,7 +607,7 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
 
     @staticmethod
     def _failure(base: dict[str, Any], availability: str, reason: str, diagnostics: dict[str, Any], provenance: dict[str, Any], completion: str, error: str | None = None) -> CausalFactualIntelligenceEnvelopeResult:
-        evidence = {"source_snapshot_id": base["source_snapshot_id"], "source_completion_state": completion, "capability": base["capability"], "availability_reason": reason, "factual_availability": availability, "provenance_validation": "controlled_source_rejected" if not provenance.get("controlled_invocation") else "controlled_invocation"}
+        evidence = {"source_snapshot_id": base["source_snapshot_id"], "source_completion_state": completion, "capability": base["capability"], "configuration_fingerprint": provenance.get("configuration_fingerprint"), "availability_reason": reason, "factual_availability": availability, "provenance_validation": "controlled_source_rejected" if not provenance.get("controlled_invocation") else "controlled_invocation"}
         if error:
             evidence["error"] = error
         return CausalFactualIntelligenceEnvelopeResult(
