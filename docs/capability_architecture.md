@@ -1,15 +1,19 @@
 # Capability Architecture
 
-Purpose:
-This document will capture the planned capability decomposition and interaction model.
+Mission Control coordinates generic contracts. Business divisions own domain resolution and explicitly register local capability implementations. Providers remain replaceable behind execution contracts.
 
-## Architectural Layering
-Mission Control → Business Division → Specialists → Capabilities → Providers / Tools
+## Public interfaces
 
-Capabilities remain reusable building blocks in the system. They are coordinated by specialists and assembled within a business division rather than being tightly coupled to Mission Control or a specific business domain.
+`CapabilityExecutionContract.to_dict()` serializes the registration contract. Input and output schemas currently specify required dictionary fields. Domain executors perform deeper semantic validation; these schemas are not full JSON Schema implementations.
 
-## Division-to-Capability Relationship
-A business division defines the domain context in which specialists and capabilities operate. It does not own provider logic or specialized trading behavior directly. Reusable capabilities may be shared across divisions where appropriate.
+`LocalExecutionRuntime.register(contract, executor)` registers one executor for a division/capability pair. The executor accepts a `SpecialistExecutionContract` and returns a dictionary. Registration is not authorization: the caller must also configure an applicable execution policy. Mocks have no implicit default registration.
 
-## Initial Example
-Trading Division is the first division scaffold. It provides a neutral division context for the initial market scope of XAUUSD while keeping the wider architecture generic and reusable.
+The first officially integrated trading executor is candle intelligence. Other analyzers remain callable library capabilities and are not automatically wired to Mission Control.
+
+## Trading rules and provenance
+
+Shared validation checks finite positive OHLC values, possible candle boundaries, explicit timezones and increasing timestamps. Direct detectors analyze supplied history; the causal snapshot boundary owns completion based on opening timestamps plus timeframe duration.
+
+Market structure rule `market_structure_v2` excludes both boundary candles from confirmed pivots. Structure uses all confirmed pivots; break detection uses the structure and anchors available before the current candle. Liquidity and dealing ranges consume the same pivot source. Existing capability contracts retain their serialized v1 shape, while dependent rule references identify v2.
+
+Causal envelopes preserve analyzer output and source/configuration identities. Chronology consumes five real event families through their existing producer schemas; FVG rule branches are read from `evidence.rule_branch`. Absent, unavailable, invalid and not-evaluated remain distinct outcomes.

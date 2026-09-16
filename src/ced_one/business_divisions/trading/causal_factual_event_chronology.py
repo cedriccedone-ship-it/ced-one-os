@@ -238,12 +238,13 @@ class CausalFactualEventChronologyAnalyzer:
     def _fvg(result: dict[str, Any]) -> list[dict[str, Any]]:
         rows = []
         for fvg in result.get("fair_value_gaps", []):
-            rows.append({"source_event_id": fvg["fvg_id"], "event_family": "fvg_created", "source_event_type": fvg["rule_branch"], "event_time_semantics": "created_at", "event_timestamp": fvg["created_at"], "created_at": fvg["created_at"], "confirmed_at": fvg.get("confirmed_at"), "source_event_state": fvg.get("current_status")})
+            rows.append({"source_event_id": fvg["fvg_id"], "event_family": "fvg_created", "source_event_type": fvg["evidence"]["rule_branch"], "event_time_semantics": "created_at", "event_timestamp": fvg["created_at"], "created_at": fvg["created_at"], "confirmed_at": fvg.get("confirmed_at"), "source_event_state": fvg.get("current_status")})
             for interaction in fvg.get("interactions", []):
                 event_type = interaction.get("event_type")
-                family = {"fvg_wick_touch": "fvg_touched", "fvg_partial_fill": "fvg_partial_fill", "fvg_fully_filled": "fvg_fully_filled"}.get(event_type)
-                if family:
-                    rows.append({"source_event_id": f"{fvg['fvg_id']}:{interaction['candle_timestamp']}:{event_type}", "event_family": family, "source_event_type": event_type, "event_time_semantics": "candle_timestamp", "event_timestamp": interaction["candle_timestamp"], "created_at": fvg["created_at"], "confirmed_at": None, "source_event_state": interaction.get("resulting_status")})
+                family = {"touched_event": "fvg_touched", "partial_fill_event": "fvg_partial_fill", "fully_filled_event": "fvg_fully_filled"}.get(event_type)
+                if family is None:
+                    raise ValueError(f"FVG interaction for {fvg['fvg_id']} has missing or unrecognized event_type: {event_type!r}.")
+                rows.append({"source_event_id": f"{fvg['fvg_id']}:{interaction['candle_timestamp']}:{event_type}", "event_family": family, "source_event_type": event_type, "event_time_semantics": "candle_timestamp", "event_timestamp": interaction["candle_timestamp"], "created_at": fvg["created_at"], "confirmed_at": None, "source_event_state": interaction.get("resulting_status")})
         return rows
 
     @staticmethod

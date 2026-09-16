@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.execution_helpers import configured_control
+
 from ced_one.mission_control import (
     ApprovalState,
     MissionControlOrchestrator,
@@ -55,7 +57,7 @@ class DummyDivision:
 
 
 def test_v02_request_is_classified_and_routed():
-    orchestrator = MissionControlOrchestrator(division_registry={"trading": DummyDivision()})
+    orchestrator = configured_control(MissionControlOrchestrator, {"trading": DummyDivision()})
     result = orchestrator.handle_request(
         "Assess a market outcome for a business objective",
         business_division="trading",
@@ -68,7 +70,7 @@ def test_v02_request_is_classified_and_routed():
 
 
 def test_v02_unsupported_request_fails_safely():
-    service = MissionControlService(division_registry={})
+    service = configured_control(MissionControlService, {})
     result = service.handle_request("No valid division mapping")
 
     assert result.status == RequestStatus.UNROUTEABLE
@@ -77,7 +79,7 @@ def test_v02_unsupported_request_fails_safely():
 
 
 def test_v02_approval_gate_requires_pending_status():
-    service = MissionControlService(division_registry={"trading": DummyDivision()})
+    service = configured_control(MissionControlService, {"trading": DummyDivision()})
     result = service.handle_request(
         "Perform a high-impact action",
         business_division="trading",
@@ -89,7 +91,7 @@ def test_v02_approval_gate_requires_pending_status():
 
 
 def test_v02_authority_violation_is_blocked():
-    service = MissionControlService(division_registry={"trading": DummyDivision()})
+    service = configured_control(MissionControlService, {"trading": DummyDivision()})
     result = service.handle_request(
         "Attempt to override hierarchy",
         business_division="trading",
@@ -101,7 +103,7 @@ def test_v02_authority_violation_is_blocked():
 
 
 def test_v02_orchestrator_tracks_execution_history():
-    orchestrator = MissionControlOrchestrator(division_registry={"trading": DummyDivision()})
+    orchestrator = configured_control(MissionControlOrchestrator, {"trading": DummyDivision()})
     result = orchestrator.handle_request("Routine orchestration request", business_division="trading")
 
     assert len(orchestrator.execution_history) >= 1

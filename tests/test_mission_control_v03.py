@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.execution_helpers import configured_control
+
 from ced_one.mission_control import MissionControlFlow, MissionRequest, RequestStatus
 
 
@@ -44,7 +46,7 @@ class TradingRouter:
 
 
 def test_v03_end_to_end_routing_flow():
-    flow = MissionControlFlow(division_registry={"trading": TradingRouter()})
+    flow = configured_control(MissionControlFlow, {"trading": TradingRouter()})
     result = flow.handle_request(
         "Route a trading request for XAUUSD analysis",
         business_division="trading",
@@ -59,7 +61,7 @@ def test_v03_end_to_end_routing_flow():
 
 
 def test_v03_unrouteable_request_failure():
-    flow = MissionControlFlow(division_registry={})
+    flow = configured_control(MissionControlFlow, {})
     result = flow.handle_request("This request cannot be matched to a division")
 
     assert result.status == RequestStatus.UNROUTEABLE
@@ -68,7 +70,7 @@ def test_v03_unrouteable_request_failure():
 
 
 def test_v03_authority_violation_is_blocked():
-    flow = MissionControlFlow(division_registry={"trading": TradingRouter()})
+    flow = configured_control(MissionControlFlow, {"trading": TradingRouter()})
     result = flow.handle_request(
         "Request with authority override",
         business_division="trading",
@@ -80,7 +82,7 @@ def test_v03_authority_violation_is_blocked():
 
 
 def test_v03_approval_gate_blocks_high_impact_flow():
-    flow = MissionControlFlow(division_registry={"trading": TradingRouter()})
+    flow = configured_control(MissionControlFlow, {"trading": TradingRouter()})
     result = flow.handle_request(
         "Perform a high-impact approval-gated action",
         business_division="trading",
@@ -92,7 +94,7 @@ def test_v03_approval_gate_blocks_high_impact_flow():
 
 
 def test_v03_execution_history_is_recorded():
-    flow = MissionControlFlow(division_registry={"trading": TradingRouter()})
+    flow = configured_control(MissionControlFlow, {"trading": TradingRouter()})
     result = flow.handle_request("Routine routing flow", business_division="trading")
 
     assert len(flow.execution_history) >= 1

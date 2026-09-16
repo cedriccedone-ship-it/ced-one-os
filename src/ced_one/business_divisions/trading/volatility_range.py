@@ -12,6 +12,7 @@ from datetime import datetime
 import re
 from statistics import mean, median
 from typing import Any
+from ced_one.business_divisions.trading.validation import validate_detector_input
 
 VALID_TIMEFRAMES = {"D1", "H4", "H1", "M30", "M15", "M5", "M1"}
 RULE_VERSION = "volatility_range_v1"
@@ -180,89 +181,12 @@ class VolatilityRangeValidator:
 
     @staticmethod
     def validate_input(payload: dict[str, Any], *, evaluation_time: datetime | None = None, max_age_seconds: int = 300) -> list[str]:
-        errors: list[str] = []
-        if not isinstance(payload, dict):
-            return ["Input payload must be a dictionary."]
-
-        symbol = str(payload.get("symbol", "")).upper()
-        if symbol != "XAUUSD":
-            errors.append("Unsupported symbol: only XAUUSD is accepted in this slice.")
-
-        timeframe = str(payload.get("timeframe", "")).upper()
-        if timeframe not in VALID_TIMEFRAMES:
-            errors.append(f"Unsupported timeframe: {timeframe or '<missing>'} is not in the allowed deterministic set {sorted(VALID_TIMEFRAMES)}")
-
-        evaluation_time_value = payload.get("evaluation_time")
-        if evaluation_time_value is None:
-            errors.append("Missing required evaluation_time.")
-        else:
+        errors = validate_detector_input(payload)
+        if isinstance(payload, dict):
             try:
-                VolatilityRangeValidator._parse_timestamp(evaluation_time_value)
-            except ValueError:
-                errors.append("Invalid evaluation_time: must be ISO-8601.")
-
-        candle_history = payload.get("candle_history")
-        if not isinstance(candle_history, list):
-            return errors + ["Missing required field: candle_history"]
-        if not candle_history:
-            return errors + ["Candle history cannot be empty."]
-
-        config_value = payload.get("config")
-        try:
-            VolatilityRangeConfig.from_payload(config_value)
-        except ValueError as exc:
-            errors.append(str(exc))
-
-        seen_timestamps: set[str] = set()
-        last_timestamp: datetime | None = None
-        for idx, candle in enumerate(candle_history):
-            if not isinstance(candle, dict):
-                errors.append(f"Candle at index {idx} must be a dictionary.")
-                continue
-
-            required = ["timestamp", "open", "high", "low", "close"]
-            for field_name in required:
-                if field_name not in candle:
-                    errors.append(f"Missing required candle field: {field_name} at index {idx}.")
-
-            if "timestamp" in candle:
-                timestamp_value = str(candle["timestamp"])
-                if timestamp_value in seen_timestamps:
-                    errors.append(f"Duplicate timestamp in candle_history: {timestamp_value}.")
-                seen_timestamps.add(timestamp_value)
-                try:
-                    parsed = VolatilityRangeValidator._parse_timestamp(timestamp_value)
-                except ValueError:
-                    errors.append(f"Invalid timestamp at index {idx}: must be parseable ISO 8601.")
-                    continue
-                if last_timestamp is not None and parsed <= last_timestamp:
-                    errors.append(f"Timestamps must be strictly increasing; candle at index {idx} is not greater than the previous timestamp.")
-                last_timestamp = parsed
-
-            for field_name in ["open", "high", "low", "close"]:
-                if field_name not in candle:
-                    continue
-                try:
-                    numeric = float(candle[field_name])
-                except (TypeError, ValueError):
-                    errors.append(f"Non-numeric value for {field_name} at index {idx}.")
-                    continue
-                if numeric <= 0:
-                    errors.append(f"Invalid numeric value for {field_name} at index {idx}: must be greater than 0.")
-
-            if all(field_name in candle for field_name in ["open", "high", "low", "close"]):
-                try:
-                    open_value = float(candle["open"])
-                    high_value = float(candle["high"])
-                    low_value = float(candle["low"])
-                    close_value = float(candle["close"])
-                except (TypeError, ValueError):
-                    continue
-                if high_value < max(open_value, close_value):
-                    errors.append(f"Impossible OHLC at index {idx}: high must be greater than or equal to max(open, close).")
-                if low_value > min(open_value, close_value):
-                    errors.append(f"Impossible OHLC at index {idx}: low must be less than or equal to min(open, close).")
-
+                VolatilityRangeConfig.from_payload(payload.get("config"))
+            except ValueError as exc:
+                errors.append(str(exc))
         return errors
 
 

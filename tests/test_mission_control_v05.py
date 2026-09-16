@@ -129,6 +129,8 @@ def test_v05_task_result_validation_marks_failed_tasks():
     plan = build_plan(approved=True)
     graph = MissionTaskGraph.from_execution_plan(plan, division_name="generic", specialist_name="operations_specialist", capability_name="coordination")
     task_id = next(iter(graph.tasks.keys()))
+    for state in (TaskLifecycleState.READY, TaskLifecycleState.ASSIGNED, TaskLifecycleState.IN_PROGRESS):
+        graph.transition_task(task_id, state)
     graph.mark_task_result(task_id, result_payload={"ok": False}, validation_errors=["invalid result payload"])
 
     task = graph.tasks[task_id]

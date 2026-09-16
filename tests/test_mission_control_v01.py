@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.execution_helpers import configured_control
+
 from ced_one.mission_control import (
     ApprovalState,
     MissionControlService,
@@ -63,7 +65,7 @@ def test_request_creation_and_status_defaults():
 
 
 def test_router_routes_registered_division():
-    service = MissionControlService(division_registry={"trading": DummyDivision()})
+    service = configured_control(MissionControlService, {"trading": DummyDivision()})
     result = service.handle_request(
         "Assess a business objective",
         business_division="trading",
@@ -74,7 +76,7 @@ def test_router_routes_registered_division():
 
 
 def test_unrouteable_request_returns_safe_failure():
-    service = MissionControlService(division_registry={})
+    service = configured_control(MissionControlService, {})
     result = service.handle_request("Request with no division mapping")
 
     assert result.status == RequestStatus.UNROUTEABLE
@@ -83,7 +85,7 @@ def test_unrouteable_request_returns_safe_failure():
 
 
 def test_high_impact_request_requires_approval():
-    service = MissionControlService(division_registry={"trading": DummyDivision()})
+    service = configured_control(MissionControlService, {"trading": DummyDivision()})
 
     result = service.handle_request(
         "Finalize a high-impact action",
@@ -96,7 +98,7 @@ def test_high_impact_request_requires_approval():
 
 
 def test_authority_validator_blocks_lower_layer_override():
-    service = MissionControlService(division_registry={"trading": DummyDivision()})
+    service = configured_control(MissionControlService, {"trading": DummyDivision()})
     result = service.handle_request(
         "Request with improper override",
         business_division="trading",
@@ -108,7 +110,7 @@ def test_authority_validator_blocks_lower_layer_override():
 
 
 def test_service_tracks_request_history():
-    service = MissionControlService(division_registry={"trading": DummyDivision()})
+    service = configured_control(MissionControlService, {"trading": DummyDivision()})
     result = service.handle_request("Track a routine request", business_division="trading")
 
     assert len(service.execution_history) >= 1

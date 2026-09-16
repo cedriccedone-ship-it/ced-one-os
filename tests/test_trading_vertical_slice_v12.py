@@ -41,7 +41,7 @@ def current_range(**overrides):
         "second_pivot_price": 120.0,
         "confirmed_at": "2026-08-16T06:00:00Z",
         "created_at": "2026-08-16T06:00:00Z",
-        "source_structure_rule_version": "market_structure_v1",
+        "source_structure_rule_version": "market_structure_v2",
         "identity_scope": "snapshot_deterministic",
         "evidence": {
             "first_pivot_reference_id": "pivot_low_1",

@@ -91,7 +91,7 @@ def test_v11_terminal_pivot_is_excluded_without_fabricated_confirmation():
     source = MarketStructureAnalyzer().analyze(payload(candles))
     result = analyze(candles)
     terminal_indices = {item["index"] for item in source.evidence["swing_highs"] + source.evidence["swing_lows"] if item["index"] + 1 >= len(candles)}
-    assert terminal_indices
+    assert terminal_indices == set()
     assert result.diagnostics["terminal_unconfirmed_pivot_count"] == len(terminal_indices)
     assert all(item["confirmed_index"] < len(candles) for item in result.evidence["confirmed_pivots"])
     assert "evaluation_time" not in str(result.evidence["confirmed_pivots"])
@@ -101,7 +101,7 @@ def test_v11_confirmed_pivots_use_index_plus_one_and_local_reference_fields():
     result = analyze()
     pivot = result.evidence["confirmed_pivots"][0]
     assert pivot["confirmed_index"] == pivot["source_index"] + 1
-    assert pivot["confirmed_at"] == pivot["source_timestamp"].replace("00:00:00Z", "01:00:00Z") or pivot["confirmed_at"]
+    assert pivot["confirmed_at"] == pivot_history()[pivot["source_index"] + 1]["timestamp"]
     assert set(pivot) >= {
         "pivot_reference_id", "pivot_type", "source_index", "source_timestamp", "price",
         "confirmed_index", "confirmed_at", "source_structure_rule_version", "identity_scope",

@@ -6,6 +6,36 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
+import math
+
+
+def validate_context_data(value: Any) -> list[str]:
+    """Validate plain, finite authorization data before copying or serializing it."""
+    ancestors = set()
+    stack = [(value, False)]
+    while stack:
+        item, leaving = stack.pop()
+        if leaving:
+            ancestors.remove(id(item))
+            continue
+        if type(item) in (dict, list):
+            if id(item) in ancestors:
+                return ["Cyclic authorization data is unsupported."]
+            ancestors.add(id(item))
+            stack.append((item, True))
+            if type(item) is dict:
+                if any(type(key) is not str for key in item):
+                    return ["Authorization dictionary keys must be strings."]
+                stack.extend((child, False) for child in item.values())
+            else:
+                stack.extend((child, False) for child in item)
+        elif item is None or type(item) in (str, bool, int):
+            continue
+        elif type(item) is float and math.isfinite(item):
+            continue
+        else:
+            return ["Unsupported authorization data value."]
+    return []
 
 
 class PolicyDecision(str, Enum):
@@ -26,14 +56,12 @@ class RiskImpactClassification:
 
     def validate(self) -> list[str]:
         errors: list[str] = []
-        if not self.classification_source:
-            errors.append("Classification source is required.")
-        if not self.classification_version:
-            errors.append("Classification version is required.")
-        if not self.risk_level:
-            errors.append("Risk level is required.")
-        if not self.impact_level:
-            errors.append("Impact level is required.")
+        for name in ("classification_source", "classification_version", "risk_level", "impact_level"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"Invalid classification field: {name}.")
+        if not isinstance(self.classified_at, datetime) or self.classified_at.tzinfo is None:
+            errors.append("Classification timestamp must include a timezone.")
         if not isinstance(self.classification_context, dict):
             errors.append("Classification context must be a dict.")
         return errors
@@ -95,23 +123,23 @@ class PolicyRule:
         return True
 
     def matches_context(self, context: Any) -> bool:
-        if self.division_name is not None and context.division_binding is not None and self.division_name != context.division_binding:
+        if self.division_name is not None and self.division_name != context.division_binding:
             return False
-        if self.specialist_name is not None and context.specialist_binding is not None and self.specialist_name != context.specialist_binding:
+        if self.specialist_name is not None and self.specialist_name != context.specialist_binding:
             return False
-        if self.capability_name is not None and context.capability_binding is not None and self.capability_name != context.capability_binding:
+        if self.capability_name is not None and self.capability_name != context.capability_binding:
             return False
-        if self.permission_scope is not None and context.permission_scope is not None and self.permission_scope != context.permission_scope:
+        if self.permission_scope is not None and self.permission_scope != context.permission_scope:
             return False
-        if self.adapter_name is not None and context.adapter_binding is not None and self.adapter_name != context.adapter_binding:
+        if self.adapter_name is not None and self.adapter_name != context.adapter_binding:
             return False
-        if self.adapter_type is not None and context.adapter_type is not None and self.adapter_type != context.adapter_type:
+        if self.adapter_type is not None and self.adapter_type != context.adapter_type:
             return False
-        if self.execution_mode is not None and context.execution_mode is not None and self.execution_mode != context.execution_mode:
+        if self.execution_mode is not None and self.execution_mode != context.execution_mode:
             return False
-        if self.risk_level is not None and context.risk_impact_classification is not None and self.risk_level != context.risk_impact_classification.risk_level:
+        if self.risk_level is not None and self.risk_level != context.risk_impact_classification.risk_level:
             return False
-        if self.impact_level is not None and context.risk_impact_classification is not None and self.impact_level != context.risk_impact_classification.impact_level:
+        if self.impact_level is not None and self.impact_level != context.risk_impact_classification.impact_level:
             return False
         return True
 
@@ -173,31 +201,54 @@ class PolicyEvaluationEngine:
             PolicyDecision.ALLOW: 1,
         }.get(decision, 0)
 
-    def evaluate(self, context: Any) -> PolicyEvaluationResult:
-        if context is None:
-            return PolicyEvaluationResult(
-                decision=self.policy.default_decision,
-                reason="No evaluation context was provided; fail closed.",
-                policy_id=self.policy.policy_id,
-                policy_version=self.policy.policy_version,
-                classification_risk=None,
-                classification_impact=None,
-                context_fingerprint=None,
-            )
-
+    @staticmethod
+    def validate_context(context: Any) -> list[str]:
+        errors = []
+        required_text = ("task_id", "mission_id", "division_binding", "specialist_binding", "capability_binding", "adapter_binding", "permission_scope", "execution_mode", "policy_id")
+        for name in required_text:
+            value = getattr(context, name, None)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"Missing or invalid {name}.")
+        from ced_one.mission_control.tasks import MissionTask, TaskLifecycleState
+        from ced_one.mission_control.types import ApprovalState
+        state = getattr(context, "task_lifecycle_state", None)
+        approval = getattr(context, "approval_state", None)
+        if not isinstance(state, TaskLifecycleState) or not isinstance(approval, ApprovalState) or not MissionTask.validate_compatibility(state, approval):
+            errors.append("Invalid task/approval context.")
+        if not isinstance(getattr(context, "task_context", None), dict):
+            errors.append("Invalid task context.")
+        evaluated_at = getattr(context, "evaluated_at", None)
+        if not isinstance(evaluated_at, datetime) or evaluated_at.tzinfo is None:
+            errors.append("Invalid evaluation timestamp.")
+        version = getattr(context, "policy_version", None)
+        if type(version) is not int or version < 1:
+            errors.append("Invalid policy version.")
         classification = getattr(context, "risk_impact_classification", None)
-        classification_errors: list[str] = []
-        if classification is not None:
-            classification_errors = classification.validate()
-        if classification is None or classification_errors:
+        if not isinstance(classification, RiskImpactClassification):
+            errors.append("Missing risk/impact classification.")
+        else:
+            errors.extend(classification.validate())
+        errors.extend(validate_context_data(getattr(context, "task_context", None)))
+        if isinstance(classification, RiskImpactClassification):
+            errors.extend(validate_context_data(classification.classification_context))
+        for name in ("connector_binding", "connector_version", "adapter_type", "context_fingerprint"):
+            value = getattr(context, name, None)
+            if value is not None and not isinstance(value, str):
+                errors.append(f"Invalid {name}.")
+        return errors
+
+    def evaluate(self, context: Any) -> PolicyEvaluationResult:
+        errors = self.validate_context(context)
+        if not errors:
+            try:
+                context.fingerprint
+            except (TypeError, ValueError, AttributeError, RecursionError):
+                errors.append("Context is not canonically serializable.")
+        classification = getattr(context, "risk_impact_classification", None)
+        if errors:
             return PolicyEvaluationResult(
-                decision=self.policy.default_decision,
-                reason="Risk/impact classification is missing or structurally invalid; fail closed.",
-                policy_id=self.policy.policy_id,
-                policy_version=self.policy.policy_version,
-                classification_risk=None,
-                classification_impact=None,
-                context_fingerprint=getattr(context, "context_fingerprint", None),
+                decision=PolicyDecision.DENY, reason="Invalid execution context; fail closed. " + "; ".join(errors),
+                policy_id=self.policy.policy_id, policy_version=self.policy.policy_version,
             )
 
         matches = self.policy.evaluate_match(context)

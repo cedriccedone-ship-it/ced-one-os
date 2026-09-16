@@ -15,7 +15,7 @@ from ced_one.business_divisions.trading.market_structure import (
 )
 
 VALID_TIMEFRAMES = {"D1", "H4", "H1", "M30", "M15", "M5", "M1"}
-STRUCTURE_RULE_VERSION = "market_structure_v1"
+STRUCTURE_RULE_VERSION = "market_structure_v2"
 RULE_VERSION = "structural_dealing_range_intelligence_v1"
 
 
@@ -231,9 +231,6 @@ class StructuralDealingRangeAnalyzer:
             source_index = int(source["index"])
             source_timestamp = str(source["timestamp"])
             confirmed_index = source_index + 1
-            if confirmed_index >= len(candle_history):
-                terminal_count += 1
-                continue
             price = cls._pivot_price(pivot_type, source)
             confirmed_pivot = {
                 "pivot_reference_id": cls._pivot_reference(pivot_type, source_index, source_timestamp, price, rule_version),
@@ -385,8 +382,8 @@ class StructuralDealingRangeAnalyzer:
                 "structure_rule_version": rule_version,
                 "structural_range_rule_version": RULE_VERSION,
                 "source_role": "Slice #3 remains pivot detector",
-                "causal_filter": "Slice #11 excludes pivots without a following candle",
-                "terminal_pivot_handling": "terminal Slice #3 observations without next candle are excluded",
+                "causal_filter": "market_structure_v2 supplies strictly two-sided confirmed pivots",
+                "terminal_pivot_handling": "excluded by the authoritative pivot detector",
                 "composition_rules": ["same_type_run_collapse", "adjacent_opposite_pivot_pairing"],
                 "confirmed_pivots": confirmed,
                 "unused_structure_fields": ["structure_state", "HH/HL/LH/LL", "break_candidates", "break_confirmations"],

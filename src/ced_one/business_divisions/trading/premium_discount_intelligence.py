@@ -120,7 +120,7 @@ class PremiumDiscountValidator:
             raise ValueError("Invalid premium discount source: range_high must be greater than range_low.")
         if range_width != range_high - range_low:
             raise ValueError("Invalid premium discount source: range_width is inconsistent with range boundaries.")
-        if current_range["source_structure_rule_version"] != "market_structure_v1":
+        if current_range["source_structure_rule_version"] != "market_structure_v2":
             raise ValueError("Invalid premium discount source: unsupported source structure rule version.")
         if current_range["identity_scope"] != "snapshot_deterministic":
             raise ValueError("Invalid premium discount source: unsupported identity scope.")

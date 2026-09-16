@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.execution_helpers import configured_control
+
 from ced_one.mission_control import MissionControlFlow, MissionResult, RequestStatus
 
 
@@ -49,7 +51,7 @@ class InvalidCapabilityDivision(GenericDivision):
 
 
 def test_v04_builds_execution_plan_for_valid_request():
-    flow = MissionControlFlow(division_registry={"generic": GenericDivision()})
+    flow = configured_control(MissionControlFlow, {"generic": GenericDivision()})
     result = flow.handle_request("Coordinate a standard internal workflow", business_division="generic")
 
     assert result.status == RequestStatus.COMPLETED
@@ -60,7 +62,7 @@ def test_v04_builds_execution_plan_for_valid_request():
 
 
 def test_v04_records_execution_trace():
-    flow = MissionControlFlow(division_registry={"generic": GenericDivision()})
+    flow = configured_control(MissionControlFlow, {"generic": GenericDivision()})
     result = flow.handle_request("Trace a valid orchestration flow", business_division="generic")
 
     assert "execution_trace" in result.metadata
@@ -68,7 +70,7 @@ def test_v04_records_execution_trace():
 
 
 def test_v04_blocks_authority_override_before_execution():
-    flow = MissionControlFlow(division_registry={"generic": GenericDivision()})
+    flow = configured_control(MissionControlFlow, {"generic": GenericDivision()})
     result = flow.handle_request(
         "Attempt to override authority during orchestration",
         business_division="generic",
@@ -81,7 +83,7 @@ def test_v04_blocks_authority_override_before_execution():
 
 
 def test_v04_blocks_high_impact_plan_until_approval():
-    flow = MissionControlFlow(division_registry={"generic": GenericDivision()})
+    flow = configured_control(MissionControlFlow, {"generic": GenericDivision()})
     result = flow.handle_request(
         "Execute a high-impact workflow requiring approval",
         business_division="generic",
@@ -94,7 +96,7 @@ def test_v04_blocks_high_impact_plan_until_approval():
 
 
 def test_v04_rejects_invalid_specialist_assignment():
-    flow = MissionControlFlow(division_registry={"generic": InvalidSpecialistDivision()})
+    flow = configured_control(MissionControlFlow, {"generic": InvalidSpecialistDivision()})
     result = flow.handle_request("A request with an invalid specialist assignment", business_division="generic")
 
     assert result.status == RequestStatus.FAILED
@@ -103,7 +105,7 @@ def test_v04_rejects_invalid_specialist_assignment():
 
 
 def test_v04_rejects_invalid_capability_assignment():
-    flow = MissionControlFlow(division_registry={"generic": InvalidCapabilityDivision()})
+    flow = configured_control(MissionControlFlow, {"generic": InvalidCapabilityDivision()})
     result = flow.handle_request("A request with an invalid capability assignment", business_division="generic")
 
     assert result.status == RequestStatus.FAILED
@@ -112,7 +114,7 @@ def test_v04_rejects_invalid_capability_assignment():
 
 
 def test_v04_fails_safely_for_unrouteable_requests():
-    flow = MissionControlFlow(division_registry={})
+    flow = configured_control(MissionControlFlow, {})
     result = flow.handle_request("A request that cannot be routed to any division")
 
     assert result.status == RequestStatus.UNROUTEABLE
@@ -125,7 +127,7 @@ def test_v04_rejects_plan_when_scope_or_capability_mismatch_exists():
         def supports_request(self, request, classification=None):
             return False
 
-    flow = MissionControlFlow(division_registry={"generic": ScopedDivision()})
+    flow = configured_control(MissionControlFlow, {"generic": ScopedDivision()})
     result = flow.handle_request("Request outside the allowed scope", business_division="generic")
 
     assert result.status == RequestStatus.UNROUTEABLE
@@ -133,7 +135,7 @@ def test_v04_rejects_plan_when_scope_or_capability_mismatch_exists():
 
 
 def test_v04_keeps_execution_history_for_every_request():
-    flow = MissionControlFlow(division_registry={"generic": GenericDivision()})
+    flow = configured_control(MissionControlFlow, {"generic": GenericDivision()})
     result = flow.handle_request("Keep a complete orchestration history", business_division="generic")
 
     assert len(flow.execution_history) >= 1
@@ -141,7 +143,7 @@ def test_v04_keeps_execution_history_for_every_request():
 
 
 def test_v04_preserves_provider_independence_in_plan_metadata():
-    flow = MissionControlFlow(division_registry={"generic": GenericDivision()})
+    flow = configured_control(MissionControlFlow, {"generic": GenericDivision()})
     result = flow.handle_request("Workflow should remain provider-independent", business_division="generic")
 
     plan = result.metadata["execution_plan"]
@@ -159,7 +161,7 @@ def test_v04_rejects_invalid_request_definition_without_division():
         def resolve_request(self, request, classification=None):
             return {"division_name": None, "is_supported": False, "is_routeable": False, "confidence": 0.0, "rationale": "Blocked by division policy.", "status": "unsupported"}
 
-    flow = MissionControlFlow(division_registry={"blocked": NoRouteDivision()})
+    flow = configured_control(MissionControlFlow, {"blocked": NoRouteDivision()})
     result = flow.handle_request("A blocked request should fail safely", business_division="blocked")
 
     assert result.status in {RequestStatus.UNROUTEABLE, RequestStatus.FAILED}

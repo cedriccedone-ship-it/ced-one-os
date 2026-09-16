@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from copy import deepcopy
+from contextlib import contextmanager
+from threading import Lock
+from uuid import uuid4
+import json
+
+from ced_one.mission_control.policy import ExecutionPolicy, PolicyEvaluationEngine, validate_context_data
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 from ced_one.mission_control.tasks import TaskLifecycleState
 from ced_one.mission_control.types import ApprovalState
@@ -33,8 +40,12 @@ class CapabilityExecutionContract:
     description: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
     def validate_input(self, payload: dict[str, Any] | None) -> list[str]:
-        payload = payload or {}
+        if not isinstance(payload, dict):
+            return ["Payload must be a dictionary."]
         errors: list[str] = []
         required_fields = self.input_schema.get("required_fields", [])
         for field_name in required_fields:
@@ -43,7 +54,8 @@ class CapabilityExecutionContract:
         return errors
 
     def validate_output(self, payload: dict[str, Any] | None) -> list[str]:
-        payload = payload or {}
+        if not isinstance(payload, dict):
+            return ["Payload must be a dictionary."]
         errors: list[str] = []
         required_fields = self.output_schema.get("required_fields", [])
         for field_name in required_fields:
@@ -220,12 +232,80 @@ class LocalMockExecutionRuntime(BaseExecutionRuntime):
         )
 
 
+class RegistrationError(ValueError):
+    """A registration cannot be selected or reserved for this dispatch."""
+
+
+@dataclass(frozen=True)
+class RegistrationSelection:
+    registration_id: str
+    contract: CapabilityExecutionContract
+
+
+class LocalExecutionRuntime(BaseExecutionRuntime):
+    """Explicit registrations, protected against replacement during dispatch."""
+
+    def __init__(self):
+        self._executors = {}
+        self._reservations = {}
+        self._registration_lock = Lock()
+
+    def register(self, contract: CapabilityExecutionContract, executor: Callable[[SpecialistExecutionContract], dict[str, Any]]) -> None:
+        isolated = deepcopy(contract)
+        key = (isolated.division_name, isolated.name)
+        with self._registration_lock:
+            if self._reservations.get(key, 0):
+                raise RegistrationError("Registration is in use.")
+            self._executors[key] = (uuid4().hex, isolated, executor)
+
+    def get_registration(self, division_name: str, capability_name: str) -> RegistrationSelection | None:
+        with self._registration_lock:
+            entry = self._executors.get((division_name, capability_name))
+            return RegistrationSelection(entry[0], deepcopy(entry[1])) if entry else None
+
+    def get_contract(self, division_name: str, capability_name: str) -> CapabilityExecutionContract | None:
+        selection = self.get_registration(division_name, capability_name)
+        return selection.contract if selection else None
+
+    @contextmanager
+    def reserve_registration(self, division_name: str, capability_name: str, registration_id: str):
+        key = (division_name, capability_name)
+        with self._registration_lock:
+            entry = self._executors.get(key)
+            if entry is None or entry[0] != registration_id:
+                raise RegistrationError("Execution registration is stale or missing.")
+            selection = RegistrationSelection(entry[0], deepcopy(entry[1]))
+            self._reservations[key] = self._reservations.get(key, 0) + 1
+        try:
+            yield selection
+        finally:
+            with self._registration_lock:
+                self._reservations[key] -= 1
+                if not self._reservations[key]:
+                    del self._reservations[key]
+
+    def execute(self, contract: SpecialistExecutionContract) -> StructuredExecutionResult:
+        with self._registration_lock:
+            _, registered, executor = self._executors[(contract.division_name, contract.capability_name)]
+        if contract.permission_scope != registered.permission_scope:
+            raise ValueError("Executor permission scope mismatch.")
+        started = datetime.now(timezone.utc)
+        payload = executor(contract)
+        return StructuredExecutionResult(
+            execution_id=f"exec_{contract.task_id}", task_id=contract.task_id,
+            mission_id=contract.mission_id, division_name=contract.division_name,
+            specialist_name=contract.specialist_name, capability_name=contract.capability_name,
+            result_payload=payload, started_at=started,
+            runtime_metadata={"local_runtime": True},
+        )
+
+
 class MissionExecutionDispatcher:
     """Dispatch validated specialist tasks to a runtime without performing routing logic."""
 
     def __init__(self, division_registry: dict[str, Any] | None = None, runtime: BaseExecutionRuntime | None = None):
         self.division_registry = division_registry or {}
-        self.runtime = runtime or LocalMockExecutionRuntime()
+        self.runtime = runtime or LocalExecutionRuntime()
 
     def validate_pre_dispatch(
         self,
@@ -233,8 +313,12 @@ class MissionExecutionDispatcher:
         task: Any,
         assignment: dict[str, Any],
         capability_contract: CapabilityExecutionContract | None = None,
+        input_payload: dict[str, Any] | None = None,
+        completed_dependencies: set[str] | None = None,
     ) -> list[str]:
         errors: list[str] = []
+        if capability_contract is None:
+            errors.append("Capability contract is required.")
 
         if task.division_name is None:
             errors.append("Task is missing a division assignment.")
@@ -253,9 +337,14 @@ class MissionExecutionDispatcher:
         elif assignment.get("capability_name") is not None and task.capability_name != assignment.get("capability_name"):
             errors.append("Assigned capability does not match the task binding.")
 
+        if assignment.get("division_name") is not None and task.division_name != assignment["division_name"]:
+            errors.append("Assigned division does not match the task binding.")
+
         if assignment.get("permission_scope") is not None and task.permission_scope != assignment.get("permission_scope"):
             errors.append("Assigned permission scope does not match the task permission scope.")
 
+        if task.terminally_prevented or not set(task.dependencies) <= (completed_dependencies or set()):
+            errors.append("Task dependencies are not completed.")
         if task.approval_state == ApprovalState.PENDING:
             errors.append("Task approval is pending; dispatch is blocked until approval is granted.")
         if task.approval_state == ApprovalState.REJECTED:
@@ -263,7 +352,7 @@ class MissionExecutionDispatcher:
         if task.approval_state == ApprovalState.ESCALATED:
             errors.append("Task approval is escalated; dispatch is blocked pending governance resolution.")
 
-        if task.task_state in {TaskLifecycleState.BLOCKED, TaskLifecycleState.PENDING}:
+        if task.task_state not in {TaskLifecycleState.READY, TaskLifecycleState.ASSIGNED}:
             errors.append("Task is not ready for execution dispatch.")
 
         if task.task_state == TaskLifecycleState.REJECTED:
@@ -273,7 +362,10 @@ class MissionExecutionDispatcher:
             errors.append("Task has already failed and exhausted retry budget; dispatch is not permitted.")
 
         if capability_contract is not None:
-            input_errors = capability_contract.validate_input(task.result_payload if task.result_payload else task.metadata.get("input_payload"))
+            for actual, expected in [(task.capability_name, capability_contract.name), (task.division_name, capability_contract.division_name), (task.permission_scope, capability_contract.permission_scope)]:
+                if actual != expected:
+                    errors.append("Capability contract binding mismatch.")
+            input_errors = capability_contract.validate_input(input_payload if input_payload is not None else task.metadata.get("input_payload", {}))
             for error in input_errors:
                 errors.append(f"Capability input contract validation failed: {error}")
 
@@ -288,9 +380,15 @@ class MissionExecutionDispatcher:
         input_payload: dict[str, Any] | None = None,
         execution_context: dict[str, Any] | None = None,
         attempt_number: int = 1,
+        authorization_snapshot=None,
+        authorization_context=None,
+        policy=None,
+        completed_dependencies: set[str] | None = None,
+        audit_log=None,
     ) -> StructuredExecutionResult:
-        errors = self.validate_pre_dispatch(task=task, assignment=assignment, capability_contract=capability_contract)
-        if errors:
+        from ced_one.mission_control.governance import AuthorizationSnapshot, ExecutionGovernanceGate, PolicyEvaluationContext
+
+        def reject(errors):
             return StructuredExecutionResult(
                 execution_id=f"exec_{task.task_id}_pre_dispatch_rejected",
                 task_id=task.task_id,
@@ -305,27 +403,132 @@ class MissionExecutionDispatcher:
                 started_at=datetime.now(timezone.utc),
                 completed_at=datetime.now(timezone.utc),
                 attempt_number=attempt_number,
-                runtime_metadata={"pre_dispatch_validation": True, "dispatch_rejected": True},
+                runtime_metadata={"pre_dispatch_validation": True, "dispatch_rejected": True, "execution_performed": False},
             )
 
-        execution_contract = SpecialistExecutionContract(
-            task_id=task.task_id,
-            mission_id=task.mission_id,
-            plan_id=task.plan_id,
-            specialist_name=task.specialist_name or assignment.get("name"),
-            division_name=task.division_name or assignment.get("division_name"),
-            capability_name=task.capability_name or assignment.get("capability_name"),
-            permission_scope=task.permission_scope or assignment.get("permission_scope", "standard"),
-            input_payload=input_payload or task.metadata.get("input_payload", {}),
-            execution_context=execution_context or {},
-            timeout_seconds=capability_contract.timeout_seconds if capability_contract else 30,
-            metadata={
-                "task_name": task.task_name,
-                "division_assignment": assignment,
-                "capability_contract": capability_contract.to_dict() if capability_contract else None,
-            },
-        )
-        return self.runtime.execute(execution_contract)
+
+        errors = []
+        if not isinstance(authorization_context, PolicyEvaluationContext):
+            errors.append("Invalid authorization context type.")
+        else:
+            errors.extend(PolicyEvaluationEngine.validate_context(authorization_context))
+        if not isinstance(authorization_snapshot, AuthorizationSnapshot):
+            errors.append("Invalid authorization snapshot type.")
+        else:
+            errors.extend(PolicyEvaluationEngine.validate_context(authorization_snapshot))
+        if not isinstance(policy, ExecutionPolicy):
+            errors.append("Current execution policy is required.")
+        if not isinstance(capability_contract, CapabilityExecutionContract):
+            errors.append("Capability contract is required.")
+        effective_context = {} if execution_context is None else execution_context
+        effective_payload = input_payload if input_payload is not None else task.metadata.get("input_payload", {})
+        for label, value in (("execution_context", effective_context), ("input_payload", effective_payload), ("assignment", assignment)):
+            if type(value) is not dict:
+                errors.append(f"{label} must be a dictionary.")
+            errors.extend(validate_context_data(value))
+        if not callable(getattr(self.runtime, "reserve_registration", None)):
+            errors.append("Runtime does not support bound registration dispatch.")
+        if errors:
+            return reject(errors)
+        try:
+            payload = deepcopy(effective_payload)
+            captured_context = deepcopy(effective_context)
+            current = deepcopy(authorization_context)
+            snapshot = deepcopy(authorization_snapshot)
+            supplied_contract = capability_contract.to_dict()
+        except RecursionError:
+            return reject(["Authorization data exceeds supported nesting."])
+        registration_id = current.task_context.get("registration_id")
+        if not isinstance(registration_id, str) or not registration_id:
+            return reject(["Execution registration identity is required."])
+        # Catch only acquisition errors; executor failures use the runtime result path.
+        reservation = self.runtime.reserve_registration(task.division_name, task.capability_name, registration_id)
+        try:
+            selected = reservation.__enter__()
+        except RegistrationError as exc:
+            return reject([str(exc)])
+        try:
+            capability_contract = selected.contract
+            actual_contract = capability_contract.to_dict()
+            errors = validate_context_data(supplied_contract) + validate_context_data(actual_contract)
+            if errors:
+                return reject(errors)
+            if json.dumps(supplied_contract, sort_keys=True) != json.dumps(actual_contract, sort_keys=True):
+                return reject(["Selected registration contract mismatch."])
+            errors = self.validate_pre_dispatch(task=task, assignment=assignment, capability_contract=capability_contract, input_payload=payload, completed_dependencies=completed_dependencies)
+            current.task_id = task.task_id
+            current.mission_id = task.mission_id
+            current.task_lifecycle_state = task.task_state
+            current.approval_state = task.approval_state
+            current.division_binding = task.division_name
+            current.specialist_binding = task.specialist_name
+            current.capability_binding = task.capability_name
+            current.permission_scope = task.permission_scope
+            current.policy_id = policy.policy_id
+            current.policy_version = policy.policy_version
+            current.task_context["input_payload"] = payload
+            current.task_context["execution_context"] = captured_context
+            current.task_context["registration_id"] = selected.registration_id
+            current.task_context["capability_contract"] = actual_contract
+            current.evaluated_at = datetime.now(timezone.utc)
+            if not snapshot.is_still_valid(current):
+                errors.append("Execution authorization is stale.")
+            current_decision = ExecutionGovernanceGate().evaluate(current, policy=policy)
+            if audit_log is not None:
+                audit_log.record("PRE_DISPATCH_POLICY", task_id=task.task_id, mission_id=task.mission_id, decision=current_decision.decision.value, reason=current_decision.reason, context_fingerprint=current_decision.context_fingerprint, policy_id=policy.policy_id, policy_version=policy.policy_version)
+            if not current_decision.is_allowed:
+                errors.append("Current policy does not authorize execution.")
+            if errors:
+                return reject(errors)
+            execution_contract = SpecialistExecutionContract(
+                task_id=task.task_id,
+                mission_id=task.mission_id,
+                plan_id=task.plan_id,
+                specialist_name=task.specialist_name or assignment.get("name"),
+                division_name=task.division_name or assignment.get("division_name"),
+                capability_name=task.capability_name or assignment.get("capability_name"),
+                permission_scope=task.permission_scope or assignment.get("permission_scope", "standard"),
+                input_payload=payload,
+                execution_context=captured_context,
+                timeout_seconds=capability_contract.timeout_seconds if capability_contract else 30,
+                metadata={
+                    "task_name": task.task_name,
+                    "division_assignment": assignment,
+                    "capability_contract": capability_contract.to_dict() if capability_contract else None,
+                },
+            )
+            try:
+                if task.task_state == TaskLifecycleState.READY:
+                    task.transition_to(TaskLifecycleState.ASSIGNED, completed_dependencies=completed_dependencies)
+                task.transition_to(TaskLifecycleState.IN_PROGRESS, completed_dependencies=completed_dependencies)
+                if audit_log is not None:
+                    audit_log.record("EXECUTION_STARTED", task_id=task.task_id, mission_id=task.mission_id, resulting_state=task.task_state.value, attempt_number=attempt_number)
+                result = self.runtime.execute(execution_contract)
+                if not isinstance(result, StructuredExecutionResult):
+                    raise ValueError("Runtime must return StructuredExecutionResult.")
+                binding_errors = ["Runtime result binding mismatch."] if (
+                    result.task_id, result.mission_id, result.division_name, result.specialist_name, result.capability_name
+                ) != (task.task_id, task.mission_id, task.division_name, task.specialist_name, task.capability_name) else []
+                if not isinstance(result.outcome, ExecutionOutcome):
+                    binding_errors.append("Unknown execution outcome.")
+                output_errors = capability_contract.validate_output(result.result_payload) if capability_contract and result.outcome == ExecutionOutcome.SUCCEEDED else []
+                result.validation_errors.extend(binding_errors + output_errors)
+                if result.validation_errors or (result.failure_reason and result.outcome == ExecutionOutcome.SUCCEEDED):
+                    result.outcome = ExecutionOutcome.FAILED
+                    result.failure_reason = result.failure_reason or "; ".join(result.validation_errors)
+                result.runtime_metadata["execution_performed"] = True
+                return result
+            except Exception as exc:
+                return StructuredExecutionResult(
+                    execution_id=f"exec_{task.task_id}_failed", task_id=task.task_id,
+                    mission_id=task.mission_id, division_name=task.division_name,
+                    specialist_name=task.specialist_name, capability_name=task.capability_name,
+                    outcome=ExecutionOutcome.FAILED, failure_reason=f"{type(exc).__name__}: {exc}",
+                    attempt_number=attempt_number, runtime_metadata={"execution_performed": True},
+                )
+        finally:
+            reservation.__exit__(None, None, None)
+
 
 
 __all__ = [
@@ -333,6 +536,7 @@ __all__ = [
     "CapabilityExecutionContract",
     "ExecutionOutcome",
     "LocalMockExecutionRuntime",
+    "LocalExecutionRuntime",
     "MissionExecutionDispatcher",
     "SpecialistExecutionContract",
     "StructuredExecutionResult",

@@ -12,6 +12,9 @@ license = { text = "MIT" }
 authors = [{ name = "Ced-One" }]
 dependencies = []
 
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
@@ -20,3 +23,4 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

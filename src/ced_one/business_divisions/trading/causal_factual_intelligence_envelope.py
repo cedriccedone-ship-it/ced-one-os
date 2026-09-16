@@ -515,7 +515,7 @@ def _structural_range_configuration(configuration: dict[str, Any]) -> dict[str, 
 
 def _build_adapters() -> dict[str, CapabilityAdapter]:
     forbidden = ("buy", "sell", "entry", "exit", "recommendation", "execution_command")
-    structure = CapabilityAdapter("market_structure", "trading.market_structure.v1", "market_structure_v1", (), _empty_configuration, _direct_invoke(_market_structure(), ("symbol", "timeframe", "structure_state", "evidence", "metadata"), forbidden), _classify_structure)
+    structure = CapabilityAdapter("market_structure", "trading.market_structure.v1", "market_structure_v2", (), _empty_configuration, _direct_invoke(_market_structure(), ("symbol", "timeframe", "structure_state", "evidence", "metadata"), forbidden), _classify_structure)
     displacement = CapabilityAdapter("displacement_intelligence", "trading.displacement_intelligence.v1", "displacement_intelligence_v1", (), _displacement_configuration, _direct_invoke(_displacement(), ("symbol", "timeframe", "displacement_events", "displacement_sequences", "evidence", "metadata"), forbidden), _classify_displacement)
     liquidity = CapabilityAdapter("liquidity_intelligence", "trading.liquidity_intelligence.v1", "liquidity_intelligence_v1", (), _liquidity_configuration, _direct_invoke(_liquidity(), ("symbol", "timeframe", "liquidity_levels", "evidence", "metadata"), forbidden), _classify_liquidity)
     return {

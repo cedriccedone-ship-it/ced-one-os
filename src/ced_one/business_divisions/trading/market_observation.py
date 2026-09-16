@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+from ced_one.business_divisions.trading.validation import validate_prices, parse_timestamp
 
 
 VALID_TIMEFRAMES = {"M1", "M5", "M15", "M30", "H1", "H4", "D1"}
@@ -112,6 +113,8 @@ class MarketObservationValidator:
         evaluation_time: datetime | None = None,
         max_age_seconds: int = 300,
     ) -> list[str]:
+        if not isinstance(payload, dict):
+            return ["Input payload must be a dictionary."]
         errors: list[str] = []
         required_fields = [
             "symbol",
@@ -137,7 +140,7 @@ class MarketObservationValidator:
                 errors.append(f"Invalid timeframe: {payload['timeframe']} is not in the allowed deterministic set {sorted(VALID_TIMEFRAMES)}")
 
             try:
-                timestamp = datetime.fromisoformat(str(payload["timestamp"]).replace("Z", "+00:00"))
+                timestamp = parse_timestamp(payload["timestamp"])
             except ValueError:
                 errors.append("Invalid timestamp: timestamp must be parseable ISO 8601.")
                 timestamp = None
@@ -190,6 +193,7 @@ class MarketObservationValidator:
                 if recent_low > low:
                     errors.append("Inconsistent market range: recent_low must be less than or equal to low.")
 
+        errors.extend(validate_prices(payload, ("current_price", "open", "high", "low", "close", "recent_high", "recent_low")))
         return errors
 
 

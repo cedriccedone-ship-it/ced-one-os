@@ -1,43 +1,53 @@
 # Ced-One OS
 
-## Project Name
-Ced-One OS
+A provider-independent Python foundation for governed capability execution, with a deterministic XAUUSD analysis library.
 
-## Concise Description
-A modular, provider-independent AI operating system foundation for orchestrating specialist capabilities, memory, communication, integrations, and validation layers.
+The current implementation provides one local Mission Control pipeline, explicit policies and executors, task lifecycle validation, in-memory audit records, and factual trading analysis. Core, memory, communication, and generic integration packages remain placeholders. There are no live data feeds, broker connections, external AI calls, or trading execution.
 
-## Current Status
-Sprint 1 — Foundation
+## Run locally
 
-## High-Level Folder Structure
-- `docs/` — architecture and design placeholders
-- `assets/` — repository assets and static resources
-- `config/` — configuration and environment inputs
-- `scripts/` — operational helper scripts
-- `tests/` — test package structure
-- `src/ced_one/` — Python package root for the OS foundation
-  - `core/`
-  - `mission_control/`
-  - `business_divisions/`
-  - `capabilities/`
-  - `specialists/`
-  - `memory/`
-  - `communication/`
-  - `integrations/`
-  - `validation/`
+Use Python 3.11 or newer:
 
-## Architecture Overview
-Mission Control → Business Division → Specialists → Capabilities → Providers / Tools
+```sh
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+python -m pytest -q
+python scripts/local_candle_analysis.py
+```
 
-The business division layer sits between Mission Control and the operational layers. It allows Mission Control to remain generic while specific divisions, such as Trading Division, coordinate reusable specialists and capabilities.
+The example registers a read-only candle executor and a bounded allow policy. It analyzes two completed H1 candles; the third candle is still open at the evaluation time and is excluded. Output includes source identity, causal cutoff, rule version, policy decision and audit reference. Input is synthetic, but the analysis uses the real implementation.
 
-## Basic Development Principles
-- Keep the system modular and provider-independent.
-- Favor Python 3.11+ typing-friendly foundations.
-- Add minimal dependencies and avoid unnecessary runtime complexity.
-- Keep package boundaries explicit and replaceable.
-- Keep Mission Control generic and free from division-specific logic.
+## Execution contract
 
-## Provider and AI Tool Replaceability
-Providers and AI tools must remain replaceable at the integration boundary so the platform is not locked to any single vendor or implementation.
+`MissionControlService` is the official entrypoint. `MissionControlFlow` and `MissionControlOrchestrator` are compatibility wrappers around the same service. Their `handle_request(...)` signature is retained; constructors accept optional `runtime` and `policy` dependencies.
 
+Register executors with `LocalExecutionRuntime.register(contract, executor)`. Each executor receives a `SpecialistExecutionContract` and returns a dictionary validated against its capability contract. The request's `context` supplies that input dictionary. Runtime implementations do not determine task completion.
+
+- No registered executor: `UNSUPPORTED`, with `execution_performed=False`.
+- No matching allow policy: denied by default.
+- Approval required or escalated: blocked without execution. Caller metadata cannot grant approval.
+- `COMPLETED` and `success=True`: execution occurred and the output passed validation.
+- Runtime exceptions and invalid output: structured failure results.
+
+Mocks must be registered explicitly. Historical routing examples no longer report successful execution merely because a plan exists. Approval resumption, automatic retry scheduling, persistent audit storage and hard interruption of synchronous Python code are not implemented.
+
+## Trading analysis
+
+The library includes market structure, candle morphology, volatility, liquidity, liquidity events, FVGs, displacement, order blocks, structural ranges, premium/discount geometry and factual multi-timeframe composition/chronology.
+
+Direct detector calls analyze supplied history. For causal observations, use the snapshot boundary: timestamps are candle opening times, and only candles whose timeframe duration has elapsed are approved. All OHLC values must be positive and finite; timestamps must include a timezone and be strictly increasing.
+
+Market structure rule `market_structure_v2` uses strictly two-sided pivots. Break detection uses anchors confirmed before the current candle. This intentionally changes older results that counted boundary candles as confirmed pivots; dependent provenance now names v2. Capability wire contracts retain their v1 shape.
+
+## Layout and architecture
+
+`Mission Control → Business Division → Specialist / Capability → registered local executor`
+
+- `src/ced_one/mission_control/`: generic orchestration, contracts, policy and task lifecycle.
+- `src/ced_one/business_divisions/trading/`: domain routing, factual analyzers and explicit candle execution composition.
+- `tests/`: boundary, regression and producer-to-consumer integration tests.
+- `scripts/`: runnable local example.
+- `docs/`: governing documents and architecture decisions.
+
+See [system architecture](docs/system_architecture.md), [capability architecture](docs/capability_architecture.md), and [constitution](docs/constitution.md). CI runs the suite and example on Python 3.11–3.13.

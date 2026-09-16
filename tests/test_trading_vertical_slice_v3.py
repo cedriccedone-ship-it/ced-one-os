@@ -51,7 +51,9 @@ def test_trading_vertical_slice_v3_strict_swing_low():
         _base_candle("2026-08-16T15:00:00Z", open_price=93.0, high=98.0, low=90.5, close=91.5),
     ]
     result = MarketStructureAnalyzer().analyze(_payload(candles=candles))
-    assert result.latest_swing_low is not None
+    assert result.latest_swing_low is None
+    candles.append(_base_candle("2026-08-16T16:00:00Z", open_price=94, high=99, low=92, close=95))
+    result = MarketStructureAnalyzer().analyze(_payload(candles=candles))
     assert result.latest_swing_low["low"] == 90.5
 
 
@@ -81,9 +83,9 @@ def test_trading_vertical_slice_v3_hh_hl_bullish_structure():
     candles = [
         _base_candle("2026-08-16T09:00:00Z", open_price=100.0, high=103.0, low=96.0, close=101.0),
         _base_candle("2026-08-16T10:00:00Z", open_price=101.0, high=104.0, low=97.0, close=102.0),
-        _base_candle("2026-08-16T11:00:00Z", open_price=102.0, high=103.5, low=98.0, close=101.0),
+        _base_candle("2026-08-16T11:00:00Z", open_price=102.0, high=103.5, low=95.0, close=101.0),
         _base_candle("2026-08-16T12:00:00Z", open_price=101.0, high=105.0, low=99.0, close=104.0),
-        _base_candle("2026-08-16T13:00:00Z", open_price=104.0, high=104.5, low=100.0, close=103.0),
+        _base_candle("2026-08-16T13:00:00Z", open_price=104.0, high=104.5, low=97.0, close=103.0),
         _base_candle("2026-08-16T14:00:00Z", open_price=103.0, high=106.0, low=101.0, close=105.0),
         _base_candle("2026-08-16T15:00:00Z", open_price=105.0, high=106.2, low=101.2, close=105.5),
         _base_candle("2026-08-16T16:00:00Z", open_price=105.5, high=107.0, low=102.0, close=106.0),
@@ -143,8 +145,8 @@ def test_trading_vertical_slice_v3_bullish_break_confirmation_requires_close_abo
         _base_candle("2026-08-16T16:00:00Z", open_price=101.5, high=106.0, low=101.0, close=105.4),
     ]
     result = MarketStructureAnalyzer().analyze(_payload(candles=candles))
-    assert result.structure_state in {"bullish_structure", "unresolved_structure"}
-    assert result.continuation_break_confirmed in {False, True}
+    assert result.structure_state == "unresolved_structure"
+    assert result.continuation_break_confirmed is False
 
 
 def test_trading_vertical_slice_v3_valid_input_without_sufficient_structure_is_unresolved():
@@ -179,7 +181,7 @@ def test_trading_vertical_slice_v3_no_advisory_output_or_execution_semantics():
     candles = [
         _base_candle("2026-08-16T09:00:00Z", open_price=100.0, high=103.0, low=96.0, close=101.0),
         _base_candle("2026-08-16T10:00:00Z", open_price=101.0, high=104.0, low=97.0, close=102.0),
-        _base_candle("2026-08-16T11:00:00Z", open_price=102.0, high=103.5, low=98.0, close=101.0),
+        _base_candle("2026-08-16T11:00:00Z", open_price=102.0, high=103.5, low=95.0, close=101.0),
         _base_candle("2026-08-16T12:00:00Z", open_price=101.0, high=105.0, low=99.0, close=104.0),
         _base_candle("2026-08-16T13:00:00Z", open_price=104.0, high=105.5, low=100.0, close=104.2),
         _base_candle("2026-08-16T14:00:00Z", open_price=104.2, high=106.0, low=101.0, close=105.0),
@@ -202,7 +204,7 @@ def test_trading_vertical_slice_v3_same_input_produces_identical_output():
     candles = [
         _base_candle("2026-08-16T09:00:00Z", open_price=100.0, high=103.0, low=96.0, close=101.0),
         _base_candle("2026-08-16T10:00:00Z", open_price=101.0, high=104.0, low=97.0, close=102.0),
-        _base_candle("2026-08-16T11:00:00Z", open_price=102.0, high=103.5, low=98.0, close=101.0),
+        _base_candle("2026-08-16T11:00:00Z", open_price=102.0, high=103.5, low=95.0, close=101.0),
         _base_candle("2026-08-16T12:00:00Z", open_price=101.0, high=105.0, low=99.0, close=104.0),
         _base_candle("2026-08-16T13:00:00Z", open_price=104.0, high=105.5, low=100.0, close=104.2),
         _base_candle("2026-08-16T14:00:00Z", open_price=104.2, high=106.0, low=101.0, close=105.0),
@@ -218,7 +220,7 @@ def test_trading_vertical_slice_v3_specialist_side_effects_are_prohibited():
     candles = [
         _base_candle("2026-08-16T09:00:00Z", open_price=100.0, high=103.0, low=96.0, close=101.0),
         _base_candle("2026-08-16T10:00:00Z", open_price=101.0, high=104.0, low=97.0, close=102.0),
-        _base_candle("2026-08-16T11:00:00Z", open_price=102.0, high=103.5, low=98.0, close=101.0),
+        _base_candle("2026-08-16T11:00:00Z", open_price=102.0, high=103.5, low=95.0, close=101.0),
         _base_candle("2026-08-16T12:00:00Z", open_price=101.0, high=105.0, low=99.0, close=104.0),
         _base_candle("2026-08-16T13:00:00Z", open_price=104.0, high=105.5, low=100.0, close=104.2),
         _base_candle("2026-08-16T14:00:00Z", open_price=104.2, high=106.0, low=101.0, close=105.0),

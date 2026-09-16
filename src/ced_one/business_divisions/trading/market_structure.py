@@ -10,6 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+from ced_one.business_divisions.trading.validation import validate_detector_input
+
+RULE_VERSION = "market_structure_v2"
 
 VALID_TIMEFRAMES = {"D1", "H4", "H1", "M30", "M15", "M5", "M1"}
 
@@ -92,80 +95,7 @@ class MarketStructureValidator:
         evaluation_time: datetime | None = None,
         max_age_seconds: int = 300,
     ) -> list[str]:
-        errors: list[str] = []
-        if not isinstance(payload, dict):
-            return ["Input payload must be a dictionary."]
-
-        symbol = str(payload.get("symbol", "")).upper()
-        if symbol != "XAUUSD":
-            errors.append("Unsupported symbol: only XAUUSD is accepted in this slice.")
-
-        timeframe = str(payload.get("timeframe", "")).upper()
-        if timeframe not in VALID_TIMEFRAMES:
-            errors.append(f"Unsupported timeframe: {timeframe or '<missing>'} is not in the allowed deterministic set {sorted(VALID_TIMEFRAMES)}")
-
-        candidate_time = payload.get("evaluation_time")
-        if candidate_time is None:
-            errors.append("Missing required evaluation_time.")
-        else:
-            try:
-                MarketStructureValidator._parse_timestamp(candidate_time)
-            except ValueError:
-                errors.append("Invalid evaluation_time: must be ISO-8601.")
-
-        candle_history = payload.get("candle_history")
-        if not isinstance(candle_history, list):
-            return errors + ["Missing required field: candle_history"]
-        if not candle_history:
-            return errors + ["Candle history cannot be empty."]
-
-        seen_timestamps: set[str] = set()
-        last_timestamp: datetime | None = None
-        for idx, candle in enumerate(candle_history):
-            if not isinstance(candle, dict):
-                errors.append(f"Candle at index {idx} must be a dictionary.")
-                continue
-            required = ["timestamp", "open", "high", "low", "close"]
-            for field_name in required:
-                if field_name not in candle:
-                    errors.append(f"Missing required candle field: {field_name} at index {idx}.")
-            if "timestamp" in candle:
-                timestamp_value = str(candle["timestamp"])
-                if timestamp_value in seen_timestamps:
-                    errors.append(f"Duplicate timestamp in candle_history: {timestamp_value}.")
-                seen_timestamps.add(timestamp_value)
-                try:
-                    parsed = MarketStructureValidator._parse_timestamp(timestamp_value)
-                except ValueError:
-                    errors.append(f"Invalid timestamp at index {idx}: must be parseable ISO 8601.")
-                    continue
-                if last_timestamp is not None and parsed <= last_timestamp:
-                    errors.append(f"Timestamps must be strictly increasing; candle at index {idx} is not greater than the previous timestamp.")
-                last_timestamp = parsed
-            for field_name in ["open", "high", "low", "close"]:
-                if field_name not in candle:
-                    continue
-                value = candle[field_name]
-                try:
-                    numeric = float(value)
-                except (TypeError, ValueError):
-                    errors.append(f"Non-numeric value for {field_name} at index {idx}.")
-                    continue
-                if numeric <= 0:
-                    errors.append(f"Invalid numeric value for {field_name} at index {idx}: must be greater than 0.")
-            if all(field_name in candle for field_name in ["open", "high", "low", "close"]):
-                try:
-                    open_value = float(candle["open"])
-                    high_value = float(candle["high"])
-                    low_value = float(candle["low"])
-                    close_value = float(candle["close"])
-                except (TypeError, ValueError):
-                    continue
-                if high_value < max(open_value, close_value):
-                    errors.append(f"Impossible OHLC at index {idx}: high must be greater than or equal to max(open, close).")
-                if low_value > min(open_value, close_value):
-                    errors.append(f"Impossible OHLC at index {idx}: low must be less than or equal to min(open, close).")
-
+        errors = validate_detector_input(payload)
         return errors
 
 
@@ -191,9 +121,10 @@ class MarketStructureAnalyzer:
     def _find_confirmed_swings(candles: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         swing_highs: list[dict[str, Any]] = []
         swing_lows: list[dict[str, Any]] = []
-        for idx, current in enumerate(candles):
-            previous = candles[idx - 1] if idx > 0 else None
-            next_candle = candles[idx + 1] if idx < len(candles) - 1 else None
+        for idx in range(1, len(candles) - 1):
+            current = candles[idx]
+            previous = candles[idx - 1]
+            next_candle = candles[idx + 1]
 
             is_swing_high = True
             if previous is not None and current["high"] <= previous["high"]:
@@ -354,6 +285,8 @@ class MarketStructureAnalyzer:
 
         normalized = self._normalize_candles(payload["candle_history"])
         swing_highs, swing_lows = self._find_confirmed_swings(normalized)
+        prior_highs, prior_lows = self._find_confirmed_swings(normalized[:-1])
+        prior_structure, _, _ = self._resolve_structure(prior_highs, prior_lows)
 
         latest_high_relationship = "UNCLASSIFIED_HIGH"
         latest_low_relationship = "UNCLASSIFIED_LOW"
@@ -381,7 +314,7 @@ class MarketStructureAnalyzer:
         confirmation_timestamp = None
         confirmation_close = None
 
-        if structure_state == "bullish_structure":
+        if prior_structure == "bullish_structure":
             (
                 continuation_break_candidate,
                 continuation_break_confirmed,
@@ -392,8 +325,8 @@ class MarketStructureAnalyzer:
                 broken_anchor_price,
                 confirmation_timestamp,
                 confirmation_close,
-            ) = self._break_state_for_bullish(normalized, latest_swing_high, latest_swing_low)
-        elif structure_state == "bearish_structure":
+            ) = self._break_state_for_bullish(normalized, prior_highs[-1], prior_lows[-1])
+        elif prior_structure == "bearish_structure":
             (
                 continuation_break_candidate,
                 continuation_break_confirmed,
@@ -404,7 +337,7 @@ class MarketStructureAnalyzer:
                 broken_anchor_price,
                 confirmation_timestamp,
                 confirmation_close,
-            ) = self._break_state_for_bearish(normalized, latest_swing_high, latest_swing_low)
+            ) = self._break_state_for_bearish(normalized, prior_highs[-1], prior_lows[-1])
 
         result = MarketStructureResult(
             symbol=str(payload.get("symbol", "XAUUSD")).upper(),
@@ -440,7 +373,7 @@ class MarketStructureAnalyzer:
                 "synthetic_contract": True,
                 "authority_scope": "read_only",
                 "action_capability": False,
-                "structure_rule_version": "market_structure_v1",
+                "structure_rule_version": RULE_VERSION,
                 "analysis_scope": "read_only",
             },
         )

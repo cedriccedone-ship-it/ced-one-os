@@ -1,15 +1,7 @@
 # Core
 
-Purpose:
-This document will describe the expected core responsibilities and boundaries of the Ced-One OS runtime.
+The `core` package is reserved for future shared system responsibilities. Current execution authority lives in Mission Control; the constitution defines its governing intent.
 
-## Architecture Layering
-Mission Control → Business Division → Specialists → Capabilities → Providers / Tools
+The implemented layering is Mission Control → Business Division → Specialist / Capability → registered local executor. Mission Control remains domain-independent. Trading is the first domain, scoped to XAUUSD.
 
-The business-division layer is a neutral abstraction that organizes domain-specific work without embedding mission-control or provider-specific logic.
-
-## Division Contract
-A business division is a reusable domain boundary. It coordinates specialists and capabilities relevant to a specific business context while remaining modular and replaceable.
-
-## Initial Division
-The first division scaffold is the Trading Division, whose initial scope is XAUUSD. This scope establishes a first concrete example without hard-coding the overall architecture specifically to XAUUSD.
+Read the system and capability architecture documents for implemented policy, lifecycle and execution behavior. Persistent memory, external approvals and live integrations are not implemented.

@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 from typing import Any
+from ced_one.business_divisions.trading.validation import parse_timestamp, validate_prices
 
 VALID_SYMBOL = "XAUUSD"
 VALID_TIMEFRAME_DURATIONS = {
@@ -28,15 +29,7 @@ SOURCE_AVAILABILITY_STATES = {"AVAILABLE", "UNAVAILABLE", "INVALID", "NOT_EVALUA
 COMPLETION_STATES = {"COMPLETED", "INCOMPLETE", "UNKNOWN"}
 
 
-def _parse_timestamp(value: Any) -> datetime:
-    if not isinstance(value, str):
-        raise ValueError("Timestamp must be an ISO-8601 string.")
-    normalized = value.replace("Z", "+00:00")
-    parsed = datetime.fromisoformat(normalized)
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError("Timestamp must include an explicit timezone.")
-    return parsed.astimezone(timezone.utc)
-
+_parse_timestamp = parse_timestamp
 
 def _timestamp_text(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
@@ -240,7 +233,9 @@ class CausalSnapshotAvailabilityAnalyzer:
         invalid_reasons: list[str] = []
 
         for index, candle in enumerate(source.candle_history):
-            candle_invalid = False
+            price_errors = validate_prices(candle)
+            invalid_reasons.extend(f"candle {index}: {error}" for error in price_errors)
+            candle_invalid = bool(price_errors)
             counted_invalid = False
             required = ["timestamp", "open", "high", "low", "close"]
             missing = [name for name in required if name not in candle]
