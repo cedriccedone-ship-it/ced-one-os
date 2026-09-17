@@ -196,3 +196,12 @@ def test_v18_no_detector_or_execution_semantics():
     ]:
         assert forbidden not in text
     assert result["metadata"]["authority_scope"] == "read_only"
+
+@pytest.mark.parametrize("mode,expected", [("NO_CLOSED", "UNAVAILABLE"), ("INVALID", "INVALID"), ("NOT_EVALUATED", "NOT_EVALUATED")])
+def test_v2_real_degraded_matrix_survives_composition(mode, expected):
+    from tests.test_trading_vertical_slice_v16 import real_matrix, CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT
+    context = CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(real_matrix(mode))
+    result = FactualMarketContextCompositionAnalyzer().analyze({"factual_context": context})
+    assert result.composition_state == expected
+    assert list(result.timeframes) == list(TIMEFRAME_ORDER)
+    assert all(row["relationship_type"] == expected for row in result.adjacent_relationships)

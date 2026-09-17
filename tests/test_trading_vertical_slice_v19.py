@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from tests.test_trading_vertical_slice_v16 import migrate_test_envelope, real_matrix
 
 import pytest
 
@@ -58,7 +59,7 @@ def envelope(timeframe, capability, result=None, *, state="AVAILABLE_PRESENT", s
             dependency("structural_dealing_range_intelligence", source_id, 2, timeframe=timeframe, requested=requested, cutoff=cutoff),
         ],
     }
-    return {
+    return migrate_test_envelope({
         "symbol": "XAUUSD", "timeframe": timeframe, "requested_evaluation_timestamp": requested,
         "effective_causal_cutoff": cutoff, "source_snapshot_id": source_id,
         "source_completion_state": "COMPLETED",
@@ -71,7 +72,7 @@ def envelope(timeframe, capability, result=None, *, state="AVAILABLE_PRESENT", s
         "diagnostics": {},
         "evidence": {"configuration_fingerprint": f"configuration_{timeframe.lower()}_{capability}"},
         "metadata": {"contract": "trading.causal_factual_intelligence_envelope.v1", "identity_scope": "snapshot_deterministic"},
-    }
+    })
 
 
 def results():
@@ -282,9 +283,14 @@ def test_v19_evaluated_empty_is_complete_and_coverage_is_explicit():
 
 @pytest.mark.parametrize(("state", "expected"), [("UNAVAILABLE", "UNAVAILABLE"), ("INVALID", "INVALID"), ("NOT_EVALUATED", "NOT_EVALUATED")])
 def test_v19_degraded_event_source_state_propagates_without_event_inference(state, expected):
-    envelopes = matrix()
-    envelopes["H4"]["order_block_intelligence"] = envelope("H4", "order_block_intelligence", None, state=state)
-    result = analyze(envelopes)
+    if state == "NOT_EVALUATED":
+        data = real_matrix("NOT_EVALUATED")
+        factual = CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(data)
+        result = CAUSAL_FACTUAL_EVENT_CHRONOLOGY.analyze({"factual_context": factual, "factual_envelopes": data["factual_envelopes"]})
+    else:
+        envelopes = matrix()
+        envelopes["H4"]["order_block_intelligence"] = envelope("H4", "order_block_intelligence", None, state=state)
+        result = analyze(envelopes)
     assert result.chronology_state == expected
     assert result.timeframes["H4"]["event_ids"]["order_block_intelligence"] == []
 
@@ -318,3 +324,13 @@ def test_v19_is_internal_chronology_only_without_strategy_or_lifecycle_invention
         assert forbidden not in text
     assert result["metadata"]["internal_factual_infrastructure"] is True
     assert result["metadata"]["chronology_only"] is True
+
+@pytest.mark.parametrize("mode,expected", [("NO_CLOSED", "UNAVAILABLE"), ("INVALID", "INVALID"), ("NOT_EVALUATED", "NOT_EVALUATED")])
+def test_v2_real_degraded_matrix_survives_chronology(mode, expected):
+    data = real_matrix(mode)
+    context = CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(data)
+    result = CAUSAL_FACTUAL_EVENT_CHRONOLOGY.analyze({"factual_context": context, "factual_envelopes": data["factual_envelopes"]})
+    assert result.chronology_state == expected
+    assert list(result.timeframes) == list(TIMEFRAMES)
+    assert result.events == [] and result.chronology_edges == []
+    assert all(value == expected for record in result.timeframes.values() for value in record["event_source_states"].values())

@@ -371,3 +371,100 @@ def test_v15_nested_configuration_uses_effective_terminal_and_dependency_fingerp
 def test_v15_no_configuration_capabilities_have_canonical_empty_fingerprint(contract):
     result = analyze(contract, source=structured_source())
     assert result.provenance["configuration_fingerprint"] == _configuration_fingerprint({})
+
+@pytest.mark.parametrize("source_state", ["UNAVAILABLE", "INVALID", "NOT_EVALUATED"])
+def test_v2_rejected_source_never_invokes_adapter(monkeypatch, source_state):
+    from dataclasses import replace
+    calls = []
+    contract = "trading.order_block_intelligence.v1"
+    monkeypatch.setitem(ADAPTERS, contract, replace(ADAPTERS[contract], invoke=lambda *args: calls.append(args)))
+    result = analyze(contract, source=source_result(availability=source_state))
+    assert calls == []
+    assert result.provenance["execution_progress"] == {"terminal": "NOT_STARTED", "dependencies": [
+        {"capability_contract": "trading.displacement_intelligence.v1", "state": "NOT_STARTED", "authoritative_result_id": None}]}
+    assert not result.provenance["controlled_invocation"]
+    assert result.dependency_provenance == []
+
+
+def test_v2_unavailable_dependency_keeps_validated_record():
+    result = analyze("trading.order_block_intelligence.v1", source=source_result(candles=[candle(0)]))
+    step = result.provenance["execution_progress"]["dependencies"][0]
+    assert step["state"] == "COMPLETED"
+    assert step["authoritative_result_id"] == result.dependency_provenance[0]["authoritative_result_id"]
+    assert result.dependency_provenance[0]["factual_availability"] == "UNAVAILABLE"
+    assert result.provenance["execution_progress"]["terminal"] == "NOT_STARTED"
+    assert result.diagnostics["dependency_invocation_count"] == 1
+    assert result.diagnostics["dependency_failure_count"] == 0
+
+
+@pytest.mark.parametrize("stage", ["PREPARATION_FAILED", "INVOCATION_FAILED", "RESULT_VALIDATION_FAILED", "CLASSIFICATION_FAILED"])
+def test_v2_labeled_terminal_fault_injection(monkeypatch, stage):
+    from dataclasses import replace
+    from ced_one.business_divisions.trading.candle_intelligence import CandleIntelligenceAnalyzer
+    contract = "trading.candle_intelligence.v1"
+    source = source_result()
+    original = CandleIntelligenceAnalyzer.analyze
+    calls = []
+    def injected(self, payload):
+        calls.append(payload)
+        if stage == "INVOCATION_FAILED":
+            raise ValueError("injected analyzer failure")
+        if stage == "RESULT_VALIDATION_FAILED":
+            return object()
+        return original(self, payload)
+    monkeypatch.setattr(CandleIntelligenceAnalyzer, "analyze", injected)
+    if stage == "PREPARATION_FAILED":
+        source["approved_candle_history"] = [None]
+    if stage == "CLASSIFICATION_FAILED":
+        def broken(*args):
+            raise ValueError("injected classifier failure")
+        monkeypatch.setitem(ADAPTERS, contract, replace(ADAPTERS[contract], classify=broken))
+    result = analyze(contract, source=source)
+    assert result.factual_availability == "INVALID"
+    assert result.provenance["execution_progress"]["terminal"] == stage
+    assert len(calls) == (0 if stage == "PREPARATION_FAILED" else 1)
+    assert (result.authoritative_result_id is not None) == (stage == "CLASSIFICATION_FAILED")
+    assert (result.authoritative_result is not None) == (stage == "CLASSIFICATION_FAILED")
+    assert result.factual_envelope_id is None
+
+
+def test_v2_dependency_provenance_failure_retains_validated_identity(monkeypatch):
+    from copy import deepcopy
+    from tests.test_trading_vertical_slice_v16 import real_matrix, CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT
+    import ced_one.business_divisions.trading.causal_factual_intelligence_envelope as module
+    from ced_one.business_divisions.trading.premium_discount_intelligence import PremiumDiscountAnalyzer
+    data = real_matrix()
+    baseline = data["factual_envelopes"]["H1"]["premium_discount_intelligence"]
+    assert len(baseline["dependency_provenance"]) == 2
+    original = module._validate_dependency_record
+    terminal_calls = []
+    def bad_provenance(record, adapter, *args):
+        original(record, adapter, *args)
+        if adapter.name == "structural_dealing_range_intelligence":
+            raise ValueError("injected dependency provenance failure")
+    monkeypatch.setattr(module, "_validate_dependency_record", bad_provenance)
+    monkeypatch.setattr(PremiumDiscountAnalyzer, "analyze", lambda *args: terminal_calls.append(args))
+    failed_data = real_matrix()
+    failed = failed_data["factual_envelopes"]["H1"]["premium_discount_intelligence"]
+    progress = failed["provenance"]["execution_progress"]
+    assert terminal_calls == []
+    assert progress["terminal"] == "NOT_STARTED"
+    assert [row["state"] for row in progress["dependencies"]] == ["COMPLETED", "PROVENANCE_VALIDATION_FAILED"]
+    assert progress["dependencies"][1]["authoritative_result_id"] == baseline["dependency_provenance"][1]["authoritative_result_id"]
+    assert failed["dependency_provenance"] == baseline["dependency_provenance"][:1]
+    assert failed["diagnostics"]["dependency_invocation_count"] == 2
+    assert failed["diagnostics"]["dependency_failure_count"] == 1
+    assert failed["diagnostics"]["provenance_validation_outcome"] is False
+    assert failed["factual_availability"] == "INVALID"
+    assert failed["authoritative_result"] is None and failed["authoritative_result_id"] is None
+    accepted = CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(failed_data)
+    assert accepted.timeframes["H1"]["factual_capabilities"]["premium_discount_intelligence"]["factual_availability"] == "INVALID"
+    for corruption in ("remove_identity", "publish_bad_record"):
+        corrupted = deepcopy(failed_data)
+        value = corrupted["factual_envelopes"]["H1"]["premium_discount_intelligence"]
+        if corruption == "remove_identity":
+            value["provenance"]["execution_progress"]["dependencies"][1]["authoritative_result_id"] = None
+        else:
+            value["dependency_provenance"].append(baseline["dependency_provenance"][1])
+        with pytest.raises(ValueError):
+            CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(corrupted)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 from datetime import datetime
 import hashlib
 import json
@@ -15,7 +16,7 @@ from ced_one.business_divisions.trading.causal_snapshot_availability import (
     SOURCE_AVAILABILITY_STATES,
 )
 
-RULE_VERSION = "causal_factual_intelligence_envelope_v1"
+RULE_VERSION = "causal_factual_intelligence_envelope_v2"
 CONTRACT = "trading.causal_factual_intelligence_envelope.v1"
 IDENTITY_SCOPE = "snapshot_deterministic"
 AVAILABILITY_STATES = {
@@ -144,7 +145,7 @@ class CapabilityAdapter:
     rule_version: str
     dependencies: tuple[str, ...]
     normalize_configuration: Callable[[dict[str, Any]], dict[str, Any]]
-    invoke: Callable[[CausalFactualEnvelopeInput, dict[str, Any]], tuple[Any, list[dict[str, Any]]]]
+    invoke: Callable[..., Any]
     classify: Callable[[dict[str, Any], list[dict[str, Any]]], tuple[str, str]]
 
 
@@ -211,12 +212,82 @@ def _valid_result(result: dict[str, Any], required: tuple[str, ...], forbidden: 
         raise ValueError("Authoritative result contains forbidden advisory semantics.")
 
 
-def _direct_invoke(analyzer: Any, required: tuple[str, ...], forbidden: tuple[str, ...] = ()) -> Callable[[CausalFactualEnvelopeInput, dict[str, Any]], tuple[Any, list[dict[str, Any]]]]:
-    def invoke(request: CausalFactualEnvelopeInput, configuration: dict[str, Any]) -> tuple[Any, list[dict[str, Any]]]:
-        result = analyzer.analyze(_payload(_source_dict(request.causal_source), configuration))
-        result_dict = _result_dict(result)
-        _valid_result(result_dict, required, forbidden)
-        return result, []
+EXECUTION_STATES = {"NOT_STARTED", "PREPARATION_FAILED", "INVOCATION_FAILED", "RESULT_VALIDATION_FAILED", "CLASSIFICATION_FAILED", "PROVENANCE_VALIDATION_FAILED", "COMPLETED"}
+VALIDATED_STATES = {"CLASSIFICATION_FAILED", "PROVENANCE_VALIDATION_FAILED", "COMPLETED"}
+FAILURE_STATES = EXECUTION_STATES - {"NOT_STARTED", "COMPLETED"}
+
+
+def execution_diagnostics(progress: dict[str, Any]) -> dict[str, Any]:
+    dependencies = progress["dependencies"]
+    states = [row["state"] for row in dependencies]
+    invoked = lambda state: state not in {"NOT_STARTED", "PREPARATION_FAILED"}
+    return {
+        "controlled_invocation_performed": any(invoked(state) for state in [*states, progress["terminal"]]),
+        "dependency_count": len(dependencies),
+        "dependency_invocation_count": sum(invoked(state) for state in states),
+        "dependency_failure_count": sum(state in FAILURE_STATES for state in states),
+        "result_validation_outcome": progress["terminal"] in {"CLASSIFICATION_FAILED", "COMPLETED"},
+        "classification_outcome": progress["terminal"] == "COMPLETED",
+        "provenance_validation_outcome": "PROVENANCE_VALIDATION_FAILED" not in states,
+    }
+
+
+class _ExecutionProgress:
+    """One envelope's bounded progress; no replay and no global execution state."""
+    def __init__(self, adapter):
+        self.adapter = adapter
+        self.value = {"terminal": "NOT_STARTED", "dependencies": [
+            {"capability_contract": contract, "state": "NOT_STARTED", "authoritative_result_id": None}
+            for contract in adapter.dependencies]}
+        self.records = []
+        self.results = {}
+        self.identities = {}
+        self.classifications = {}
+
+    def set_state(self, contract, state):
+        if contract == self.adapter.contract:
+            self.value["terminal"] = state
+        else:
+            next(row for row in self.value["dependencies"] if row["capability_contract"] == contract)["state"] = state
+
+    def run(self, request, configuration, contract, analyzer, required, forbidden=(), prepare=None):
+        stage = "PREPARATION_FAILED"
+        try:
+            source = _source_dict(request.causal_source)
+            payload = prepare() if prepare else _payload(source, configuration)
+            stage = "INVOCATION_FAILED"
+            result = analyzer.analyze(payload)
+            stage = "RESULT_VALIDATION_FAILED"
+            result_dict = _result_dict(result)
+            _valid_result(result_dict, required, forbidden)
+            result_id = _hash_id("authoritative_result_", result_dict)
+            self.results[contract] = result_dict
+            self.identities[contract] = result_id
+            if contract != self.adapter.contract:
+                next(row for row in self.value["dependencies"] if row["capability_contract"] == contract)["authoritative_result_id"] = result_id
+            stage = "CLASSIFICATION_FAILED"
+            adapter = ADAPTERS[contract]
+            classification = adapter.classify(result_dict, self.records if contract == self.adapter.contract else [])
+            if classification[0] not in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT", "UNAVAILABLE"}:
+                raise ValueError("Unsupported completed classification.")
+            self.classifications[contract] = classification
+            if contract != self.adapter.contract:
+                stage = "PROVENANCE_VALIDATION_FAILED"
+                order = self.adapter.dependencies.index(contract) + 1
+                record = _dependency_result(result, adapter, source, configuration, order,
+                                            classification=classification, result_id=result_id)
+                _validate_dependency_record(record, adapter, source, configuration, order)
+                self.records.append(record)
+            self.set_state(contract, "COMPLETED")
+            return result
+        except (TypeError, ValueError, KeyError):
+            self.set_state(contract, stage)
+            raise
+
+
+def _direct_invoke(analyzer: Any, required: tuple[str, ...], forbidden: tuple[str, ...] = ()) -> Callable:
+    def invoke(request, configuration, progress, contract):
+        return progress.run(request, configuration, contract, analyzer, required, forbidden)
     return invoke
 
 
@@ -298,17 +369,18 @@ def _dependency_result(
     source: dict[str, Any],
     configuration: dict[str, Any],
     dependency_order: int,
+    *, classification=None, result_id=None,
 ) -> dict[str, Any]:
     result_dict = _result_dict(result)
-    factual_availability, _ = adapter.classify(result_dict, [])
+    factual_availability, _ = classification if classification is not None else adapter.classify(result_dict, [])
     return {
         "dependency_order": dependency_order,
         "capability_name": adapter.name,
         "capability_contract": adapter.contract,
         "capability_rule_version": adapter.rule_version,
         "factual_availability": factual_availability,
-        "result_identity": _hash_id("authoritative_result_", result_dict),
-        "authoritative_result_id": _hash_id("authoritative_result_", result_dict),
+        "result_identity": result_id or _hash_id("authoritative_result_", result_dict),
+        "authoritative_result_id": result_id or _hash_id("authoritative_result_", result_dict),
         "source_snapshot_id": source["source_snapshot_id"],
         "symbol": source["symbol"],
         "timeframe": source["timeframe"],
@@ -354,60 +426,54 @@ def _validate_dependency_record(
         raise ValueError("Dependency provenance requires authoritative_result_id.")
 
 
-def _dependent_invoke(dependency_adapter: CapabilityAdapter, analyzer: Any, required: tuple[str, ...], classify: Callable[[dict[str, Any], list[dict[str, Any]]], tuple[str, str]], forbidden: tuple[str, ...] = (), dependency_configuration: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> Callable[[CausalFactualEnvelopeInput, dict[str, Any]], tuple[Any, list[dict[str, Any]]]]:
-    def invoke(request: CausalFactualEnvelopeInput, configuration: dict[str, Any]) -> tuple[Any, list[dict[str, Any]]]:
-        source = _source_dict(request.causal_source)
-        dependency_config = configuration if dependency_configuration is None else dependency_configuration(configuration)
-        dependency_request = CausalFactualEnvelopeInput(
-            symbol=request.symbol,
-            timeframe=request.timeframe,
-            requested_evaluation_timestamp=request.requested_evaluation_timestamp,
-            causal_source=request.causal_source,
-            capability=request.capability,
-            context_id=request.context_id,
-        )
-        dependency_result, dependency_records = dependency_adapter.invoke(dependency_request, dependency_config)
-        dependency_result_dict = _result_dict(dependency_result)
-        dependency_availability, _ = dependency_adapter.classify(dependency_result_dict, dependency_records)
-        if dependency_availability in {"UNAVAILABLE", "INVALID", "NOT_EVALUATED"}:
-            raise DependencyStateError(dependency_availability, f"Dependency {dependency_adapter.contract} is {dependency_availability}.")
-        dependency_record = _dependency_result(dependency_result, dependency_adapter, source, dependency_config, 1)
-        _validate_dependency_record(dependency_record, dependency_adapter, source, dependency_config, 1)
-        result = analyzer.analyze(_payload(source, configuration))
-        result_dict = _result_dict(result)
-        _valid_result(result_dict, required, forbidden)
-        return result, [*dependency_records, dependency_record]
+def _dependent_invoke(dependency_adapter, analyzer, required, classify, forbidden=(), dependency_configuration=None):
+    def invoke(request, configuration, progress, contract):
+        dependency_contract = dependency_adapter.contract
+        try:
+            dependency_config = configuration if dependency_configuration is None else dependency_configuration(configuration)
+        except (TypeError, ValueError, KeyError):
+            progress.set_state(dependency_contract, "PREPARATION_FAILED")
+            raise
+        dependency_adapter.invoke(request, dependency_config, progress, dependency_contract)
+        availability = progress.classifications[dependency_contract][0]
+        if availability == "UNAVAILABLE":
+            raise DependencyStateError(availability, f"Dependency {dependency_contract} is unavailable.")
+        return progress.run(request, configuration, contract, analyzer, required, forbidden)
     return invoke
 
 
-def _premium_invoke(request: CausalFactualEnvelopeInput, configuration: dict[str, Any]) -> tuple[Any, list[dict[str, Any]]]:
-    source = _source_dict(request.causal_source)
-    market_structure_adapter = ADAPTERS["trading.market_structure.v1"]
-    structural_adapter = ADAPTERS["trading.structural_dealing_range_intelligence.v1"]
-    market_structure, market_structure_dependencies = market_structure_adapter.invoke(request, {})
-    market_structure_dict = _result_dict(market_structure)
-    market_structure_availability, _ = market_structure_adapter.classify(market_structure_dict, market_structure_dependencies)
-    if market_structure_availability in {"UNAVAILABLE", "INVALID", "NOT_EVALUATED"}:
-        raise DependencyStateError(market_structure_availability, f"Dependency {market_structure_adapter.contract} is {market_structure_availability}.")
-    structural = _structural_range().analyze(_payload(source, configuration))
-    structural_dict = _result_dict(structural)
-    observation_timestamp = structural_dict["timestamp"]
-    approved = source["approved_candle_history"]
-    close = next((float(item["close"]) for item in reversed(approved) if item.get("timestamp") == observation_timestamp), None)
-    if close is None:
-        raise ValueError("Premium/discount source pairing could not find the Slice #11 result candle close.")
-    premium_payload = {
-        "source_result": structural,
-        "observation": {"timestamp": observation_timestamp, "close": close},
-    }
-    result = _premium_discount().analyze(premium_payload)
-    result_dict = _result_dict(result)
-    _valid_result(result_dict, ("symbol", "timeframe", "timestamp", "observation", "diagnostics", "evidence", "metadata"))
-    market_record = _dependency_result(market_structure, market_structure_adapter, source, {}, 1)
-    structural_record = _dependency_result(structural, structural_adapter, source, configuration, 2)
-    _validate_dependency_record(market_record, market_structure_adapter, source, {}, 1)
-    _validate_dependency_record(structural_record, structural_adapter, source, configuration, 2)
-    return result, [*market_structure_dependencies, market_record, structural_record]
+def _premium_invoke(request, configuration, progress, contract):
+    structure_contract = "trading.market_structure.v1"
+    range_contract = "trading.structural_dealing_range_intelligence.v1"
+    ADAPTERS[structure_contract].invoke(request, {}, progress, structure_contract)
+    if progress.classifications[structure_contract][0] == "UNAVAILABLE":
+        raise DependencyStateError("UNAVAILABLE", "Market structure dependency is unavailable.")
+    structural = progress.run(request, configuration, range_contract, _structural_range(),
+        ("symbol", "timeframe", "structural_ranges", "current_range", "evidence", "metadata"),
+        ("buy", "sell", "entry", "exit", "recommendation", "execution_command"))
+    def prepare():
+        source = _source_dict(request.causal_source)
+        timestamp = progress.results[range_contract]["timestamp"]
+        close = next((float(item["close"]) for item in reversed(source["approved_candle_history"]) if item.get("timestamp") == timestamp), None)
+        if close is None:
+            raise ValueError("Premium/discount source pairing could not find the Slice #11 result candle close.")
+        return {"source_result": structural, "observation": {"timestamp": timestamp, "close": close}}
+    return progress.run(request, configuration, contract, _premium_discount(),
+        ("symbol", "timeframe", "timestamp", "observation", "diagnostics", "evidence", "metadata"), prepare=prepare)
+
+
+def dependency_configurations(contract, effective_configuration):
+    """The invocation configurations also used to validate dependency references."""
+    config = _invocation_configuration(contract, effective_configuration)
+    if contract == "trading.liquidity_events.v1":
+        return [{"lookback_candles": config["lookback_candles"], **config["liquidity_config"]}]
+    if contract == "trading.order_block_intelligence.v1":
+        return [{"lookback_candles": config["lookback_candles"], **config["displacement_config"]}]
+    if contract == "trading.structural_dealing_range_intelligence.v1":
+        return [{}]
+    if contract == "trading.premium_discount_intelligence.v1":
+        return [{}, config]
+    return []
 
 
 def _market_structure():
@@ -574,48 +640,56 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
         }
         source_state = source["source_availability"]
         source_completion = source["completion_state"]
-        diagnostics = {"controlled_invocation_performed": False, "adapter_selected": True, "source_usable": False, "dependency_count": len(adapter.dependencies), "dependency_invocation_count": 0, "dependency_failure_count": 0, "result_validation_outcome": False, "provenance_validation_outcome": True, "classification_outcome": False}
-        provenance = {"source_contract": SOURCE_CONTRACT, "source_snapshot_id": source["source_snapshot_id"], "configuration_fingerprint": configuration_fingerprint, "controlled_invocation": False, "dependency_contracts": list(adapter.dependencies), "identity_scope": IDENTITY_SCOPE}
+        progress = _ExecutionProgress(adapter)
+        usable = source_state == "AVAILABLE" and source_completion != "UNKNOWN"
+        error = None
         if source_state in {"INVALID", "UNAVAILABLE", "NOT_EVALUATED"}:
-            availability = "INVALID" if source_state == "INVALID" else source_state
-            return self._failure(base, availability, f"source_{source_state.lower()}", diagnostics, provenance, source_completion)
-        if source_completion == "UNKNOWN":
-            return self._failure(base, "UNAVAILABLE", "unknown_source_completion", diagnostics, provenance, source_completion)
-        diagnostics["source_usable"] = True
-        provenance["controlled_invocation"] = True
-        try:
-            result, dependencies = adapter.invoke(request, invocation_configuration)
-            result_dict = _result_dict(result)
-            availability, reason = adapter.classify(result_dict, dependencies)
-            authoritative_id = _hash_id("authoritative_result_", result_dict)
-            dependency_count = len(dependencies)
-            diagnostics.update(controlled_invocation_performed=True, dependency_invocation_count=dependency_count, result_validation_outcome=True, classification_outcome=True)
-            provenance.update(controlled_invocation=True, dependency_provenance=dependencies)
-            envelope_id = _hash_id("factual_envelope_", [RULE_VERSION, adapter.name, adapter.contract, adapter.rule_version, configuration, request.symbol, request.timeframe, requested_text, source["effective_causal_cutoff"], source["source_snapshot_id"], request.context_id, dependencies, availability, result_dict]) if availability in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT"} else None
-            return CausalFactualIntelligenceEnvelopeResult(
-                factual_envelope_id=envelope_id, factual_availability=availability, authoritative_result=result_dict, authoritative_result_id=authoritative_id,
-                dependency_provenance=dependencies, availability_reason=reason, provenance=provenance, diagnostics=diagnostics,
-                evidence={"source_snapshot_id": source["source_snapshot_id"], "source_completion_state": source_completion, "capability": base["capability"], "configuration_fingerprint": configuration_fingerprint, "dependency_provenance": dependencies, "classification_reason": reason, "factual_availability": availability, "provenance_validation": "controlled_invocation"},
-                metadata={"contract": CONTRACT, "rule_version": RULE_VERSION, "identity_scope": IDENTITY_SCOPE, "observation_only": True, "advisory_output": False, "strategy_output": False, "execution_output": False, "authority_scope": "read_only"}, **{key: base[key] for key in ["symbol", "timeframe", "requested_evaluation_timestamp", "effective_causal_cutoff", "source_snapshot_id", "source_completion_state", "context_id", "capability"]}
-            )
-        except DependencyStateError as exc:
-            diagnostics["dependency_failure_count"] = len(adapter.dependencies)
-            return self._failure(base, exc.availability, "dependency_" + exc.availability.lower(), diagnostics, {**provenance, "error_type": type(exc).__name__}, source_completion, str(exc))
-        except (TypeError, ValueError, KeyError) as exc:
-            diagnostics["dependency_failure_count"] = len(adapter.dependencies)
-            return self._failure(base, "INVALID", "controlled_invocation_failed", diagnostics, {**provenance, "error_type": type(exc).__name__}, source_completion, str(exc))
-
-    @staticmethod
-    def _failure(base: dict[str, Any], availability: str, reason: str, diagnostics: dict[str, Any], provenance: dict[str, Any], completion: str, error: str | None = None) -> CausalFactualIntelligenceEnvelopeResult:
-        evidence = {"source_snapshot_id": base["source_snapshot_id"], "source_completion_state": completion, "capability": base["capability"], "configuration_fingerprint": provenance.get("configuration_fingerprint"), "availability_reason": reason, "factual_availability": availability, "provenance_validation": "controlled_source_rejected" if not provenance.get("controlled_invocation") else "controlled_invocation"}
-        if error:
-            evidence["error"] = error
+            availability, reason = source_state, f"source_{source_state.lower()}"
+        elif source_completion == "UNKNOWN":
+            availability, reason = "UNAVAILABLE", "unknown_source_completion"
+        else:
+            try:
+                adapter.invoke(request, invocation_configuration, progress, adapter.contract)
+                availability, reason = progress.classifications[adapter.contract]
+            except DependencyStateError as exc:
+                availability, reason, error = exc.availability, "dependency_" + exc.availability.lower(), exc
+            except (TypeError, ValueError, KeyError) as exc:
+                availability, reason, error = "INVALID", "controlled_invocation_failed", exc
+        execution = deepcopy(progress.value)
+        dependencies = deepcopy(progress.records)
+        result_dict = progress.results.get(adapter.contract)
+        authoritative_id = progress.identities.get(adapter.contract)
+        diagnostics = {**execution_diagnostics(execution), "adapter_selected": True, "source_usable": usable}
+        provenance = {
+            "source_contract": SOURCE_CONTRACT, "source_snapshot_id": source["source_snapshot_id"],
+            "configuration_fingerprint": configuration_fingerprint,
+            "controlled_invocation": diagnostics["controlled_invocation_performed"],
+            "dependency_contracts": list(adapter.dependencies), "identity_scope": IDENTITY_SCOPE,
+            "execution_progress": execution, "dependency_provenance": deepcopy(dependencies),
+        }
+        if error is not None:
+            provenance["error_type"] = type(error).__name__
+        evidence = {
+            "source_snapshot_id": source["source_snapshot_id"], "source_completion_state": source_completion,
+            "capability": base["capability"], "configuration_fingerprint": configuration_fingerprint,
+            "dependency_provenance": deepcopy(dependencies), "classification_reason": reason,
+            "availability_reason": reason, "factual_availability": availability,
+            "provenance_validation": "controlled_source_rejected" if not usable else "controlled_invocation",
+        }
+        if error is not None:
+            evidence["error"] = str(error)
+        envelope_id = _hash_id("factual_envelope_", [RULE_VERSION, adapter.name, adapter.contract, adapter.rule_version,
+            configuration, request.symbol, request.timeframe, requested_text, source["effective_causal_cutoff"],
+            source["source_snapshot_id"], request.context_id, dependencies, availability, result_dict, execution]
+        ) if availability in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT"} else None
         return CausalFactualIntelligenceEnvelopeResult(
-            factual_envelope_id=None, factual_availability=availability, authoritative_result=None, authoritative_result_id=None,
-            dependency_provenance=[], availability_reason=reason, provenance=provenance, diagnostics=diagnostics, evidence=evidence,
-            metadata={"contract": CONTRACT, "rule_version": RULE_VERSION, "identity_scope": IDENTITY_SCOPE, "observation_only": True, "advisory_output": False, "strategy_output": False, "execution_output": False, "authority_scope": "read_only"},
-            **{key: base[key] for key in ["symbol", "timeframe", "requested_evaluation_timestamp", "effective_causal_cutoff", "source_snapshot_id", "source_completion_state", "context_id", "capability"]}
-        )
+            factual_envelope_id=envelope_id, factual_availability=availability,
+            authoritative_result=result_dict, authoritative_result_id=authoritative_id,
+            dependency_provenance=dependencies, availability_reason=reason, provenance=provenance,
+            diagnostics=diagnostics, evidence=evidence,
+            metadata={"contract": CONTRACT, "rule_version": RULE_VERSION, "identity_scope": IDENTITY_SCOPE,
+                      "observation_only": True, "advisory_output": False, "strategy_output": False,
+                      "execution_output": False, "authority_scope": "read_only"}, **base)
 
 
 CAUSAL_FACTUAL_INTELLIGENCE_ENVELOPE = CausalFactualIntelligenceEnvelopeAnalyzer()
