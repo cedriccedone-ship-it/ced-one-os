@@ -268,7 +268,13 @@ class CausalFactualEventChronologyAnalyzer:
     def _coverage(envelope: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, Any]:
         result = envelope.get("authoritative_result") or {}
         diagnostics = result.get("diagnostics", {})
-        truncated = sum(value for key, value in diagnostics.items() if "truncated" in key and isinstance(value, int))
+        # Count omitted manifest events, not the number of objects affected by retention.
+        truncation_fields = {
+            "liquidity_events": ("truncated_event_count",),
+            "order_block_intelligence": ("truncated_order_block_count", "truncated_interaction_count"),
+            "structural_dealing_range_intelligence": ("truncated_range_count",),
+        }
+        truncated = sum(diagnostics.get(key, 0) for key in truncation_fields.get(envelope["capability"]["name"], ()))
         state = "TRUNCATED" if truncated else "SOURCE_BOUNDED" if any(key in diagnostics for key in ["pre_retention_range_count", "source_interaction_count", "candidate_index_range"]) else "UNKNOWN_COVERAGE"
         if envelope["factual_availability"] == "AVAILABLE_ABSENT":
             state = "FULLY_COVERED"
