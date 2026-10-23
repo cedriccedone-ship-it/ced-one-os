@@ -4,6 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 import re
+import json
 from typing import Any
 
 from ced_one.business_divisions.trading import causal_factual_condition_evaluation as conditions
@@ -89,3 +90,17 @@ class CausalTradingPolicyPrerequisiteAssessmentAnalyzer:
 
 
 CAUSAL_TRADING_POLICY_PREREQUISITE_ASSESSMENT = CausalTradingPolicyPrerequisiteAssessmentAnalyzer()
+
+
+def validate_causal_trading_policy_prerequisite_assessment(
+    value: Any, assessment_input: Any,
+) -> dict[str, Any]:
+    """Reconstruct complete owned content; consistency does not prove authenticity."""
+    try:
+        supplied = value.to_dict() if hasattr(value, "to_dict") else value
+        expected = CAUSAL_TRADING_POLICY_PREREQUISITE_ASSESSMENT.analyze(assessment_input).to_dict()
+        if json.dumps(supplied, sort_keys=True, allow_nan=False) != json.dumps(expected, sort_keys=True, allow_nan=False):
+            raise ValueError("Prerequisite assessment content or input binding mismatch.")
+        return expected
+    except (KeyError, TypeError, AttributeError, RecursionError) as exc:
+        raise ValueError("Malformed serialized prerequisite assessment.") from exc
