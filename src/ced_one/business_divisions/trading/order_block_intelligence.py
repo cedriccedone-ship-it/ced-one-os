@@ -17,7 +17,7 @@ from ced_one.business_divisions.trading.displacement_intelligence import (
 )
 
 VALID_TIMEFRAMES = {"D1", "H4", "H1", "M30", "M15", "M5", "M1"}
-RULE_VERSION = "order_block_intelligence_v1"
+RULE_VERSION = "order_block_intelligence_v2"
 
 
 @dataclass(frozen=True)
@@ -319,7 +319,7 @@ class OrderBlockIntelligenceAnalyzer:
             if not isinstance(source_index, int) or not 0 <= source_index < len(candles):
                 raise ValueError("Invalid Slice #8 displacement event: missing valid evidence index.")
             start_index = source_index - 1
-            end_index = max(-1, start_index - config.origin_search_lookback + 1)
+            end_index = max(0, source_index - config.origin_search_lookback)
             inspected = 0
             origin = None
             for index in range(start_index, end_index - 1, -1):

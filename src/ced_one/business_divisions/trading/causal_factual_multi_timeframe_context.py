@@ -8,8 +8,8 @@ import hashlib
 import json
 from typing import Any
 from ced_one.business_divisions.trading.causal_factual_intelligence_envelope import (
-    ADAPTERS, RULE_VERSION as ENVELOPE_RULE_VERSION, EXECUTION_STATES, VALIDATED_STATES,
-    FAILURE_STATES, execution_diagnostics, dependency_configurations, _configuration_fingerprint, _invocation_configuration,
+    validate_factual_envelope, envelope_reference,
+    ADAPTERS,
 )
 
 TIMEFRAME_ORDER = ("D1", "H4", "H1", "M30", "M15", "M5", "M1")
@@ -28,7 +28,7 @@ CAPABILITY_ORDER = (
 CAPABILITY_CONTRACTS = {name: f"trading.{name}.v1" for name in CAPABILITY_ORDER}
 ENVELOPE_CONTRACT = "trading.causal_factual_intelligence_envelope.v1"
 SOURCE_CONTEXT_CONTRACT = "trading.causal_multi_timeframe_context.v1"
-RULE_VERSION = "causal_factual_multi_timeframe_context_v2"
+RULE_VERSION = "causal_factual_multi_timeframe_context_v3"
 PROFILE_VERSION = "factual_profile_v1"
 IDENTITY_SCOPE = "snapshot_deterministic"
 FACTUAL_STATES = {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT", "UNAVAILABLE", "INVALID", "NOT_EVALUATED"}
@@ -156,7 +156,6 @@ class CausalFactualMultiTimeframeContextAnalyzer:
 
         source_context_id = source_context.get("context_id")
         timeframe_records: dict[str, dict[str, Any]] = {}
-        identity_descriptors: list[dict[str, Any]] = []
         counts = {
             "required_timeframe_count": 7,
             "required_capability_count_per_timeframe": 10,
@@ -180,7 +179,6 @@ class CausalFactualMultiTimeframeContextAnalyzer:
             source_availability = source_slot["source_availability"]
             source_completion = source_slot["completion_state"]
             capabilities: dict[str, dict[str, Any]] = {}
-            timeframe_descriptors: list[dict[str, Any]] = []
             for capability in CAPABILITY_ORDER:
                 raw_envelope = _as_dict(envelope_group[capability])
                 if raw_envelope.get("context_id") not in (None, source_context_id):
@@ -201,15 +199,6 @@ class CausalFactualMultiTimeframeContextAnalyzer:
                     counts["invalid_envelope_count"] += 1
                 else:
                     counts["not_evaluated_envelope_count"] += 1
-                timeframe_descriptors.append({
-                    "capability": capability,
-                    "factual_envelope_id": envelope["factual_envelope_id"],
-                    "factual_availability": factual_state,
-                    "capability_contract": envelope["capability"]["contract"],
-                    "capability_rule_version": envelope["capability"]["rule_version"],
-                    "dependency_provenance": envelope["dependency_provenance"],
-                    "execution_progress": raw_envelope["provenance"]["execution_progress"],
-                })
             timeframe_state = self._timeframe_state(source_availability, source_completion, capabilities)
             counts_key = {
                 "COMPLETE": "complete_timeframe_count",
@@ -229,28 +218,21 @@ class CausalFactualMultiTimeframeContextAnalyzer:
                 "factual_capabilities": capabilities,
             }
             timeframe_records[timeframe] = record
-            identity_descriptors.append({
-                "timeframe": timeframe,
-                "source_snapshot_id": source_slot["source_snapshot_id"],
-                "source_availability": source_availability,
-                "source_completion_state": source_completion,
-                "effective_causal_cutoff": source_slot["effective_causal_cutoff"],
-                "capabilities": timeframe_descriptors,
-            })
 
         context_state = max(
             (record["factual_context_state"] for record in timeframe_records.values()),
             key=lambda state: {"COMPLETE": 0, "INCOMPLETE": 1, "NOT_EVALUATED": 2, "UNAVAILABLE": 3, "INVALID": 4}[state],
         )
-        identity_parts = [RULE_VERSION, PROFILE_VERSION, request.symbol, requested_text, source_context_id, list(TIMEFRAME_ORDER), list(CAPABILITY_ORDER), identity_descriptors, context_state]
-        factual_context_id = _hash_id(identity_parts)
+        factual_context_id = factual_context_identity({"symbol": request.symbol, "requested_evaluation_timestamp": requested_text,
+            "source_context_id": source_context_id, "timeframes": timeframe_records, "context_state": context_state})
         evidence = {
             "source_context_id": source_context_id,
             "requested_evaluation_timestamp": requested_text,
             "timeframe_order": list(TIMEFRAME_ORDER),
             "capability_order": list(CAPABILITY_ORDER),
             "required_profile": PROFILE_VERSION,
-            "identity_descriptors": identity_descriptors,
+            "identity_descriptors": [timeframe_records[tf] for tf in TIMEFRAME_ORDER],
+            "identity_descriptor_version": "full_validated_references_v3",
             "context_state_precedence": ["INVALID", "UNAVAILABLE", "NOT_EVALUATED", "INCOMPLETE", "COMPLETE"],
             "context_state": context_state,
             "rule_version": RULE_VERSION,
@@ -284,6 +266,8 @@ class CausalFactualMultiTimeframeContextAnalyzer:
 
     @staticmethod
     def _validate_source_context(source: dict[str, Any], symbol: str, requested: datetime) -> None:
+        from ced_one.business_divisions.trading.causal_multi_timeframe_context import validate_source_context
+        validate_source_context(source)
         required = {"symbol", "requested_evaluation_timestamp", "context_id", "identity_scope", "context_state", "timeframes", "edges", "metadata"}
         missing = sorted(required - set(source))
         if missing:
@@ -329,154 +313,8 @@ class CausalFactualMultiTimeframeContextAnalyzer:
                 raise ValueError("Successful Slice #15 envelope requires result and identities.")
         elif envelope["factual_envelope_id"] is not None:
             raise ValueError("Non-success Slice #15 envelope must not have a factual envelope identity.")
-        CausalFactualMultiTimeframeContextAnalyzer._validate_execution(envelope, capability, source_slot)
-        return {
-            "factual_availability": envelope["factual_availability"],
-            "factual_envelope_id": envelope["factual_envelope_id"],
-            "authoritative_result_id": envelope["authoritative_result_id"],
-            "source_snapshot_id": envelope["source_snapshot_id"],
-            "capability": dict(capability_record),
-            "dependency_provenance": [dict(item) for item in envelope["dependency_provenance"]],
-            "availability_reason": envelope["availability_reason"],
-        }
-
-    @staticmethod
-    def _validate_execution(envelope, capability, source_slot):
-        if envelope["metadata"].get("rule_version") != ENVELOPE_RULE_VERSION:
-            raise ValueError("Legacy or unsupported Slice #15 rule version.")
-        adapter = ADAPTERS[CAPABILITY_CONTRACTS[capability]]
-        descriptor = envelope["capability"]
-        if descriptor.get("rule_version") != adapter.rule_version:
-            raise ValueError("Capability rule version mismatch.")
-        config = descriptor.get("configuration")
-        if not isinstance(config, dict):
-            raise ValueError("Capability configuration must be a dictionary.")
-        nested_key = {
-            "trading.liquidity_events.v1": "liquidity_config",
-            "trading.order_block_intelligence.v1": "displacement_config",
-        }.get(adapter.contract)
-        if nested_key is not None:
-            nested = config.get(nested_key)
-            outer = config.get("lookback_candles")
-            if (not isinstance(nested, dict)
-                    or type(outer) is not int
-                    or type(nested.get("lookback_candles")) is not int
-                    or nested["lookback_candles"] != outer):
-                raise ValueError("Effective nested lookback must match the outer lookback.")
-        invocation_config = _invocation_configuration(adapter.contract, config)
-        if config != adapter.normalize_configuration(invocation_config):
-            raise ValueError("Capability configuration is not effective configuration.")
-        fingerprint = _configuration_fingerprint(config)
-        provenance, evidence = envelope["provenance"], envelope["evidence"]
-        if not isinstance(provenance, dict) or not isinstance(evidence, dict):
-            raise ValueError("Malformed envelope provenance.")
-        if provenance.get("configuration_fingerprint") != fingerprint or evidence.get("configuration_fingerprint") != fingerprint:
-            raise ValueError("Terminal configuration fingerprint mismatch.")
-        if provenance.get("source_snapshot_id") != source_slot["source_snapshot_id"] or provenance.get("source_contract") != "trading.causal_snapshot_availability.v1":
-            raise ValueError("Source provenance mismatch.")
-        if provenance.get("identity_scope") != IDENTITY_SCOPE or envelope["source_completion_state"] != source_slot["completion_state"]:
-            raise ValueError("Source completion or identity scope mismatch.")
-        if provenance.get("dependency_contracts") != list(adapter.dependencies):
-            raise ValueError("Declared dependency contracts mismatch.")
-        progress = provenance.get("execution_progress")
-        if not isinstance(progress, dict) or set(progress) != {"terminal", "dependencies"}:
-            raise ValueError("Missing or malformed execution progress.")
-        terminal, steps = progress["terminal"], progress["dependencies"]
-        if not isinstance(terminal, str) or terminal not in EXECUTION_STATES - {"PROVENANCE_VALIDATION_FAILED"}:
-            raise ValueError("Invalid terminal progress.")
-        if not isinstance(steps, list) or len(steps) != len(adapter.dependencies):
-            raise ValueError("Dependency progress must cover the declared chain.")
-        for step, contract in zip(steps, adapter.dependencies):
-            if not isinstance(step, dict) or set(step) != {"capability_contract", "state", "authoritative_result_id"}:
-                raise ValueError("Malformed dependency progress record.")
-            state = step["state"]
-            if step["capability_contract"] != contract or not isinstance(state, str) or state not in EXECUTION_STATES:
-                raise ValueError("Dependency progress binding mismatch.")
-            identity = step["authoritative_result_id"]
-            if state in VALIDATED_STATES:
-                if not isinstance(identity, str) or not identity:
-                    raise ValueError("Validated dependency result requires an identity.")
-            elif identity is not None:
-                raise ValueError("Unvalidated dependency cannot have an identity.")
-        states = [step["state"] for step in steps] + [terminal]
-        stopped = False
-        for state in states:
-            if stopped and state != "NOT_STARTED":
-                raise ValueError("Execution continued after an unfinished step.")
-            if state != "COMPLETED":
-                stopped = True
-        diagnostics = envelope["diagnostics"]
-        if not isinstance(diagnostics, dict):
-            raise ValueError("Missing execution diagnostics.")
-        expected = execution_diagnostics(progress)
-        for key, value in expected.items():
-            if type(diagnostics.get(key)) is not type(value) or diagnostics[key] != value:
-                raise ValueError(f"Execution diagnostic contradicts progress: {key}.")
-        if provenance.get("controlled_invocation") is not expected["controlled_invocation_performed"]:
-            raise ValueError("Invocation provenance contradicts progress.")
-        dependencies = envelope["dependency_provenance"]
-        completed = [step for step in steps if step["state"] == "COMPLETED"]
-        if not isinstance(dependencies, list) or len(dependencies) != len(completed):
-            raise ValueError("Dependency records must exactly match completed progress.")
-        if provenance.get("dependency_provenance") != dependencies or evidence.get("dependency_provenance") != dependencies:
-            raise ValueError("Dependency provenance copies disagree.")
-        configs = dependency_configurations(adapter.contract, config)
-        blocked = False
-        for index, (step, dependency) in enumerate(zip(completed, dependencies)):
-            if not isinstance(dependency, dict):
-                raise ValueError("Malformed dependency provenance.")
-            owner = ADAPTERS[step["capability_contract"]]
-            expected_record = {
-                "dependency_order": index + 1, "capability_name": owner.name,
-                "capability_contract": owner.contract, "capability_rule_version": owner.rule_version,
-                "authoritative_result_id": step["authoritative_result_id"],
-                "result_identity": step["authoritative_result_id"],
-                "source_snapshot_id": source_slot["source_snapshot_id"], "symbol": envelope["symbol"],
-                "timeframe": envelope["timeframe"], "requested_evaluation_timestamp": source_slot["requested_evaluation_timestamp"],
-                "effective_causal_cutoff": source_slot["effective_causal_cutoff"],
-                "configuration_fingerprint": _configuration_fingerprint(configs[index]),
-                "controlled_invocation": True, "provenance_validation": "validated_controlled_dependency",
-            }
-            if any(dependency.get(key) != value for key, value in expected_record.items()):
-                raise ValueError("Dependency source, contract, identity or configuration mismatch.")
-            if dependency.get("controlled_invocation") is not True or dependency.get("factual_availability") not in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT", "UNAVAILABLE"}:
-                raise ValueError("Invalid completed dependency provenance.")
-            if dependency["factual_availability"] == "UNAVAILABLE" and not (adapter.name == "premium_discount_intelligence" and index == 1):
-                blocked = True
-                if any(state != "NOT_STARTED" for state in states[index + 1:]):
-                    raise ValueError("Execution continued after unavailable dependency.")
-        valid_terminal = terminal in {"CLASSIFICATION_FAILED", "COMPLETED"}
-        result, result_id = envelope["authoritative_result"], envelope["authoritative_result_id"]
-        if valid_terminal:
-            if not isinstance(result, dict) or not isinstance(result_id, str) or not result_id:
-                raise ValueError("Validated terminal result requires payload and identity.")
-        elif result is not None or result_id is not None:
-            raise ValueError("Unvalidated terminal cannot expose a result.")
-        availability = envelope["factual_availability"]
-        envelope_id = envelope["factual_envelope_id"]
-        if availability in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT"}:
-            if terminal != "COMPLETED" or not isinstance(envelope_id, str) or not envelope_id:
-                raise ValueError("Successful availability requires completed analysis and envelope identity.")
-        elif envelope_id is not None:
-            raise ValueError("Degraded envelopes cannot have an envelope identity.")
-        usable = source_slot["source_availability"] == "AVAILABLE" and source_slot["completion_state"] != "UNKNOWN"
-        if diagnostics.get("source_usable") is not usable or diagnostics.get("adapter_selected") is not True:
-            raise ValueError("Source usability diagnostics mismatch.")
-        if not usable:
-            expected_state = source_slot["source_availability"] if source_slot["source_availability"] != "AVAILABLE" else "UNAVAILABLE"
-            expected_reason = "source_" + expected_state.lower() if source_slot["source_availability"] != "AVAILABLE" else "unknown_source_completion"
-            if any(state != "NOT_STARTED" for state in states) or availability != expected_state or envelope["availability_reason"] != expected_reason:
-                raise ValueError("Rejected source cannot claim execution or a different state.")
-        elif any(state in FAILURE_STATES for state in states):
-            if availability != "INVALID":
-                raise ValueError("Execution failure requires INVALID availability.")
-        elif blocked:
-            if availability != "UNAVAILABLE":
-                raise ValueError("Unavailable dependency must remain unavailable.")
-        elif terminal != "COMPLETED" or availability not in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT", "UNAVAILABLE"}:
-            raise ValueError("Usable source lacks a justified execution outcome.")
-        if terminal == "COMPLETED" and adapter.name == "premium_discount_intelligence" and any(row["factual_availability"] == "UNAVAILABLE" for row in dependencies) and availability != "UNAVAILABLE":
-            raise ValueError("Premium dependency unavailability must be preserved.")
+        validate_factual_envelope(envelope, source_slot)
+        return envelope_reference(envelope)
 
     @staticmethod
     def _timeframe_state(source_availability: str, source_completion: str, capabilities: dict[str, dict[str, Any]]) -> str:
@@ -492,9 +330,68 @@ class CausalFactualMultiTimeframeContextAnalyzer:
         return "COMPLETE"
 
 
+def factual_context_identity(context):
+    return _hash_id([RULE_VERSION, PROFILE_VERSION, context["symbol"], context["requested_evaluation_timestamp"],
+                     context["source_context_id"], [context["timeframes"][tf] for tf in TIMEFRAME_ORDER], context["context_state"]])
+
+
+def validate_factual_context(value):
+    context = _as_dict(value)
+    try:
+        if context["metadata"].get("contract") != "trading.causal_factual_multi_timeframe_context.v1" or context["metadata"].get("rule_version") != RULE_VERSION:
+            raise ValueError("Unsupported factual context rule.")
+        if context.get("identity_scope") != IDENTITY_SCOPE or set(context["timeframes"]) != set(TIMEFRAME_ORDER):
+            raise ValueError("Malformed factual context slots.")
+        if context["symbol"] != "XAUUSD" or not context["source_context_id"]:
+            raise ValueError("Unsupported factual context source.")
+        states = []
+        requested = _parse_timestamp(context["requested_evaluation_timestamp"])
+        for tf in TIMEFRAME_ORDER:
+            row = context["timeframes"][tf]
+            if row["timeframe"] != tf or set(row["factual_capabilities"]) != set(CAPABILITY_ORDER):
+                raise ValueError("Malformed factual context profile.")
+            if row["effective_causal_cutoff"] is not None and _parse_timestamp(row["effective_causal_cutoff"]) > requested:
+                raise ValueError("Factual context cutoff after evaluation.")
+            if row["source_availability"] not in {"AVAILABLE", "UNAVAILABLE", "INVALID", "NOT_EVALUATED"} or row["source_completion_state"] not in {"COMPLETED", "INCOMPLETE", "UNKNOWN"}:
+                raise ValueError("Unknown factual context source state.")
+            if (row["source_availability"] == "AVAILABLE") != bool(row["source_snapshot_id"] and row["effective_causal_cutoff"]):
+                raise ValueError("Factual context source identity contradiction.")
+            for name, ref in row["factual_capabilities"].items():
+                descriptor = ref["capability"]
+                adapter = ADAPTERS[CAPABILITY_CONTRACTS[name]]
+                if descriptor.get("contract") != adapter.contract or descriptor.get("rule_version") != adapter.rule_version or ref["factual_availability"] not in FACTUAL_STATES:
+                    raise ValueError("Factual context capability contract/state mismatch.")
+                successful = ref["factual_availability"] in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT"}
+                if successful and not (ref["factual_envelope_id"] and ref["authoritative_result_id"]):
+                    raise ValueError("Successful factual reference lacks identities.")
+                if not successful and ref["factual_envelope_id"] is not None:
+                    raise ValueError("Degraded factual reference claims success identity.")
+                if ref["source_snapshot_id"] != row["source_snapshot_id"] or ref["capability"]["name"] != name or not ref.get("content_fingerprint"):
+                    raise ValueError("Factual context reference mismatch.")
+            expected = CausalFactualMultiTimeframeContextAnalyzer._timeframe_state(row["source_availability"], row["source_completion_state"], row["factual_capabilities"])
+            if row["factual_context_state"] != expected:
+                raise ValueError("Factual context derived state contradiction.")
+            states.append(expected)
+        if context["context_state"] != max(states, key=STATE_RANK.get) or context["factual_context_id"] != factual_context_identity(context):
+            raise ValueError("Factual context identity/content mismatch.")
+        expected_evidence = {"source_context_id": context["source_context_id"],
+            "requested_evaluation_timestamp": context["requested_evaluation_timestamp"],
+            "timeframe_order": list(TIMEFRAME_ORDER), "capability_order": list(CAPABILITY_ORDER),
+            "required_profile": PROFILE_VERSION, "context_state": context["context_state"],
+            "rule_version": RULE_VERSION, "identity_scope": IDENTITY_SCOPE,
+            "identity_descriptor_version": "full_validated_references_v3",
+            "identity_descriptors": [context["timeframes"][tf] for tf in TIMEFRAME_ORDER]}
+        if any(context["evidence"].get(k) != v for k,v in expected_evidence.items()):
+            raise ValueError("Factual context evidence contradiction.")
+        return context
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("Malformed factual context.") from exc
+
+
 CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT = CausalFactualMultiTimeframeContextAnalyzer()
 
 __all__ = [
+    "validate_factual_context",
     "CAPABILITY_ORDER",
     "CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT",
     "CausalFactualMultiTimeframeContextAnalyzer",

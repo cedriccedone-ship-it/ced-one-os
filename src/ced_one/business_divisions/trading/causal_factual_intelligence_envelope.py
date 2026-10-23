@@ -16,7 +16,7 @@ from ced_one.business_divisions.trading.causal_snapshot_availability import (
     SOURCE_AVAILABILITY_STATES,
 )
 
-RULE_VERSION = "causal_factual_intelligence_envelope_v2"
+RULE_VERSION = "causal_factual_intelligence_envelope_v3"
 CONTRACT = "trading.causal_factual_intelligence_envelope.v1"
 IDENTITY_SCOPE = "snapshot_deterministic"
 AVAILABILITY_STATES = {
@@ -156,32 +156,8 @@ class DependencyStateError(ValueError):
 
 
 def _source_dict(source: Any) -> dict[str, Any]:
-    if hasattr(source, "to_dict"):
-        source = source.to_dict()
-    if not isinstance(source, dict):
-        raise ValueError("causal_source must be a Slice #13 result or dictionary.")
-    required = [
-        "symbol", "timeframe", "requested_evaluation_timestamp", "effective_causal_cutoff",
-        "source_snapshot_id", "source_availability", "availability_reason", "completion_state",
-        "approved_candle_history", "diagnostics", "evidence", "metadata",
-    ]
-    missing = [name for name in required if name not in source]
-    if missing:
-        raise ValueError(f"Malformed causal source: missing fields {missing}.")
-    if source["source_availability"] not in SOURCE_AVAILABILITY_STATES:
-        raise ValueError("Malformed causal source: unknown source availability.")
-    if source["completion_state"] not in COMPLETION_STATES:
-        raise ValueError("Malformed causal source: unknown completion state.")
-    if not isinstance(source["approved_candle_history"], list):
-        raise ValueError("Malformed causal source: approved_candle_history must be a list.")
-    if source["source_availability"] == "AVAILABLE" and not source["source_snapshot_id"]:
-        raise ValueError("Malformed causal source: AVAILABLE source requires source_snapshot_id.")
-    if source["source_availability"] == "AVAILABLE" and source["effective_causal_cutoff"] is None:
-        raise ValueError("Malformed causal source: AVAILABLE source requires effective_causal_cutoff.")
-    _parse_timestamp(source["requested_evaluation_timestamp"])
-    if source["effective_causal_cutoff"] is not None:
-        _parse_timestamp(source["effective_causal_cutoff"])
-    return source
+    from ced_one.business_divisions.trading.causal_snapshot_availability import validate_source
+    return validate_source(source)
 
 
 def _payload(source: dict[str, Any], configuration: dict[str, Any]) -> dict[str, Any]:
@@ -314,7 +290,7 @@ def _classify_liquidity(result: dict[str, Any], _: list[dict[str, Any]]) -> tupl
     evidence = result.get("evidence", {})
     if evidence.get("reason") == "insufficient_confirmed_pivots":
         return "UNAVAILABLE", "insufficient_confirmed_pivots"
-    return ("AVAILABLE_PRESENT", "liquidity_levels_present") if result.get("liquidity_levels") else ("AVAILABLE_ABSENT", "no_liquidity_levels_after_valid_evaluation")
+    return ("AVAILABLE_PRESENT", "liquidity_levels_present") if result.get("liquidity_levels") or result.get("historical_interactions") else ("AVAILABLE_ABSENT", "no_liquidity_levels_after_valid_evaluation")
 
 
 def _classify_fvg(result: dict[str, Any], _: list[dict[str, Any]]) -> tuple[str, str]:
@@ -424,6 +400,195 @@ def _validate_dependency_record(
         raise ValueError("Dependency provenance has unknown factual availability.")
     if not isinstance(record["authoritative_result_id"], str) or not record["authoritative_result_id"]:
         raise ValueError("Dependency provenance requires authoritative_result_id.")
+
+
+def envelope_identity(envelope):
+    """Reconstructible v3 identity over the serialized effective contract."""
+    if envelope["factual_availability"] not in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT"}:
+        return None
+    return _hash_id("factual_envelope_", {k: v for k, v in envelope.items() if k != "factual_envelope_id"})
+
+
+def validate_envelope_execution(envelope, capability, source_slot):
+    if envelope["metadata"].get("rule_version") != RULE_VERSION:
+        raise ValueError("Legacy or unsupported Slice #15 rule version.")
+    adapter = ADAPTERS["trading." + capability + ".v1"]
+    descriptor = envelope["capability"]
+    if descriptor.get("rule_version") != adapter.rule_version:
+        raise ValueError("Capability rule version mismatch.")
+    config = descriptor.get("configuration")
+    if not isinstance(config, dict):
+        raise ValueError("Capability configuration must be a dictionary.")
+    nested_key = {
+        "trading.liquidity_events.v1": "liquidity_config",
+        "trading.order_block_intelligence.v1": "displacement_config",
+    }.get(adapter.contract)
+    if nested_key is not None:
+        nested = config.get(nested_key)
+        outer = config.get("lookback_candles")
+        if (not isinstance(nested, dict)
+                or type(outer) is not int
+                or type(nested.get("lookback_candles")) is not int
+                or nested["lookback_candles"] != outer):
+            raise ValueError("Effective nested lookback must match the outer lookback.")
+    invocation_config = _invocation_configuration(adapter.contract, config)
+    if config != adapter.normalize_configuration(invocation_config):
+        raise ValueError("Capability configuration is not effective configuration.")
+    fingerprint = _configuration_fingerprint(config)
+    provenance, evidence = envelope["provenance"], envelope["evidence"]
+    if not isinstance(provenance, dict) or not isinstance(evidence, dict):
+        raise ValueError("Malformed envelope provenance.")
+    if provenance.get("configuration_fingerprint") != fingerprint or evidence.get("configuration_fingerprint") != fingerprint:
+        raise ValueError("Terminal configuration fingerprint mismatch.")
+    if provenance.get("source_snapshot_id") != source_slot["source_snapshot_id"] or provenance.get("source_contract") != "trading.causal_snapshot_availability.v1":
+        raise ValueError("Source provenance mismatch.")
+    if provenance.get("identity_scope") != IDENTITY_SCOPE or envelope["source_completion_state"] != source_slot["completion_state"]:
+        raise ValueError("Source completion or identity scope mismatch.")
+    if provenance.get("dependency_contracts") != list(adapter.dependencies):
+        raise ValueError("Declared dependency contracts mismatch.")
+    progress = provenance.get("execution_progress")
+    if not isinstance(progress, dict) or set(progress) != {"terminal", "dependencies"}:
+        raise ValueError("Missing or malformed execution progress.")
+    terminal, steps = progress["terminal"], progress["dependencies"]
+    if not isinstance(terminal, str) or terminal not in EXECUTION_STATES - {"PROVENANCE_VALIDATION_FAILED"}:
+        raise ValueError("Invalid terminal progress.")
+    if not isinstance(steps, list) or len(steps) != len(adapter.dependencies):
+        raise ValueError("Dependency progress must cover the declared chain.")
+    for step, contract in zip(steps, adapter.dependencies):
+        if not isinstance(step, dict) or set(step) != {"capability_contract", "state", "authoritative_result_id"}:
+            raise ValueError("Malformed dependency progress record.")
+        state = step["state"]
+        if step["capability_contract"] != contract or not isinstance(state, str) or state not in EXECUTION_STATES:
+            raise ValueError("Dependency progress binding mismatch.")
+        identity = step["authoritative_result_id"]
+        if state in VALIDATED_STATES:
+            if not isinstance(identity, str) or not identity:
+                raise ValueError("Validated dependency result requires an identity.")
+        elif identity is not None:
+            raise ValueError("Unvalidated dependency cannot have an identity.")
+    states = [step["state"] for step in steps] + [terminal]
+    stopped = False
+    for state in states:
+        if stopped and state != "NOT_STARTED":
+            raise ValueError("Execution continued after an unfinished step.")
+        if state != "COMPLETED":
+            stopped = True
+    diagnostics = envelope["diagnostics"]
+    if not isinstance(diagnostics, dict):
+        raise ValueError("Missing execution diagnostics.")
+    expected = execution_diagnostics(progress)
+    for key, value in expected.items():
+        if type(diagnostics.get(key)) is not type(value) or diagnostics[key] != value:
+            raise ValueError(f"Execution diagnostic contradicts progress: {key}.")
+    if provenance.get("controlled_invocation") is not expected["controlled_invocation_performed"]:
+        raise ValueError("Invocation provenance contradicts progress.")
+    dependencies = envelope["dependency_provenance"]
+    completed = [step for step in steps if step["state"] == "COMPLETED"]
+    if not isinstance(dependencies, list) or len(dependencies) != len(completed):
+        raise ValueError("Dependency records must exactly match completed progress.")
+    if provenance.get("dependency_provenance") != dependencies or evidence.get("dependency_provenance") != dependencies:
+        raise ValueError("Dependency provenance copies disagree.")
+    configs = dependency_configurations(adapter.contract, config)
+    blocked = False
+    for index, (step, dependency) in enumerate(zip(completed, dependencies)):
+        if not isinstance(dependency, dict):
+            raise ValueError("Malformed dependency provenance.")
+        owner = ADAPTERS[step["capability_contract"]]
+        expected_record = {
+            "dependency_order": index + 1, "capability_name": owner.name,
+            "capability_contract": owner.contract, "capability_rule_version": owner.rule_version,
+            "authoritative_result_id": step["authoritative_result_id"],
+            "result_identity": step["authoritative_result_id"],
+            "source_snapshot_id": source_slot["source_snapshot_id"], "symbol": envelope["symbol"],
+            "timeframe": envelope["timeframe"], "requested_evaluation_timestamp": source_slot["requested_evaluation_timestamp"],
+            "effective_causal_cutoff": source_slot["effective_causal_cutoff"],
+            "configuration_fingerprint": _configuration_fingerprint(configs[index]),
+            "controlled_invocation": True, "provenance_validation": "validated_controlled_dependency",
+        }
+        if any(dependency.get(key) != value for key, value in expected_record.items()):
+            raise ValueError("Dependency source, contract, identity or configuration mismatch.")
+        if dependency.get("controlled_invocation") is not True or dependency.get("factual_availability") not in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT", "UNAVAILABLE"}:
+            raise ValueError("Invalid completed dependency provenance.")
+        if dependency["factual_availability"] == "UNAVAILABLE" and not (adapter.name == "premium_discount_intelligence" and index == 1):
+            blocked = True
+            if any(state != "NOT_STARTED" for state in states[index + 1:]):
+                raise ValueError("Execution continued after unavailable dependency.")
+    valid_terminal = terminal in {"CLASSIFICATION_FAILED", "COMPLETED"}
+    result, result_id = envelope["authoritative_result"], envelope["authoritative_result_id"]
+    if valid_terminal:
+        if not isinstance(result, dict) or not isinstance(result_id, str) or not result_id:
+            raise ValueError("Validated terminal result requires payload and identity.")
+    elif result is not None or result_id is not None:
+        raise ValueError("Unvalidated terminal cannot expose a result.")
+    availability = envelope["factual_availability"]
+    envelope_id = envelope["factual_envelope_id"]
+    if availability in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT"}:
+        if terminal != "COMPLETED" or not isinstance(envelope_id, str) or not envelope_id:
+            raise ValueError("Successful availability requires completed analysis and envelope identity.")
+    elif envelope_id is not None:
+        raise ValueError("Degraded envelopes cannot have an envelope identity.")
+    usable = source_slot["source_availability"] == "AVAILABLE" and source_slot["completion_state"] != "UNKNOWN"
+    if diagnostics.get("source_usable") is not usable or diagnostics.get("adapter_selected") is not True:
+        raise ValueError("Source usability diagnostics mismatch.")
+    if not usable:
+        expected_state = source_slot["source_availability"] if source_slot["source_availability"] != "AVAILABLE" else "UNAVAILABLE"
+        expected_reason = "source_" + expected_state.lower() if source_slot["source_availability"] != "AVAILABLE" else "unknown_source_completion"
+        if any(state != "NOT_STARTED" for state in states) or availability != expected_state or envelope["availability_reason"] != expected_reason:
+            raise ValueError("Rejected source cannot claim execution or a different state.")
+    elif any(state in FAILURE_STATES for state in states):
+        if availability != "INVALID":
+            raise ValueError("Execution failure requires INVALID availability.")
+    elif blocked:
+        if availability != "UNAVAILABLE":
+            raise ValueError("Unavailable dependency must remain unavailable.")
+    elif terminal != "COMPLETED" or availability not in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT", "UNAVAILABLE"}:
+        raise ValueError("Usable source lacks a justified execution outcome.")
+    if terminal == "COMPLETED" and adapter.name == "premium_discount_intelligence" and any(row["factual_availability"] == "UNAVAILABLE" for row in dependencies) and availability != "UNAVAILABLE":
+        raise ValueError("Premium dependency unavailability must be preserved.")
+
+
+
+def validate_factual_envelope(value, source_slot=None):
+    envelope = value.to_dict() if hasattr(value, "to_dict") else value
+    try:
+        if not isinstance(envelope, dict) or envelope["metadata"].get("contract") != CONTRACT or envelope["metadata"].get("rule_version") != RULE_VERSION:
+            raise ValueError("Legacy or unsupported Slice #15 rule version.")
+        capability = envelope["capability"]
+        adapter = ADAPTERS.get(capability.get("contract"))
+        if adapter is None or capability.get("name") != adapter.name:
+            raise ValueError("Unsupported capability binding.")
+        if source_slot is None:
+            usable = envelope["diagnostics"]["source_usable"]
+            source_state = "AVAILABLE" if usable or envelope["source_snapshot_id"] is not None else envelope["factual_availability"]
+            source_slot = {"source_snapshot_id": envelope["source_snapshot_id"], "effective_causal_cutoff": envelope["effective_causal_cutoff"],
+                           "requested_evaluation_timestamp": envelope["requested_evaluation_timestamp"],
+                           "source_availability": source_state, "completion_state": envelope["source_completion_state"]}
+        for key in ("source_snapshot_id", "effective_causal_cutoff", "requested_evaluation_timestamp"):
+            if envelope[key] != source_slot[key]:
+                raise ValueError("Envelope source reference mismatch.")
+        requested = _parse_timestamp(envelope["requested_evaluation_timestamp"])
+        if envelope["effective_causal_cutoff"] is not None and _parse_timestamp(envelope["effective_causal_cutoff"]) > requested:
+            raise ValueError("Envelope cutoff after requested evaluation.")
+        validate_envelope_execution(envelope, adapter.name, source_slot)
+        result = envelope["authoritative_result"]
+        if result is not None and envelope["authoritative_result_id"] != _hash_id("authoritative_result_", result):
+            raise ValueError("Authoritative result identity/content mismatch.")
+        if envelope["factual_envelope_id"] != envelope_identity(envelope):
+            raise ValueError("Factual envelope identity/content mismatch.")
+        if envelope["evidence"].get("factual_availability") != envelope["factual_availability"]:
+            raise ValueError("Envelope availability evidence contradiction.")
+        return envelope
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("Malformed factual envelope.") from exc
+
+
+def envelope_reference(envelope):
+    """Bounded content reference, including degraded evidence; not a success ID."""
+    return {"factual_availability": envelope["factual_availability"], "factual_envelope_id": envelope["factual_envelope_id"],
+            "authoritative_result_id": envelope["authoritative_result_id"], "source_snapshot_id": envelope["source_snapshot_id"],
+            "capability": deepcopy(envelope["capability"]), "dependency_provenance": deepcopy(envelope["dependency_provenance"]),
+            "availability_reason": envelope["availability_reason"],
+            "content_fingerprint": _hash_id("envelope_content_", envelope)}
 
 
 def _dependent_invoke(dependency_adapter, analyzer, required, classify, forbidden=(), dependency_configuration=None):
@@ -583,7 +748,7 @@ def _build_adapters() -> dict[str, CapabilityAdapter]:
     forbidden = ("buy", "sell", "entry", "exit", "recommendation", "execution_command")
     structure = CapabilityAdapter("market_structure", "trading.market_structure.v1", "market_structure_v2", (), _empty_configuration, _direct_invoke(_market_structure(), ("symbol", "timeframe", "structure_state", "evidence", "metadata"), forbidden), _classify_structure)
     displacement = CapabilityAdapter("displacement_intelligence", "trading.displacement_intelligence.v1", "displacement_intelligence_v1", (), _displacement_configuration, _direct_invoke(_displacement(), ("symbol", "timeframe", "displacement_events", "displacement_sequences", "evidence", "metadata"), forbidden), _classify_displacement)
-    liquidity = CapabilityAdapter("liquidity_intelligence", "trading.liquidity_intelligence.v1", "liquidity_intelligence_v1", (), _liquidity_configuration, _direct_invoke(_liquidity(), ("symbol", "timeframe", "liquidity_levels", "evidence", "metadata"), forbidden), _classify_liquidity)
+    liquidity = CapabilityAdapter("liquidity_intelligence", "trading.liquidity_intelligence.v1", "liquidity_intelligence_v2", (), _liquidity_configuration, _direct_invoke(_liquidity(), ("symbol", "timeframe", "liquidity_levels", "evidence", "metadata"), forbidden), _classify_liquidity)
     return {
         structure.contract: structure,
         "trading.candle_intelligence.v1": CapabilityAdapter("candle_intelligence", "trading.candle_intelligence.v1", "candle_intelligence_v1", (), _candle_configuration, _direct_invoke(_candle(), ("symbol", "timeframe", "timestamp", "candle_direction", "evidence", "metadata"), forbidden), _classify_candle),
@@ -591,8 +756,8 @@ def _build_adapters() -> dict[str, CapabilityAdapter]:
         liquidity.contract: liquidity,
         "trading.fvg_imbalance_intelligence.v1": CapabilityAdapter("fvg_imbalance_intelligence", "trading.fvg_imbalance_intelligence.v1", "fvg_imbalance_intelligence_v1", (), _fvg_configuration, _direct_invoke(_fvg(), ("symbol", "timeframe", "fair_value_gaps", "evidence", "metadata"), forbidden), _classify_fvg),
         displacement.contract: displacement,
-        "trading.liquidity_events.v1": CapabilityAdapter("liquidity_events", "trading.liquidity_events.v1", "liquidity_events_v1", (liquidity.contract,), _liquidity_events_configuration, _dependent_invoke(liquidity, _liquidity_events(), ("symbol", "timeframe", "liquidity_events", "level_event_states", "evidence", "metadata"), _classify_events, forbidden, lambda config: {"lookback_candles": config["lookback_candles"], **config["liquidity_config"]}), _classify_events),
-        "trading.order_block_intelligence.v1": CapabilityAdapter("order_block_intelligence", "trading.order_block_intelligence.v1", "order_block_intelligence_v1", (displacement.contract,), _order_block_configuration, _dependent_invoke(displacement, _order_blocks(), ("symbol", "timeframe", "order_blocks", "evidence", "metadata"), _classify_blocks, forbidden, lambda config: {"lookback_candles": config["lookback_candles"], **config["displacement_config"]}), _classify_blocks),
+        "trading.liquidity_events.v1": CapabilityAdapter("liquidity_events", "trading.liquidity_events.v1", "liquidity_events_v2", (liquidity.contract,), _liquidity_events_configuration, _dependent_invoke(liquidity, _liquidity_events(), ("symbol", "timeframe", "liquidity_events", "level_event_states", "evidence", "metadata"), _classify_events, forbidden, lambda config: {"lookback_candles": config["lookback_candles"], **config["liquidity_config"]}), _classify_events),
+        "trading.order_block_intelligence.v1": CapabilityAdapter("order_block_intelligence", "trading.order_block_intelligence.v1", "order_block_intelligence_v2", (displacement.contract,), _order_block_configuration, _dependent_invoke(displacement, _order_blocks(), ("symbol", "timeframe", "order_blocks", "evidence", "metadata"), _classify_blocks, forbidden, lambda config: {"lookback_candles": config["lookback_candles"], **config["displacement_config"]}), _classify_blocks),
         "trading.structural_dealing_range_intelligence.v1": CapabilityAdapter("structural_dealing_range_intelligence", "trading.structural_dealing_range_intelligence.v1", "structural_dealing_range_intelligence_v1", (structure.contract,), _structural_range_configuration, _dependent_invoke(structure, _structural_range(), ("symbol", "timeframe", "structural_ranges", "current_range", "evidence", "metadata"), _classify_range, forbidden, _empty_configuration), _classify_range),
         "trading.premium_discount_intelligence.v1": CapabilityAdapter("premium_discount_intelligence", "trading.premium_discount_intelligence.v1", "premium_discount_intelligence_v1", (structure.contract, "trading.structural_dealing_range_intelligence.v1"), _empty_configuration, _premium_invoke, _classify_premium),
     }
@@ -661,6 +826,9 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
         authoritative_id = progress.identities.get(adapter.contract)
         diagnostics = {**execution_diagnostics(execution), "adapter_selected": True, "source_usable": usable}
         provenance = {
+            "source_bounds": {"domain": "supplied_approved_candles", "candle_count": len(source["approved_candle_history"]),
+                "first_timestamp": source["approved_candle_history"][0]["timestamp"] if source["approved_candle_history"] else None,
+                "last_timestamp": source["approved_candle_history"][-1]["timestamp"] if source["approved_candle_history"] else None},
             "source_contract": SOURCE_CONTRACT, "source_snapshot_id": source["source_snapshot_id"],
             "configuration_fingerprint": configuration_fingerprint,
             "controlled_invocation": diagnostics["controlled_invocation_performed"],
@@ -678,23 +846,23 @@ class CausalFactualIntelligenceEnvelopeAnalyzer:
         }
         if error is not None:
             evidence["error"] = str(error)
-        envelope_id = _hash_id("factual_envelope_", [RULE_VERSION, adapter.name, adapter.contract, adapter.rule_version,
-            configuration, request.symbol, request.timeframe, requested_text, source["effective_causal_cutoff"],
-            source["source_snapshot_id"], request.context_id, dependencies, availability, result_dict, execution]
-        ) if availability in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT"} else None
-        return CausalFactualIntelligenceEnvelopeResult(
-            factual_envelope_id=envelope_id, factual_availability=availability,
+        result = CausalFactualIntelligenceEnvelopeResult(
+            factual_envelope_id=None, factual_availability=availability,
             authoritative_result=result_dict, authoritative_result_id=authoritative_id,
             dependency_provenance=dependencies, availability_reason=reason, provenance=provenance,
             diagnostics=diagnostics, evidence=evidence,
             metadata={"contract": CONTRACT, "rule_version": RULE_VERSION, "identity_scope": IDENTITY_SCOPE,
                       "observation_only": True, "advisory_output": False, "strategy_output": False,
                       "execution_output": False, "authority_scope": "read_only"}, **base)
+        result.factual_envelope_id = envelope_identity(result.to_dict())
+        return result
 
 
 CAUSAL_FACTUAL_INTELLIGENCE_ENVELOPE = CausalFactualIntelligenceEnvelopeAnalyzer()
 
 __all__ = [
+    "validate_factual_envelope",
+    "envelope_reference",
     "ADAPTERS",
     "AVAILABILITY_STATES",
     "CONTRACT",

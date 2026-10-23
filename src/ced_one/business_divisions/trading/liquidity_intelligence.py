@@ -17,7 +17,7 @@ from ced_one.business_divisions.trading.validation import validate_detector_inpu
 from ced_one.business_divisions.trading.market_structure import MarketStructureAnalyzer
 
 VALID_TIMEFRAMES = {"D1", "H4", "H1", "M30", "M15", "M5", "M1"}
-RULE_VERSION = "liquidity_intelligence_v1"
+RULE_VERSION = "liquidity_intelligence_v2"
 
 
 @dataclass(frozen=True)
@@ -105,6 +105,7 @@ class LiquidityIntelligenceResult:
     timestamp: str
     scanned_candle_count: int
     liquidity_levels: list[dict[str, Any]] = field(default_factory=list)
+    historical_interactions: list[dict[str, Any]] = field(default_factory=list)
     summary: dict[str, int] = field(default_factory=dict)
     evidence: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -117,6 +118,7 @@ class LiquidityIntelligenceResult:
             "timestamp": self.timestamp,
             "scanned_candle_count": self.scanned_candle_count,
             "liquidity_levels": self.liquidity_levels,
+            "historical_interactions": self.historical_interactions,
             "summary": self.summary,
             "evidence": self.evidence,
             "metadata": self.metadata,
@@ -395,6 +397,58 @@ class LiquidityIntelligenceAnalyzer:
             return 0
         return index - reference_index
 
+    @classmethod
+    def _historical_views(cls, pivots, config):
+        clusters = cls._build_clusters(pivots, side="high", tolerance=config.equal_level_tolerance, minimum_members=config.minimum_cluster_members)
+        clusters += cls._build_clusters(pivots, side="low", tolerance=config.equal_level_tolerance, minimum_members=config.minimum_cluster_members)
+        used = {(m["side"], m["pivot_index"]) for row in clusters for m in row["members"]}
+        if config.include_single_swing_levels:
+            clusters += [{"side": p["side"], "level_type": "confirmed_swing_" + p["side"] + "_level", "members": [p]}
+                         for p in pivots if (p["side"], p["pivot_index"]) not in used]
+        return clusters
+
+    @staticmethod
+    def _boundary(level, config, symbol, timeframe):
+        from ced_one.business_divisions.trading.causal_factual_intelligence_envelope import _hash_id, _configuration_fingerprint
+        from ced_one.business_divisions.trading.causal_snapshot_availability import candle_completion
+        members = sorted(level["members"], key=lambda m: m["pivot_index"])
+        lower = min(m["price"] for m in members) - config.interaction_tolerance
+        upper = max(m["price"] for m in members) + config.interaction_tolerance
+        descriptor = {"symbol": symbol, "timeframe": timeframe, "side": level["side"], "level_type": level["level_type"],
+                      "lower_boundary": lower, "upper_boundary": upper, "members": members,
+                      "available_at": max(candle_completion(m["confirmed_at"], timeframe) for m in members),
+                      "candidate_lookback": config.lookback_candles, "rule_version": RULE_VERSION,
+                      "configuration_fingerprint": _configuration_fingerprint(config.as_dict())}
+        return _hash_id("liquidity_boundary_", descriptor), descriptor
+
+    @classmethod
+    def _history(cls, candles, pivots, config, symbol, timeframe):
+        from ced_one.business_divisions.trading.causal_snapshot_availability import candle_completion
+        history, ranks = [], {}
+        for i, candle in enumerate(candles):
+            # Confirmation must already exist in prefix [0, i); candidate lookback
+            # applies to that prefix, never to the final snapshot.
+            eligible = [p for p in pivots if max(0, i-config.lookback_candles) <= p["pivot_index"] < i
+                        and p["confirmed_at_index"] < i]
+            for level in cls._historical_views(eligible, config):
+                identity, boundary = cls._boundary(level, config, symbol, timeframe)
+                kind, wick = cls._interaction_event_for_candle(candle, side=level["side"],
+                    lower_boundary=boundary["lower_boundary"], upper_boundary=boundary["upper_boundary"])
+                if kind is None:
+                    continue
+                ranks[identity] = max(ranks.get(identity, 0), cls._event_rank(kind))
+                history.append({"level_id": identity, "side": level["side"], "level_type": level["level_type"],
+                    "representative_price": float(median(m["price"] for m in boundary["members"])),
+                    "source_timestamp": min(m["pivot_timestamp"] for m in boundary["members"]),
+                    "created_at": max(m["confirmed_at"] for m in boundary["members"]),
+                    "candle_index": i, "candle_timestamp": candle["timestamp"], "event_type": kind,
+                    "observed_high": candle["high"], "observed_low": candle["low"], "observed_close": candle["close"],
+                    "applied_boundary": {k: boundary[k] for k in ("lower_boundary", "upper_boundary")},
+                    "resulting_status": cls._status_from_rank(ranks[identity]), "wick_breach_without_close": wick,
+                    "causal_boundary_id": identity, "causal_boundary": boundary,
+                    "causal_availability_timestamp": candle_completion(candle["timestamp"], timeframe)})
+        return history
+
     def analyze(self, payload: dict[str, Any], *, evaluation_time: datetime | None = None, max_age_seconds: int = 300) -> LiquidityIntelligenceResult:
         errors = LiquidityIntelligenceValidator.validate_input(payload, evaluation_time=evaluation_time, max_age_seconds=max_age_seconds)
         if errors:
@@ -407,6 +461,8 @@ class LiquidityIntelligenceAnalyzer:
         current_timestamp = candles[-1]["timestamp"]
 
         confirmed_pivots = self._find_confirmed_pivots(candles)
+
+        historical = self._history(candles, confirmed_pivots, config, input_model.symbol, input_model.timeframe)
 
         candidate_start_index = max(0, len(candles) - config.lookback_candles)
         candidate_pivots = [item for item in confirmed_pivots if item["pivot_index"] >= candidate_start_index]
@@ -474,42 +530,10 @@ class LiquidityIntelligenceAnalyzer:
                 lower_boundary = cluster_low - float(config.interaction_tolerance)
                 upper_boundary = cluster_high + float(config.interaction_tolerance)
 
-            member_indices = {int(item["pivot_index"]) for item in members}
-            interaction_records: list[dict[str, Any]] = []
-            strongest_rank = 0
-            last_interaction_index: int | None = None
-
-            for idx in range(created_at_index + 1, len(candles)):
-                if idx in member_indices:
-                    continue
-                candle = candles[idx]
-                event_type, wick_breach_without_close = self._interaction_event_for_candle(
-                    candle,
-                    side=level["side"],
-                    lower_boundary=lower_boundary,
-                    upper_boundary=upper_boundary,
-                )
-                if event_type is None:
-                    continue
-                event_rank = self._event_rank(event_type)
-                strongest_rank = max(strongest_rank, event_rank)
-                resulting_status = self._status_from_rank(strongest_rank)
-                interaction_records.append(
-                    {
-                        "candle_timestamp": candle["timestamp"],
-                        "event_type": event_type,
-                        "observed_high": float(candle["high"]),
-                        "observed_low": float(candle["low"]),
-                        "observed_close": float(candle["close"]),
-                        "applied_boundary": {
-                            "lower_boundary": lower_boundary,
-                            "upper_boundary": upper_boundary,
-                        },
-                        "resulting_status": resulting_status,
-                        "wick_breach_without_close": wick_breach_without_close,
-                    }
-                )
-                last_interaction_index = idx
+            boundary_id, boundary = self._boundary(level, config, input_model.symbol, input_model.timeframe)
+            interaction_records = [dict(row) for row in historical if row["causal_boundary_id"] == boundary_id]
+            strongest_rank = max((self._event_rank(row["event_type"]) for row in interaction_records), default=0)
+            last_interaction_index = interaction_records[-1]["candle_index"] if interaction_records else None
 
             current_status = self._status_from_rank(strongest_rank)
             last_interaction_at = candles[last_interaction_index]["timestamp"] if last_interaction_index is not None else None
@@ -517,6 +541,8 @@ class LiquidityIntelligenceAnalyzer:
             levels.append(
                 {
                     "level_id": f"{level['side']}_{level['level_type']}_{level_index + 1}",
+                    "causal_boundary_id": boundary_id,
+                    "causal_boundary": boundary,
                     "side": level["side"],
                     "level_type": level["level_type"],
                     "representative_price": representative_price,
@@ -580,6 +606,10 @@ class LiquidityIntelligenceAnalyzer:
                 summary["wick_breach_without_close_levels"] += 1
 
         evidence = {
+            "historical_reporting_domain": {"basis": "all_supplied_candles", "first_timestamp": candles[0]["timestamp"],
+                "last_timestamp": candles[-1]["timestamp"], "candle_count": len(candles), "retention_limit": None,
+                "candidate_prefix": "0..i-1", "candidate_start": "max(0,i-lookback_candles)",
+                "historical_interaction_count": len(historical)},
             "liquidity_rule_version": RULE_VERSION,
             "lookback_candles": config.lookback_candles,
             "candidate_start_index": candidate_start_index,
@@ -590,7 +620,7 @@ class LiquidityIntelligenceAnalyzer:
             "single_level_count": len(single_levels),
         }
 
-        if not levels:
+        if not levels and not historical:
             evidence["reason"] = "insufficient_confirmed_pivots"
 
         result = LiquidityIntelligenceResult(
@@ -600,6 +630,7 @@ class LiquidityIntelligenceAnalyzer:
             timestamp=current_timestamp,
             scanned_candle_count=min(len(candles), config.lookback_candles),
             liquidity_levels=levels,
+            historical_interactions=historical,
             summary=summary,
             evidence=evidence,
             metadata={

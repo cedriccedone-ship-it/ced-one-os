@@ -1,5 +1,6 @@
 """Contract tests across real source, detector, envelope and chronology boundaries."""
 import pytest
+from tests.test_trading_vertical_slice_v16 import rebind_source_context
 from tests.test_trading_vertical_slice_v19 import matrix, envelope, source_context, CAPABILITIES, REQUESTED
 from tests.test_trading_vertical_slice_v10 import history as displacement_history
 from tests.test_trading_vertical_slice_v15 import structured_source
@@ -28,6 +29,7 @@ def test_real_producer_event_families_reach_chronology(capability, history_facto
     envelopes["H1"][capability] = produced.to_dict()
     sources = source_context(h1_cutoff=source.effective_causal_cutoff)
     sources["timeframes"]["H1"]["source_snapshot_id"] = source.source_snapshot_id
+    rebind_source_context(sources)
     context = CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(dict(symbol="XAUUSD", requested_evaluation_timestamp=REQUESTED, source_context=sources, factual_envelopes=envelopes))
     result = CAUSAL_FACTUAL_EVENT_CHRONOLOGY.analyze(dict(factual_context=context, factual_envelopes=envelopes))
     events = [event for event in result.events if event["timeframe"] == "H1"]
@@ -65,6 +67,7 @@ def test_real_order_block_retention_counts_omitted_events_once(interaction_limit
     envelopes["H1"][name] = produced.to_dict()
     sources = source_context(h1_cutoff=source.effective_causal_cutoff)
     sources["timeframes"]["H1"]["source_snapshot_id"] = source.source_snapshot_id
+    rebind_source_context(sources)
     context = CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(dict(symbol="XAUUSD",
         requested_evaluation_timestamp=REQUESTED, source_context=sources, factual_envelopes=envelopes))
     result = CAUSAL_FACTUAL_EVENT_CHRONOLOGY.analyze(dict(factual_context=context, factual_envelopes=envelopes))

@@ -110,7 +110,8 @@ class FactualMarketContextCompositionAnalyzer:
         errors = FactualMarketContextCompositionValidator.validate_input(payload)
         if errors:
             raise ValueError("Invalid factual market context input: " + "; ".join(errors))
-        context = _as_dict(payload.get("factual_context"))
+        from ced_one.business_divisions.trading.causal_factual_multi_timeframe_context import validate_factual_context
+        context = validate_factual_context(payload.get("factual_context"))
         self._validate_context(context)
         symbol = str(context["symbol"]).upper()
         requested = _parse_timestamp(context["requested_evaluation_timestamp"])

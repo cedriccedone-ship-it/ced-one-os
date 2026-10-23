@@ -35,6 +35,11 @@ def _timestamp_text(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
+def candle_completion(timestamp: str, timeframe: str) -> str:
+    """Completion of an opening-labelled candle under the source duration rule."""
+    return _timestamp_text(_parse_timestamp(timestamp) + VALID_TIMEFRAME_DURATIONS[timeframe])
+
+
 @dataclass(frozen=True)
 class CausalSnapshotAvailabilityInput:
     symbol: str
@@ -329,17 +334,9 @@ class CausalSnapshotAvailabilityAnalyzer:
             )
 
         effective_cutoff = _timestamp_text(max(item[0] + duration for item in normalized_history if item[0] + duration <= requested))
-        snapshot_parts = [
-            source.symbol,
-            source.timeframe,
-            requested_text,
-            effective_cutoff,
-            CANDLE_TIMESTAMP_SEMANTICS,
-            TIMEFRAME_DURATION_RULE_VERSION,
-            RULE_VERSION,
-            approved,
-        ]
-        snapshot_id = self._hash_id(snapshot_parts)
+        snapshot_id = snapshot_identity({"symbol": source.symbol, "timeframe": source.timeframe,
+            "requested_evaluation_timestamp": requested_text, "effective_causal_cutoff": effective_cutoff,
+            "approved_candle_history": approved})
         completion_state = "INCOMPLETE" if incomplete_count else "COMPLETED"
         return self._result(
             source,
@@ -354,9 +351,103 @@ class CausalSnapshotAvailabilityAnalyzer:
         )
 
 
+def snapshot_identity(source: dict[str, Any]) -> str:
+    """The existing v1 identity preimage; diagnostics are deliberately outside it."""
+    return CausalSnapshotAvailabilityAnalyzer._hash_id([
+        source["symbol"], source["timeframe"], source["requested_evaluation_timestamp"],
+        source["effective_causal_cutoff"], CANDLE_TIMESTAMP_SEMANTICS,
+        TIMEFRAME_DURATION_RULE_VERSION, RULE_VERSION, source["approved_candle_history"],
+    ])
+
+
+def validate_source(source: Any) -> dict[str, Any]:
+    """Validate serialized content without replaying analysis of excluded candles."""
+    try:
+        return _validate_source(source)
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("Malformed causal source.") from exc
+
+
+def _validate_source(source: Any) -> dict[str, Any]:
+    if hasattr(source, "to_dict"):
+        source = source.to_dict()
+    if not isinstance(source, dict):
+        raise ValueError("Malformed causal source.")
+    required = {"symbol", "timeframe", "requested_evaluation_timestamp", "effective_causal_cutoff", "source_snapshot_id",
+                "source_availability", "completion_state", "approved_candle_history", "diagnostics", "evidence", "metadata", "availability_reason"}
+    if not required <= source.keys():
+        raise ValueError("Malformed causal source: missing fields.")
+    if any(not isinstance(source[key], dict) for key in ("metadata", "diagnostics", "evidence")):
+        raise ValueError("Malformed source metadata or diagnostics.")
+    if source["metadata"].get("contract") != CONTRACT or source["metadata"].get("rule_version") != RULE_VERSION:
+        raise ValueError("Unsupported source contract/rule.")
+    if source["symbol"] != VALID_SYMBOL or source["timeframe"] not in VALID_TIMEFRAME_DURATIONS:
+        raise ValueError("Unsupported source symbol/timeframe.")
+    if any(source["metadata"].get(k) != v for k, v in CausalSnapshotAvailabilityAnalyzer._base_metadata().items()):
+        raise ValueError("Source metadata contradiction.")
+    state, completion = source["source_availability"], source["completion_state"]
+    if state not in SOURCE_AVAILABILITY_STATES or completion not in COMPLETION_STATES:
+        raise ValueError("Unknown source state.")
+    if not isinstance(source["approved_candle_history"], list):
+        raise ValueError("Malformed approved history.")
+    diagnostics, evidence, metadata = source["diagnostics"], source["evidence"], source["metadata"]
+    if any(type(diagnostics.get(k)) is not int or diagnostics[k] < 0 for k in CausalSnapshotAvailabilityAnalyzer._diagnostics()):
+        raise ValueError("Malformed source counts.")
+    if any(metadata.get(k) != source[k] for k in ("source_availability", "completion_state", "availability_reason")):
+        raise ValueError("Source state metadata contradiction.")
+    expected_evidence = {"source_snapshot_id": source["source_snapshot_id"], "effective_causal_cutoff": source["effective_causal_cutoff"],
+        "requested_evaluation_timestamp": source["requested_evaluation_timestamp"], "availability_reason": source["availability_reason"],
+        "candle_timestamp_semantics": CANDLE_TIMESTAMP_SEMANTICS, "timeframe_duration_rule_version": TIMEFRAME_DURATION_RULE_VERSION,
+        "timeframe_duration": VALID_TIMEFRAME_DURATIONS[source["timeframe"]].total_seconds()}
+    if any(evidence.get(k) != v for k,v in expected_evidence.items()):
+        raise ValueError("Source evidence contradiction.")
+    # Rejected sources retain original invalid input diagnostics, but expose no approved data.
+    if state != "AVAILABLE":
+        if source["approved_candle_history"] or source["source_snapshot_id"] is not None or source["effective_causal_cutoff"] is not None:
+            raise ValueError("Rejected source cannot expose approved history or identity.")
+        if diagnostics["approved_candle_count"] != 0 or any(evidence.get(k) is not None for k in ("first_approved_candle_timestamp", "last_approved_candle_timestamp", "last_completed_candle_timestamp")):
+            raise ValueError("Rejected source claims approved evidence.")
+        return source
+    requested = _parse_timestamp(source["requested_evaluation_timestamp"])
+    cutoff = _parse_timestamp(source["effective_causal_cutoff"])
+    if source["requested_evaluation_timestamp"] != _timestamp_text(requested) or source["effective_causal_cutoff"] != _timestamp_text(cutoff):
+        raise ValueError("Noncanonical source timestamps.")
+    from ced_one.business_divisions.trading.validation import validate_history
+    history = source["approved_candle_history"]
+    errors = validate_history(history)
+    if not history or errors:
+        raise ValueError("Invalid approved history: " + "; ".join(errors))
+    completions = []
+    for candle in history:
+        if candle["timestamp"] != _timestamp_text(_parse_timestamp(candle["timestamp"])):
+            raise ValueError("Noncanonical approved timestamp.")
+        completions.append(_parse_timestamp(candle_completion(candle["timestamp"], source["timeframe"])))
+    if max(completions) != cutoff or cutoff > requested:
+        raise ValueError("Approved candle completion/cutoff contradiction.")
+    if source["source_snapshot_id"] != snapshot_identity(source):
+        raise ValueError("Source snapshot identity/content mismatch.")
+    if diagnostics.get("approved_candle_count") != len(history):
+        raise ValueError("Approved count contradiction.")
+    for key, value in {"source_snapshot_id": source["source_snapshot_id"], "effective_causal_cutoff": source["effective_causal_cutoff"],
+                       "requested_evaluation_timestamp": source["requested_evaluation_timestamp"],
+                       "first_approved_candle_timestamp": history[0]["timestamp"], "last_approved_candle_timestamp": history[-1]["timestamp"],
+                       "last_completed_candle_timestamp": source["effective_causal_cutoff"]}.items():
+        if evidence.get(key) != value:
+            raise ValueError("Source evidence contradiction: " + key)
+    incomplete = diagnostics.get("incomplete_candle_count")
+    if type(incomplete) is not int or incomplete < 0 or diagnostics.get("input_candle_count") != len(history) + incomplete:
+        raise ValueError("Source input/completion counts contradict approved history.")
+    if any(diagnostics.get(key) != 0 for key in ("invalid_candle_count", "duplicate_timestamp_count", "future_candle_count")):
+        raise ValueError("Available source contains invalid source diagnostics.")
+    if completion != "UNKNOWN" and completion != ("INCOMPLETE" if incomplete else "COMPLETED"):
+        raise ValueError("Source completion state contradicts diagnostics.")
+    return source
+
+
 CAUSAL_SNAPSHOT_AVAILABILITY = CausalSnapshotAvailabilityAnalyzer()
 
 __all__ = [
+    "validate_source", "candle_completion",
     "CausalSnapshotAvailabilityAnalyzer",
     "CausalSnapshotAvailabilityInput",
     "CausalSnapshotAvailabilityResult",

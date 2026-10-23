@@ -16,49 +16,40 @@ from ced_one.mission_control.types import MissionRequest
 REQUESTED = "2026-08-17T02:00:00Z"
 
 
-def envelope(timeframe: str, capability: str, *, state: str = "AVAILABLE_PRESENT", envelope_id: str | None = None):
-    return {
-        "factual_availability": state,
-        "factual_envelope_id": envelope_id or f"envelope_{timeframe.lower()}_{capability}",
-        "authoritative_result_id": f"result_{timeframe.lower()}_{capability}",
-        "source_snapshot_id": f"source_{timeframe.lower()}",
-        "capability": {
-            "name": capability,
-            "contract": f"trading.{capability}.v1",
-            "rule_version": f"{capability}_v1",
-        },
-        "availability_reason": "classified",
-        "dependency_provenance": [],
-    }
+def envelope(timeframe: str, capability: str, *, state: str = "AVAILABLE_PRESENT", envelope_id=None):
+    from tests.test_trading_vertical_slice_v16 import envelope as full_envelope
+    from ced_one.business_divisions.trading.causal_factual_intelligence_envelope import envelope_reference
+    return envelope_reference(full_envelope(timeframe, capability, state=state))
 
 
-def context(*, state: str = "COMPLETE", completion: str = "COMPLETED", requested: str = REQUESTED, context_id: str = "factual_context_1"):
-    timeframes = {}
-    for timeframe in TIMEFRAME_ORDER:
-        timeframes[timeframe] = {
-            "timeframe": timeframe,
-            "source_snapshot_id": f"source_{timeframe.lower()}",
-            "effective_causal_cutoff": "2026-08-17T01:00:00Z",
-            "source_availability": "AVAILABLE",
-            "source_completion_state": completion,
-            "factual_context_state": state,
-            "factual_capabilities": {capability: envelope(timeframe, capability) for capability in CAPABILITY_ORDER},
-        }
-    return {
-        "symbol": "XAUUSD",
-        "requested_evaluation_timestamp": requested,
-        "source_context_id": "source_context_1",
-        "factual_context_id": context_id,
-        "identity_scope": "snapshot_deterministic",
-        "context_state": state,
-        "timeframes": timeframes,
-        "diagnostics": {},
-        "evidence": {},
-        "metadata": {
-            "contract": "trading.causal_factual_multi_timeframe_context.v1",
-            "identity_scope": "snapshot_deterministic",
-        },
-    }
+def rebind_context(value):
+    from ced_one.business_divisions.trading.causal_factual_multi_timeframe_context import (
+        factual_context_identity, CausalFactualMultiTimeframeContextAnalyzer as Owner, STATE_RANK,
+    )
+    for row in value["timeframes"].values():
+        row["factual_context_state"] = Owner._timeframe_state(row["source_availability"], row["source_completion_state"], row["factual_capabilities"])
+    value["context_state"] = max((r["factual_context_state"] for r in value["timeframes"].values()), key=STATE_RANK.get)
+    value["evidence"].update(context_state=value["context_state"], identity_descriptors=[value["timeframes"][tf] for tf in TIMEFRAME_ORDER])
+    value["factual_context_id"] = factual_context_identity(value)
+    return value
+
+
+def context(*, state="COMPLETE", completion="COMPLETED", requested=REQUESTED, context_id=None):
+    from tests.test_trading_vertical_slice_v16 import payload, source_context, rebind_envelope, real_matrix
+    from ced_one.business_divisions.trading.causal_factual_multi_timeframe_context import CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT
+    if state in {"UNAVAILABLE", "INVALID", "NOT_EVALUATED"}:
+        data = real_matrix({"UNAVAILABLE": "NO_CLOSED"}.get(state, state))
+    else:
+        data = payload(requested=requested, context=source_context(requested=requested, completion=completion))
+        if completion != "COMPLETED":
+            for group in data["factual_envelopes"].values():
+                for value in group.values():
+                    value["source_completion_state"] = completion
+                    rebind_envelope(value)
+    value = CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(data).to_dict()
+    if context_id is not None:
+        value["factual_context_id"] = context_id  # Deliberately detached identity.
+    return value
 
 
 def analyze(factual_context=None):
@@ -83,6 +74,7 @@ def test_v18_considers_all_ten_capabilities_on_all_timeframes():
 def test_v18_available_absent_is_evaluated_and_composes():
     factual_context = context()
     factual_context["timeframes"]["H4"]["factual_capabilities"]["fvg_imbalance_intelligence"] = envelope("H4", "fvg_imbalance_intelligence", state="AVAILABLE_ABSENT")
+    rebind_context(factual_context)
     result = analyze(factual_context)
     assert result.composition_state == "COMPLETE"
     relation = next(item for item in result.adjacent_relationships if item["parent_timeframe"] == "H4" and item["child_timeframe"] == "H1" and item["capability_name"] == "fvg_imbalance_intelligence")
@@ -100,6 +92,7 @@ def test_v18_relationship_vocabulary_is_factual_only():
     factual_context = context()
     for timeframe in TIMEFRAME_ORDER:
         factual_context["timeframes"][timeframe]["factual_capabilities"]["liquidity_events"] = envelope(timeframe, "liquidity_events", state="AVAILABLE_ABSENT")
+    rebind_context(factual_context)
     result = analyze(factual_context)
     assert all(item["relationship_type"] == "ABSENT_ON_BOTH" for item in result.adjacent_relationships if item["capability_name"] == "liquidity_events")
     text = str(result.to_dict()).lower()
@@ -111,6 +104,7 @@ def test_v18_parent_only_child_only_and_unavailable_relationships():
     factual_context = context()
     factual_context["timeframes"]["H4"]["factual_capabilities"]["market_structure"] = envelope("H4", "market_structure", state="AVAILABLE_ABSENT")
     factual_context["timeframes"]["H1"]["factual_capabilities"]["market_structure"] = envelope("H1", "market_structure", state="UNAVAILABLE", envelope_id=None)
+    rebind_context(factual_context)
     result = analyze(factual_context)
     parent_only = next(item for item in result.adjacent_relationships if item["parent_timeframe"] == "D1" and item["child_timeframe"] == "H4" and item["capability_name"] == "market_structure")
     unavailable = next(item for item in result.adjacent_relationships if item["parent_timeframe"] == "H4" and item["child_timeframe"] == "H1" and item["capability_name"] == "market_structure")
@@ -122,8 +116,8 @@ def test_v18_provenance_is_preserved_without_payload_duplication():
     result = analyze()
     record = result.timeframes["D1"]["capability_observations"]["market_structure"]
     assert record["source_snapshot_id"] == "source_d1"
-    assert record["factual_envelope_id"] == "envelope_d1_market_structure"
-    assert record["authoritative_result_id"] == "result_d1_market_structure"
+    assert record["factual_envelope_id"] == envelope("D1", "market_structure")["factual_envelope_id"]
+    assert record["authoritative_result_id"] == envelope("D1", "market_structure")["authoritative_result_id"]
     assert "authoritative_result" not in record
     relation = result.adjacent_relationships[0]
     assert set(relation) >= {
@@ -138,7 +132,8 @@ def test_v18_identity_is_deterministic_and_context_sensitive():
     changed = context(context_id="factual_context_changed")
     assert first.to_dict() == second.to_dict()
     assert first.composition_id == second.composition_id
-    assert first.composition_id != analyze(changed).composition_id
+    with pytest.raises(ValueError, match="identity/content"):
+        analyze(changed)
     assert first.identity_scope == "snapshot_deterministic"
 
 

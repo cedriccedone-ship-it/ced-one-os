@@ -14,29 +14,42 @@ REQUESTED = "2026-08-17T02:00:00Z"
 
 
 def source_context(*, source_state="AVAILABLE", completion="COMPLETED", context_id="source_context_1", requested=REQUESTED):
-    timeframes = {}
-    for index, timeframe in enumerate(TIMEFRAME_ORDER):
-        timeframes[timeframe] = {
-            "timeframe": timeframe,
-            "requested_evaluation_timestamp": requested,
-            "effective_causal_cutoff": f"2026-08-17T{index + 1:02d}:00:00Z" if source_state == "AVAILABLE" else None,
-            "source_snapshot_id": f"source_{timeframe.lower()}" if source_state == "AVAILABLE" else None,
-            "source_availability": source_state,
-            "availability_reason": "sufficient_causal_source" if source_state == "AVAILABLE" else source_state.lower(),
-            "completion_state": completion,
-        }
-    return {
-        "symbol": "XAUUSD",
-        "requested_evaluation_timestamp": requested,
-        "context_id": context_id,
-        "identity_scope": "snapshot_deterministic",
-        "context_state": "COMPLETE",
-        "timeframes": timeframes,
-        "edges": [],
-        "diagnostics": {},
-        "evidence": {},
-        "metadata": {"contract": "trading.causal_multi_timeframe_context.v1", "identity_scope": "snapshot_deterministic"},
-    }
+    from tests.test_trading_vertical_slice_v14 import source
+    from ced_one.business_divisions.trading.causal_multi_timeframe_context import CAUSAL_MULTI_TIMEFRAME_CONTEXT
+    value = CAUSAL_MULTI_TIMEFRAME_CONTEXT.analyze(dict(symbol="XAUUSD", requested_evaluation_timestamp=requested,
+        timeframe_sources={tf: source(tf, requested=requested, cutoff=requested, availability=source_state,
+                                     completion=completion) for tf in TIMEFRAME_ORDER})).to_dict()
+    for tf, record in value["timeframes"].items():
+        record["source_snapshot_id"] = f"source_{tf.lower()}" if source_state == "AVAILABLE" else None
+    return rebind_source_context(value)
+
+
+def rebind_source_context(value):
+    """Controlled reference fixtures: reconstruct v14 ID and derived copies after edits."""
+    from copy import deepcopy
+    from ced_one.business_divisions.trading.causal_multi_timeframe_context import (
+        CausalMultiTimeframeContextAnalyzer as Owner, _hash_id, RULE_VERSION, source_context_diagnostics,
+    )
+    records = [value["timeframes"][tf] for tf in TIMEFRAME_ORDER]
+    value["context_state"] = max((Owner._state_for_record(r) for r in records), key=lambda s: Owner._STATE_RANK[s])
+    value["edges"] = [{"parent_timeframe": p["timeframe"], "child_timeframe": c["timeframe"],
+        "parent_source_snapshot_id": p["source_snapshot_id"], "child_source_snapshot_id": c["source_snapshot_id"],
+        "parent_availability": p["source_availability"], "child_availability": c["source_availability"],
+        "alignment_status": Owner._edge_alignment(p,c)} for p,c in zip(records,records[1:])]
+    value["context_id"] = _hash_id([value["symbol"], value["requested_evaluation_timestamp"], list(TIMEFRAME_ORDER), records, RULE_VERSION])
+    value["diagnostics"] = source_context_diagnostics(value["timeframes"], value["edges"])
+    value["metadata"]["rule_version"] = RULE_VERSION
+    value["evidence"].update(timeframes=deepcopy(records), edges=deepcopy(value["edges"]), context_state=value["context_state"])
+    return value
+
+
+def rebind_envelope(value):
+    """Rehash intentional synthetic producer output, never corrupted-input tests."""
+    from ced_one.business_divisions.trading.causal_factual_intelligence_envelope import _hash_id, envelope_identity
+    if value["authoritative_result"] is not None:
+        value["authoritative_result_id"] = _hash_id("authoritative_result_", value["authoritative_result"])
+    value["factual_envelope_id"] = envelope_identity(value)
+    return value
 
 
 def migrate_test_envelope(value):
@@ -75,9 +88,9 @@ def migrate_test_envelope(value):
         "source_contract": "trading.causal_snapshot_availability.v1", "source_snapshot_id": value["source_snapshot_id"],
         "identity_scope": "snapshot_deterministic", "dependency_contracts": list(adapter.dependencies),
         "dependency_provenance": deepcopy(records), "execution_progress": progress}
-    value["evidence"].update(configuration_fingerprint=fingerprint, dependency_provenance=deepcopy(records))
+    value["evidence"].update(configuration_fingerprint=fingerprint, dependency_provenance=deepcopy(records), factual_availability=state)
     value["diagnostics"] = {**execution_diagnostics(progress), "source_usable": True, "adapter_selected": True}
-    return value
+    return rebind_envelope(value)
 
 
 def dependency(capability, source_id, order, *, timeframe="H1", requested=REQUESTED, cutoff="2026-08-17T01:00:00Z"):
@@ -101,7 +114,7 @@ def dependency(capability, source_id, order, *, timeframe="H1", requested=REQUES
 
 def envelope(timeframe, capability, *, state="AVAILABLE_PRESENT", source_id=None, requested=REQUESTED, cutoff=None, dependencies=None):
     source_id = source_id or f"source_{timeframe.lower()}"
-    cutoff = cutoff or f"2026-08-17T{(TIMEFRAME_ORDER.index(timeframe) + 1) if timeframe in TIMEFRAME_ORDER else 1:02d}:00:00Z"
+    cutoff = cutoff or requested
     dependency_map = {
         "liquidity_events": [dependency("liquidity_intelligence", source_id, 1, timeframe=timeframe, requested=requested, cutoff=cutoff)],
         "order_block_intelligence": [dependency("displacement_intelligence", source_id, 1, timeframe=timeframe, requested=requested, cutoff=cutoff)],
@@ -139,7 +152,7 @@ def payload(*, context=None, envelopes=None, symbol="XAUUSD", requested=REQUESTE
         "requested_evaluation_timestamp": requested,
         "source_context": context or source_context(requested=requested),
         "factual_envelopes": envelopes or {
-            timeframe: {capability: envelope(timeframe, capability) for capability in CAPABILITY_ORDER}
+            timeframe: {capability: envelope(timeframe, capability, requested=requested) for capability in CAPABILITY_ORDER}
             for timeframe in TIMEFRAME_ORDER
         },
     }
@@ -211,6 +224,7 @@ def test_v16_incomplete_source_is_preserved_and_degrades_context():
     for group in data["factual_envelopes"].values():
         for value in group.values():
             value["source_completion_state"] = "INCOMPLETE"
+            rebind_envelope(value)
     result = CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(data)
     assert result.context_state == "INCOMPLETE"
     assert result.timeframes["D1"]["source_completion_state"] == "INCOMPLETE"
@@ -233,7 +247,8 @@ def test_v16_identity_is_deterministic_and_source_or_envelope_sensitive():
     assert first.to_dict() == second.to_dict()
     changed = payload()["factual_envelopes"]
     changed["M5"]["candle_intelligence"]["factual_envelope_id"] = "changed"
-    assert first.factual_context_id != analyze(envelopes=changed).factual_context_id
+    with pytest.raises(ValueError, match="identity/content"):
+        analyze(envelopes=changed)
     assert first.identity_scope == "snapshot_deterministic"
 
 
@@ -293,6 +308,8 @@ def real_matrix(mode="AVAILABLE", *, configurations=None):
             source.update(source_availability="NOT_EVALUATED", completion_state="UNKNOWN", availability_reason="explicit_not_evaluated_fixture")
         elif mode == "UNKNOWN":
             source["completion_state"] = "UNKNOWN"
+        source["metadata"].update({k: source[k] for k in ("source_availability", "completion_state", "availability_reason")})
+        source["evidence"]["availability_reason"] = source["availability_reason"]
         sources[timeframe] = source
         envelopes[timeframe] = {}
         for name in CAPABILITY_ORDER:
@@ -411,6 +428,7 @@ def test_v2_real_absent_and_completed_unavailable_are_distinct():
         data = payload()
         slot = data["source_context"]["timeframes"]["H1"]
         slot.update(source_snapshot_id=source["source_snapshot_id"], effective_causal_cutoff=source["effective_causal_cutoff"])
+        rebind_source_context(data["source_context"])
         data["factual_envelopes"]["H1"] = {name: envelope("H1", name, source_id=source["source_snapshot_id"], cutoff=source["effective_causal_cutoff"]) for name in CAPABILITY_ORDER}
         data["factual_envelopes"]["H1"]["fvg_imbalance_intelligence"] = produced
         result = CAUSAL_FACTUAL_MULTI_TIMEFRAME_CONTEXT.analyze(data)

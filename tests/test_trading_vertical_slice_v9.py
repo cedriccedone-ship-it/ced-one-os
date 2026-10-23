@@ -114,7 +114,8 @@ def test_v9_cluster_uses_slice6_outer_applied_boundary():
         candle("2026-08-16T07:00:00Z", open_price=99, high=111, low=98, close=109),
     ]
     result = LiquidityEventsAnalyzer().analyze(payload(candles, config={"liquidity_config": {"interaction_tolerance": 0.1}}))
-    sweep = [event for event in result.liquidity_events if event["source_interaction_type"] == "breached"][0]
+    # H2 retains earlier single-boundary sweeps as well as this cluster sweep.
+    sweep = [event for event in result.liquidity_events if event["source_interaction_type"] == "breached" and event["level_type"] == "equal_high_cluster"][-1]
     assert sweep["level_type"] == "equal_high_cluster"
     assert sweep["upper_boundary"] == 110.5
     assert sweep["boundary_excursion"] == 0.5
@@ -134,7 +135,7 @@ def test_v9_causality_excludes_confirming_candle_and_preserves_repeated_history(
     events = [
         item
         for item in events_for(result, "confirmed_swing_high_level")
-        if item["level_id"] == "high_confirmed_swing_high_level_1"
+        if item["causal_boundary"]["members"][0]["price"] == 110
     ]
     assert [item["event_timestamp"] for item in events] == [
         "2026-08-16T03:00:00Z",
@@ -188,7 +189,8 @@ def test_v9_event_ids_are_snapshot_deterministic_and_source_level_ids_are_copied
     first = LiquidityEventsAnalyzer().analyze(payload(high_history()))
     second = LiquidityEventsAnalyzer().analyze(payload(high_history()))
     assert first.to_dict() == second.to_dict()
-    assert all(event["level_id"].startswith("high_confirmed_swing_high_level_") for event in first.liquidity_events)
+    # H2 references causal descriptors, never final ordinal IDs.
+    assert all(event["level_id"] == event["causal_boundary_id"] for event in first.liquidity_events)
     assert first.evidence["identity_scope"] == "snapshot_deterministic"
     assert first.metadata["identity_scope"] == "snapshot_deterministic"
 

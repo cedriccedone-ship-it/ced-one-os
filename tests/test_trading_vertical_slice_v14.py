@@ -16,20 +16,34 @@ REQUESTED = "2026-08-16T12:00:00Z"
 
 
 def source(timeframe: str, *, availability: str = "AVAILABLE", completion: str = "COMPLETED", snapshot_id: str | None = None, symbol: str = "XAUUSD", requested: str = REQUESTED, cutoff: str | None = "2026-08-16T11:00:00Z", reason: str = "sufficient_causal_source"):
-    return {
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "requested_evaluation_timestamp": requested,
-        "effective_causal_cutoff": cutoff,
-        "source_snapshot_id": snapshot_id if snapshot_id is not None else (f"causal_snapshot_{timeframe.lower()}" if availability == "AVAILABLE" else None),
-        "source_availability": availability,
-        "availability_reason": reason,
-        "completion_state": completion,
-        "approved_candle_history": [] if availability != "AVAILABLE" else [{"timestamp": "2026-08-16T10:00:00Z"}],
-        "diagnostics": {},
-        "evidence": {},
-        "metadata": {},
-    }
+    from datetime import timedelta
+    from ced_one.business_divisions.trading.causal_snapshot_availability import (
+        CausalSnapshotAvailabilityAnalyzer, VALID_TIMEFRAME_DURATIONS, _parse_timestamp, _timestamp_text,
+    )
+    actual_tf = timeframe if timeframe in TIMEFRAME_ORDER else "H1"
+    closing = _parse_timestamp(cutoff or requested)
+    row = dict(timestamp=_timestamp_text(closing - VALID_TIMEFRAME_DURATIONS[actual_tf]),
+               open=100., high=101., low=99., close=100.)
+    rows = [row]
+    if completion == "INCOMPLETE":
+        rows.append(dict(row, timestamp=requested))
+    result = CausalSnapshotAvailabilityAnalyzer().analyze(dict(symbol="XAUUSD", timeframe=actual_tf,
+        requested_evaluation_timestamp=requested, candle_history=rows)).to_dict()
+    result.update(symbol=symbol, timeframe=timeframe, availability_reason=reason)
+    result["evidence"]["availability_reason"] = reason
+    if completion == "UNKNOWN":
+        result["completion_state"] = completion
+    if availability != "AVAILABLE":
+        result = CausalSnapshotAvailabilityAnalyzer().analyze(dict(symbol="XAUUSD", timeframe=actual_tf,
+            requested_evaluation_timestamp=requested, candle_history=[])).to_dict()
+        result.update(symbol=symbol, timeframe=timeframe, availability_reason=reason)
+        result.update(source_availability=availability, completion_state=completion, source_snapshot_id=None,
+                      effective_causal_cutoff=None, approved_candle_history=[])
+    if snapshot_id is not None:
+        result["source_snapshot_id"] = snapshot_id  # Deliberate corruption fixture.
+    result["metadata"].update({k: result[k] for k in ("source_availability", "completion_state", "availability_reason")})
+    result["evidence"]["availability_reason"] = result["availability_reason"]
+    return result
 
 
 def payload(*, sources=None, symbol: str = "XAUUSD", requested: str = REQUESTED):
@@ -60,7 +74,7 @@ def test_v14_preserves_each_source_record_and_cutoff():
         "2026-08-16T01:00:00Z", "2026-08-16T02:00:00Z", "2026-08-16T03:00:00Z",
         "2026-08-16T04:00:00Z", "2026-08-16T05:00:00Z", "2026-08-16T06:00:00Z", "2026-08-16T07:00:00Z",
     ]
-    assert [result.timeframes[item]["source_snapshot_id"] for item in TIMEFRAME_ORDER] == [f"causal_snapshot_{item.lower()}" for item in TIMEFRAME_ORDER]
+    assert [result.timeframes[item]["source_snapshot_id"] for item in TIMEFRAME_ORDER] == [sources[item]["source_snapshot_id"] for item in TIMEFRAME_ORDER]
 
 
 @pytest.mark.parametrize("missing", TIMEFRAME_ORDER)
@@ -109,7 +123,7 @@ def test_v14_authoritative_invalid_source_is_preserved_and_invalidates_context()
 def test_v14_unknown_source_state_is_malformed_input():
     sources = {timeframe: source(timeframe) for timeframe in TIMEFRAME_ORDER}
     sources["H4"]["source_availability"] = "UNKNOWN"
-    with pytest.raises(ValueError, match="unknown source availability"):
+    with pytest.raises(ValueError, match="Unknown source state"):
         analyze(sources=sources)
 
 
@@ -190,11 +204,13 @@ def test_v14_identity_is_deterministic_and_all_source_descriptors_participate():
     second = analyze()
     changed_id = {timeframe: source(timeframe) for timeframe in TIMEFRAME_ORDER}
     changed_id["M5"]["source_snapshot_id"] = "causal_snapshot_changed"
+    changed_id["M5"]["evidence"]["source_snapshot_id"] = "causal_snapshot_changed"
     changed_state = {timeframe: source(timeframe) for timeframe in TIMEFRAME_ORDER}
     changed_state["M5"] = source("M5", availability="UNAVAILABLE", completion="UNKNOWN", reason="incomplete_current_candle")
     assert first.to_dict() == second.to_dict()
     assert first.context_id == second.context_id
-    assert first.context_id != analyze(sources=changed_id).context_id
+    with pytest.raises(ValueError, match="identity/content"):
+        analyze(sources=changed_id)
     assert first.context_id != analyze(sources=changed_state).context_id
     assert first.identity_scope == "snapshot_deterministic"
 
@@ -211,7 +227,7 @@ def test_v14_history_is_not_accepted_and_source_histories_are_not_duplicated():
 
 def test_v14_historical_common_timestamp_is_accepted():
     historical = "2024-01-02T03:04:05Z"
-    sources = {timeframe: source(timeframe, requested=historical) for timeframe in TIMEFRAME_ORDER}
+    sources = {timeframe: source(timeframe, requested=historical, cutoff=historical) for timeframe in TIMEFRAME_ORDER}
     result = analyze(sources=sources, requested=historical)
     assert result.requested_evaluation_timestamp == historical
 

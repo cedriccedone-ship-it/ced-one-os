@@ -119,41 +119,8 @@ class CausalMultiTimeframeContextAnalyzer:
 
     @staticmethod
     def _source_dict(source: Any) -> dict[str, Any]:
-        if hasattr(source, "to_dict"):
-            source = source.to_dict()
-        if not isinstance(source, dict):
-            raise ValueError("Each timeframe source must be a Slice #13 result or dictionary.")
-        required = [
-            "symbol", "timeframe", "requested_evaluation_timestamp", "effective_causal_cutoff",
-            "source_snapshot_id", "source_availability", "availability_reason", "completion_state",
-            "approved_candle_history", "diagnostics", "evidence", "metadata",
-        ]
-        missing = [name for name in required if name not in source]
-        if missing:
-            raise ValueError(f"Malformed Slice #13 result: missing fields {missing}.")
-        if source["source_availability"] not in SOURCE_AVAILABILITY_STATES:
-            raise ValueError("Malformed Slice #13 result: unknown source availability state.")
-        if source["completion_state"] not in COMPLETION_STATES:
-            raise ValueError("Malformed Slice #13 result: unknown completion state.")
-        if not isinstance(source["approved_candle_history"], list):
-            raise ValueError("Malformed Slice #13 result: approved_candle_history must be a list.")
-        if not isinstance(source["diagnostics"], dict) or not isinstance(source["evidence"], dict) or not isinstance(source["metadata"], dict):
-            raise ValueError("Malformed Slice #13 result: diagnostics, evidence, and metadata must be dictionaries.")
-        try:
-            _parse_timestamp(source["requested_evaluation_timestamp"])
-            if source["effective_causal_cutoff"] is not None:
-                _parse_timestamp(source["effective_causal_cutoff"])
-        except ValueError as exc:
-            raise ValueError(f"Malformed Slice #13 result timestamp: {exc}") from exc
-        availability = source["source_availability"]
-        snapshot_id = source["source_snapshot_id"]
-        if availability == "AVAILABLE" and (not isinstance(snapshot_id, str) or not snapshot_id):
-            raise ValueError("Malformed Slice #13 result: AVAILABLE source requires source_snapshot_id.")
-        if availability != "AVAILABLE" and snapshot_id is not None and not isinstance(snapshot_id, str):
-            raise ValueError("Malformed Slice #13 result: source_snapshot_id must be a string or None.")
-        if availability == "AVAILABLE" and source["effective_causal_cutoff"] is None:
-            raise ValueError("Malformed Slice #13 result: AVAILABLE source requires effective_causal_cutoff.")
-        return source
+        from ced_one.business_divisions.trading.causal_snapshot_availability import validate_source
+        return validate_source(source)
 
     @staticmethod
     def _record(source: dict[str, Any]) -> dict[str, Any]:
@@ -246,17 +213,7 @@ class CausalMultiTimeframeContextAnalyzer:
 
         descriptors = [timeframes[timeframe] for timeframe in TIMEFRAME_ORDER]
         context_id = _hash_id([context_input.symbol, requested_text, list(TIMEFRAME_ORDER), descriptors, RULE_VERSION])
-        diagnostics = {
-            "required_timeframe_count": 7,
-            "available_timeframe_count": sum(record["source_availability"] == "AVAILABLE" for record in timeframes.values()),
-            "unavailable_timeframe_count": sum(record["source_availability"] == "UNAVAILABLE" for record in timeframes.values()),
-            "invalid_timeframe_count": sum(record["source_availability"] == "INVALID" for record in timeframes.values()),
-            "not_evaluated_timeframe_count": sum(record["source_availability"] == "NOT_EVALUATED" for record in timeframes.values()),
-            "completed_timeframe_count": sum(record["source_availability"] == "AVAILABLE" and record["completion_state"] == "COMPLETED" for record in timeframes.values()),
-            "incomplete_timeframe_count": sum(record["source_availability"] == "AVAILABLE" and record["completion_state"] == "INCOMPLETE" for record in timeframes.values()),
-            "complete_edge_count": sum(edge["alignment_status"] == "ALIGNED" for edge in edges),
-            "incomplete_edge_count": sum(edge["alignment_status"] != "ALIGNED" for edge in edges),
-        }
+        diagnostics = source_context_diagnostics(timeframes, edges)
         evidence = {
             "requested_evaluation_timestamp": requested_text,
             "timeframe_order": list(TIMEFRAME_ORDER),
@@ -294,9 +251,74 @@ class CausalMultiTimeframeContextAnalyzer:
         )
 
 
+def source_context_diagnostics(timeframes, edges):
+    return {
+        "required_timeframe_count": 7,
+        "available_timeframe_count": sum(record["source_availability"] == "AVAILABLE" for record in timeframes.values()),
+        "unavailable_timeframe_count": sum(record["source_availability"] == "UNAVAILABLE" for record in timeframes.values()),
+        "invalid_timeframe_count": sum(record["source_availability"] == "INVALID" for record in timeframes.values()),
+        "not_evaluated_timeframe_count": sum(record["source_availability"] == "NOT_EVALUATED" for record in timeframes.values()),
+        "completed_timeframe_count": sum(record["source_availability"] == "AVAILABLE" and record["completion_state"] == "COMPLETED" for record in timeframes.values()),
+        "incomplete_timeframe_count": sum(record["source_availability"] == "AVAILABLE" and record["completion_state"] == "INCOMPLETE" for record in timeframes.values()),
+        "complete_edge_count": sum(edge["alignment_status"] == "ALIGNED" for edge in edges),
+        "incomplete_edge_count": sum(edge["alignment_status"] != "ALIGNED" for edge in edges),
+    }
+
+
+def validate_source_context(value):
+    try:
+        return _validate_source_context(value)
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("Malformed source context.") from exc
+
+
+def _validate_source_context(value):
+    source = value.to_dict() if hasattr(value, "to_dict") else value
+    if not isinstance(source, dict) or source.get("metadata", {}).get("contract") != CONTRACT or source.get("metadata", {}).get("rule_version") != RULE_VERSION:
+        raise ValueError("Unsupported source context contract/rule.")
+    if set(source.get("timeframes", {})) != set(TIMEFRAME_ORDER) or source.get("identity_scope") != IDENTITY_SCOPE:
+        raise ValueError("Malformed source context slots.")
+    requested = _parse_timestamp(source["requested_evaluation_timestamp"])
+    records = []
+    for timeframe in TIMEFRAME_ORDER:
+        record = source["timeframes"][timeframe]
+        if record.get("timeframe") != timeframe or _parse_timestamp(record["requested_evaluation_timestamp"]) != requested:
+            raise ValueError("Source context slot binding mismatch.")
+        if record.get("source_availability") not in SOURCE_AVAILABILITY_STATES or record.get("completion_state") not in COMPLETION_STATES:
+            raise ValueError("Source context state mismatch.")
+        if record["source_availability"] == "AVAILABLE":
+            if not record.get("source_snapshot_id") or _parse_timestamp(record["effective_causal_cutoff"]) > requested:
+                raise ValueError("Source context cutoff/identity mismatch.")
+        elif record.get("source_snapshot_id") is not None or record.get("effective_causal_cutoff") is not None:
+            raise ValueError("Unavailable source context cannot claim approved source.")
+        records.append(record)
+    expected = _hash_id([source["symbol"], source["requested_evaluation_timestamp"], list(TIMEFRAME_ORDER), records, RULE_VERSION])
+    if source.get("context_id") != expected:
+        raise ValueError("Source context identity/content mismatch.")
+    owner = CausalMultiTimeframeContextAnalyzer
+    state = max((owner._state_for_record(r) for r in records), key=lambda s: owner._STATE_RANK[s])
+    edges = [{"parent_timeframe": p["timeframe"], "child_timeframe": c["timeframe"],
+              "parent_source_snapshot_id": p["source_snapshot_id"], "child_source_snapshot_id": c["source_snapshot_id"],
+              "parent_availability": p["source_availability"], "child_availability": c["source_availability"],
+              "alignment_status": owner._edge_alignment(p,c)} for p,c in zip(records, records[1:])]
+    if source.get("context_state") != state or source.get("edges") != edges:
+        raise ValueError("Source context derived state/edges contradiction.")
+    if source.get("diagnostics") != source_context_diagnostics(source["timeframes"], edges):
+        raise ValueError("Source context diagnostic contradiction.")
+    evidence = source.get("evidence", {})
+    expected_evidence = {"requested_evaluation_timestamp": source["requested_evaluation_timestamp"],
+        "timeframe_order": list(TIMEFRAME_ORDER), "timeframes": records, "edges": edges,
+        "context_state": state, "rule_version": RULE_VERSION, "identity_scope": IDENTITY_SCOPE,
+        "source_contract": SOURCE_CONTRACT}
+    if any(evidence.get(k) != v for k,v in expected_evidence.items()):
+        raise ValueError("Source context evidence contradiction.")
+    return source
+
+
 CAUSAL_MULTI_TIMEFRAME_CONTEXT = CausalMultiTimeframeContextAnalyzer()
 
 __all__ = [
+    "validate_source_context",
     "CausalMultiTimeframeContextAnalyzer",
     "CausalMultiTimeframeContextInput",
     "CausalMultiTimeframeContextResult",

@@ -17,7 +17,7 @@ from ced_one.business_divisions.trading.liquidity_intelligence import (
 )
 
 VALID_TIMEFRAMES = {"D1", "H4", "H1", "M30", "M15", "M5", "M1"}
-RULE_VERSION = "liquidity_events_v1"
+RULE_VERSION = "liquidity_events_v2"
 
 
 @dataclass(frozen=True)
@@ -300,6 +300,9 @@ class LiquidityEventsAnalyzer:
             excursion = max(0.0, lower - observed_low)
         return {
             "event_id": cls._event_id(level_id, timestamp, event_type),
+            "causal_boundary_id": interaction["causal_boundary_id"],
+            "causal_boundary": interaction["causal_boundary"],
+            "causal_availability_timestamp": interaction["causal_availability_timestamp"],
             "event_type": event_type,
             "event_timestamp": timestamp,
             "liquidity_side": side,
@@ -344,23 +347,24 @@ class LiquidityEventsAnalyzer:
             }
             for item in input_model.candle_history
         }
-        raw_count = sum(len(level.get("interactions", [])) for level in source_result.liquidity_levels)
+        raw_count = len(source_result.historical_interactions)
         complete_events: list[dict[str, Any]] = []
         seen: dict[tuple[str, str], dict[str, Any]] = {}
         deduplicated = 0
-        for level in source_result.liquidity_levels:
-            for interaction in level.get("interactions", []):
-                event = self._map_interaction(level, interaction, candles)
-                key = (event["level_id"], event["event_timestamp"])
-                if key in seen:
-                    if seen[key] != event:
-                        raise ValueError("Conflicting Slice #6 source interactions for the same level/candle pair.")
-                    deduplicated += 1
-                    continue
-                seen[key] = event
-                complete_events.append(event)
+        for interaction in source_result.historical_interactions:
+            level = interaction
+            event = self._map_interaction(level, interaction, candles)
+            key = (event["level_id"], event["event_timestamp"])
+            if key in seen:
+                if seen[key] != event:
+                    raise ValueError("Conflicting Slice #6 source interactions for the same level/candle pair.")
+                deduplicated += 1
+                continue
+            seen[key] = event
+            complete_events.append(event)
         complete_events.sort(key=lambda item: (item["event_timestamp"], item["level_id"], item["event_type"]))
-        states = {level["level_id"]: "untouched" for level in source_result.liquidity_levels}
+        states = {row["causal_boundary_id"]: "untouched" for row in source_result.liquidity_levels}
+        states.update({row["level_id"]: "untouched" for row in source_result.historical_interactions})
         for event in complete_events:
             state = {
                 "liquidity_touch": "touched",
@@ -379,6 +383,7 @@ class LiquidityEventsAnalyzer:
         emitted.sort(key=lambda item: (item["event_timestamp"], item["level_id"], item["event_type"]))
         diagnostics = {
             "source_liquidity_level_count": len(source_result.liquidity_levels),
+            "source_historical_boundary_count": len({r["causal_boundary_id"] for r in source_result.historical_interactions}),
             "source_interaction_count": raw_count,
             "candidate_interaction_count": len(complete_events),
             "touch_candidate_count": touch_count,
@@ -412,13 +417,14 @@ class LiquidityEventsAnalyzer:
             summary=summary,
             diagnostics=diagnostics,
             evidence={
+                "historical_reporting_domain": source_result.evidence["historical_reporting_domain"],
                 "liquidity_rule_version": LIQUIDITY_RULE_VERSION,
                 "liquidity_event_rule_version": RULE_VERSION,
                 "effective_liquidity_config": source_config.as_dict(),
                 "effective_slice9_config": config.as_dict(),
                 "requested_source_lookback_candles": config.lookback_candles,
                 "effective_source_lookback_candles": source_config.lookback_candles,
-                "source_level_ids": [level["level_id"] for level in source_result.liquidity_levels],
+                "source_level_ids": sorted(states),
                 "source_interaction_types": [item["source_interaction_type"] for item in complete_events],
                 "classification_mapping": dict(self._EVENT_MAP),
                 "event_precedence": ["liquidity_close_beyond", "liquidity_sweep", "liquidity_touch"],

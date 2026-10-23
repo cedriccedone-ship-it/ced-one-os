@@ -7,12 +7,13 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from typing import Any, Callable
+from ced_one.business_divisions.trading.causal_snapshot_availability import candle_completion
 
 TIMEFRAME_ORDER = ("D1", "H4", "H1", "M30", "M15", "M5", "M1")
 TIMEFRAME_RANK = {timeframe: index for index, timeframe in enumerate(TIMEFRAME_ORDER)}
-MANIFEST_VERSION = "causal_available_factual_event_manifest_v1"
-RULE_VERSION = "causal_available_factual_event_chronology_v1"
-CONTRACT = "trading.causal_available_factual_event_chronology.v1"
+MANIFEST_VERSION = "causal_available_factual_event_manifest_v2"
+RULE_VERSION = "causal_available_factual_event_chronology_v2"
+CONTRACT = "trading.causal_available_factual_event_chronology.v2"
 IDENTITY_SCOPE = "snapshot_deterministic"
 FACTUAL_STATES = {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT", "UNAVAILABLE", "INVALID", "NOT_EVALUATED"}
 CHRONOLOGY_STATES = {"COMPLETE", "INCOMPLETE", "UNAVAILABLE", "INVALID", "NOT_EVALUATED"}
@@ -103,6 +104,8 @@ class CausalFactualEventChronologyAnalyzer:
         envelopes = payload.get("factual_envelopes")
         if not isinstance(envelopes, dict) or set(envelopes) != set(TIMEFRAME_ORDER):
             raise ValueError("factual_envelopes must contain exactly the seven canonical timeframes.")
+        from ced_one.business_divisions.trading.causal_factual_multi_timeframe_context import validate_factual_context
+        validate_factual_context(context)
         self._validate_context(context)
         composition_id = self._validate_composition(payload.get("composition"), context)
         events: list[dict[str, Any]] = []
@@ -118,8 +121,9 @@ class CausalFactualEventChronologyAnalyzer:
             family_states: dict[str, str] = {}
             family_ids: dict[str, list[str]] = {}
             coverage[timeframe] = {}
+            validated = {name: self._validate_envelope(value, context_record, name, context) for name, value in group.items()}
             for capability in EVENT_CAPABILITIES:
-                envelope = self._validate_envelope(group[capability], context_record, capability, context)
+                envelope = validated[capability]
                 normalized = self._normalize(envelope, context["factual_context_id"])
                 events.extend(normalized)
                 family_state = envelope["factual_availability"]
@@ -138,11 +142,11 @@ class CausalFactualEventChronologyAnalyzer:
             }
         chronology_state = max(states, key=lambda state: state_rank[state])
         events = self._deduplicate(events)
-        events.sort(key=lambda item: (_parse_timestamp(item["event_timestamp"]), item["timeframe_rank"], FAMILY_RANK[item["event_family"]], item["source_event_id"], item["chronology_event_id"]))
+        events.sort(key=lambda item: (_parse_timestamp(item["causal_availability_timestamp"]), item["timeframe_rank"], FAMILY_RANK[item["event_family"]], item["source_event_id"], item["chronology_event_id"]))
         groups = self._groups(events)
         edges = self._edges(groups)
         coverage_values = [item["coverage_state"] for by_capability in coverage.values() for item in by_capability.values()]
-        coverage_state = "TRUNCATED" if "TRUNCATED" in coverage_values else "SOURCE_BOUNDED" if "SOURCE_BOUNDED" in coverage_values else "UNKNOWN_COVERAGE" if "UNKNOWN_COVERAGE" in coverage_values else "FULLY_COVERED"
+        coverage_state = "UNKNOWN_COVERAGE" if "UNKNOWN_COVERAGE" in coverage_values else "TRUNCATED" if "TRUNCATED" in coverage_values else "SOURCE_BOUNDED" if "SOURCE_BOUNDED" in coverage_values else "FULLY_COVERED"
         chronology_id = _hash("factual_event_chronology_", [RULE_VERSION, MANIFEST_VERSION, context["factual_context_id"], composition_id, context["symbol"], context["requested_evaluation_timestamp"], events, coverage, groups])
         return CausalFactualEventChronologyResult(
             symbol=context["symbol"], requested_evaluation_timestamp=context["requested_evaluation_timestamp"], chronology_id=chronology_id,
@@ -173,10 +177,13 @@ class CausalFactualEventChronologyAnalyzer:
         return value.get("composition_id")
 
     def _validate_envelope(self, value: Any, context_record: dict[str, Any], capability: str, context: dict[str, Any]) -> dict[str, Any]:
-        envelope = _as_dict(value)
+        from ced_one.business_divisions.trading.causal_factual_intelligence_envelope import validate_factual_envelope, envelope_reference
+        envelope = validate_factual_envelope(value)
         reference = context_record["factual_capabilities"].get(capability)
         if not isinstance(reference, dict) or envelope.get("metadata", {}).get("contract") != "trading.causal_factual_intelligence_envelope.v1":
             raise ValueError("Malformed or detached Slice #15 envelope.")
+        if envelope_reference(envelope) != reference:
+            raise ValueError("Envelope content does not match factual context reference.")
         terminal_fingerprint = envelope.get("provenance", {}).get("configuration_fingerprint")
         if not terminal_fingerprint or terminal_fingerprint != envelope.get("evidence", {}).get("configuration_fingerprint"):
             raise ValueError("Slice #15 terminal configuration fingerprint is missing or inconsistent.")
@@ -208,23 +215,39 @@ class CausalFactualEventChronologyAnalyzer:
             "structural_dealing_range_intelligence": self._ranges,
         }
         result = envelope["authoritative_result"]
-        rows = normalizers[capability](result)
+        try:
+            rows = normalizers[capability](result)
+        except (KeyError, TypeError) as exc:
+            raise ValueError("Malformed authoritative event evidence.") from exc
         events = []
         for row in rows:
             timestamp = _text(_parse_timestamp(row.pop("event_timestamp")))
             cutoff = _parse_timestamp(envelope["effective_causal_cutoff"])
-            if _parse_timestamp(timestamp) > cutoff:
+            labels = row.pop("availability_labels", None) or [row.get("confirmed_at") or timestamp]
+            if row["event_family"] in {"fvg_touched", "fvg_partial_fill", "fvg_fully_filled", "order_block_wick_touch", "order_block_body_revisit", "order_block_close_through"}:
+                labels = [timestamp, row["created_at"]]
+            completion_times = [candle_completion(label, envelope["timeframe"]) for label in labels]
+            boundary = row.get("causal_boundary")
+            if boundary is not None:
+                completion_times.append(boundary["available_at"])
+            available = max(completion_times, key=_parse_timestamp)
+            if row.get("producer_available_at") is not None and _parse_timestamp(row["producer_available_at"]) != _parse_timestamp(available):
+                raise ValueError("Producer availability contradicts causal evidence.")
+            if _parse_timestamp(timestamp) > _parse_timestamp(available) or _parse_timestamp(available) > cutoff or cutoff > _parse_timestamp(envelope["requested_evaluation_timestamp"]):
                 raise ValueError("Normalized event is after its causal cutoff.")
             descriptor = {**row, "event_timestamp": timestamp}
             event = {
                 "source_event_id": row["source_event_id"], "event_family": row["event_family"], "source_event_type": row["source_event_type"],
                 "capability_name": capability, "capability_contract": envelope["capability"]["contract"], "capability_rule_version": envelope["capability"]["rule_version"],
                 "symbol": envelope["symbol"], "timeframe": envelope["timeframe"], "timeframe_rank": TIMEFRAME_RANK[envelope["timeframe"]], "event_time_semantics": row["event_time_semantics"],
+                "causal_availability_timestamp": available,
+                "causal_availability_basis": {"rule": "required_candle_completions_v1", "source_labels": labels,
+                    "completion_times": completion_times, "causal_boundary_id": row.get("causal_boundary_id")},
                 "event_timestamp": timestamp, "created_at": row.get("created_at"), "confirmed_at": row.get("confirmed_at"),
                 "requested_evaluation_timestamp": envelope["requested_evaluation_timestamp"], "effective_causal_cutoff": envelope["effective_causal_cutoff"],
                 "source_snapshot_id": envelope["source_snapshot_id"], "factual_envelope_id": envelope["factual_envelope_id"], "authoritative_result_id": envelope["authoritative_result_id"],
                 "configuration_fingerprint": envelope["provenance"]["configuration_fingerprint"], "factual_availability": envelope["factual_availability"],
-                "source_event_state": row.get("source_event_state"), "dependency_provenance_reference": envelope["dependency_provenance"], "descriptor": descriptor,
+                "source_event_state": row.get("source_event_state"), "snapshot_current_state": row.get("snapshot_current_state"), "dependency_provenance_reference": envelope["dependency_provenance"], "descriptor": descriptor,
             }
             event["chronology_event_id"] = _hash("factual_event_", [RULE_VERSION, MANIFEST_VERSION, factual_context_id, event])
             events.append(event)
@@ -232,13 +255,13 @@ class CausalFactualEventChronologyAnalyzer:
 
     @staticmethod
     def _liquidity_events(result: dict[str, Any]) -> list[dict[str, Any]]:
-        return [{"source_event_id": item["event_id"], "event_family": item["event_type"], "source_event_type": item["source_interaction_type"], "event_time_semantics": "event_timestamp", "event_timestamp": item["event_timestamp"], "created_at": item.get("level_created_at"), "confirmed_at": None, "source_event_state": None} for item in result.get("liquidity_events", [])]
+        return [{"source_event_id": item["event_id"], "event_family": item["event_type"], "source_event_type": item["source_interaction_type"], "event_time_semantics": "event_timestamp", "event_timestamp": item["event_timestamp"], "created_at": item.get("level_created_at"), "confirmed_at": None, "source_event_state": None, "causal_boundary_id": item["causal_boundary_id"], "causal_boundary": item["causal_boundary"], "producer_available_at": item["causal_availability_timestamp"]} for item in result.get("liquidity_events", [])]
 
     @staticmethod
     def _fvg(result: dict[str, Any]) -> list[dict[str, Any]]:
         rows = []
         for fvg in result.get("fair_value_gaps", []):
-            rows.append({"source_event_id": fvg["fvg_id"], "event_family": "fvg_created", "source_event_type": fvg["evidence"]["rule_branch"], "event_time_semantics": "created_at", "event_timestamp": fvg["created_at"], "created_at": fvg["created_at"], "confirmed_at": fvg.get("confirmed_at"), "source_event_state": fvg.get("current_status")})
+            rows.append({"source_event_id": fvg["fvg_id"], "event_family": "fvg_created", "source_event_type": fvg["evidence"]["rule_branch"], "event_time_semantics": "created_at", "event_timestamp": fvg["created_at"], "created_at": fvg["created_at"], "confirmed_at": fvg.get("confirmed_at"), "snapshot_current_state": fvg.get("current_status")})
             for interaction in fvg.get("interactions", []):
                 event_type = interaction.get("event_type")
                 family = {"touched_event": "fvg_touched", "partial_fill_event": "fvg_partial_fill", "fully_filled_event": "fvg_fully_filled"}.get(event_type)
@@ -255,14 +278,14 @@ class CausalFactualEventChronologyAnalyzer:
     def _order_blocks(result: dict[str, Any]) -> list[dict[str, Any]]:
         rows = []
         for block in result.get("order_blocks", []):
-            rows.append({"source_event_id": block["order_block_id"], "event_family": "order_block_created", "source_event_type": block["direction"], "event_time_semantics": "created_at", "event_timestamp": block["created_at"], "created_at": block["created_at"], "confirmed_at": block.get("confirmed_at"), "source_event_state": block.get("current_state")})
+            rows.append({"source_event_id": block["order_block_id"], "event_family": "order_block_created", "source_event_type": block["direction"], "event_time_semantics": "created_at", "event_timestamp": block["created_at"], "created_at": block["created_at"], "confirmed_at": block.get("confirmed_at"), "snapshot_current_state": block.get("current_state"), "availability_labels": [block["confirmed_at"], block["source_timestamp"]]})
             for interaction in block.get("interactions", []):
                 rows.append({"source_event_id": interaction["interaction_id"], "event_family": interaction["event_type"], "source_event_type": interaction["event_type"], "event_time_semantics": "candle_timestamp", "event_timestamp": interaction["candle_timestamp"], "created_at": block["created_at"], "confirmed_at": None, "source_event_state": interaction.get("resulting_state")})
         return rows
 
     @staticmethod
     def _ranges(result: dict[str, Any]) -> list[dict[str, Any]]:
-        return [{"source_event_id": item["range_id"], "event_family": "structural_range_created", "source_event_type": item["chronological_order"], "event_time_semantics": "created_at", "event_timestamp": item["created_at"], "created_at": item["created_at"], "confirmed_at": item.get("confirmed_at"), "source_event_state": None} for item in result.get("structural_ranges", [])]
+        return [{"source_event_id": item["range_id"], "event_family": "structural_range_created", "source_event_type": item["chronological_order"], "event_time_semantics": "created_at", "event_timestamp": item["created_at"], "created_at": item["created_at"], "confirmed_at": item.get("confirmed_at"), "source_event_state": None, "availability_labels": [item["first_pivot_confirmed_at"], item["second_pivot_confirmed_at"]]} for item in result.get("structural_ranges", [])]
 
     @staticmethod
     def _coverage(envelope: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, Any]:
@@ -275,11 +298,54 @@ class CausalFactualEventChronologyAnalyzer:
             "structural_dealing_range_intelligence": ("truncated_range_count",),
         }
         truncated = sum(diagnostics.get(key, 0) for key in truncation_fields.get(envelope["capability"]["name"], ()))
-        state = "TRUNCATED" if truncated else "SOURCE_BOUNDED" if any(key in diagnostics for key in ["pre_retention_range_count", "source_interaction_count", "candidate_index_range"]) else "UNKNOWN_COVERAGE"
-        if envelope["factual_availability"] == "AVAILABLE_ABSENT":
-            state = "FULLY_COVERED"
+        name = envelope["capability"]["name"]
+        config = envelope["capability"].get("configuration", {})
+        evidence = result.get("evidence", {})
+        bounds = envelope.get("provenance", {}).get("source_bounds")
+        filters, omissions = {}, {}
+        if name == "fvg_imbalance_intelligence":
+            filters = {"include_fully_filled": config.get("include_fully_filled"), "minimum_gap_size": config.get("minimum_gap_size")}
+            omissions = {"filtered_object_count": evidence.get("filtered_out_fully_filled_count"), "filtered_event_count": None}
+        elif name == "liquidity_events":
+            filters = {"include_touch_events": config.get("include_touch_events")}
+            omissions = {"filtered_event_count": diagnostics.get("excluded_touch_count")}
+        candidate = evidence.get("candidate_source_index_range", evidence.get("candidate_index_range"))
+        if name == "liquidity_events":
+            candidate = {"basis": "per_interaction_prefix", "lookback": config.get("lookback_candles"),
+                         "reporting_domain": evidence.get("historical_reporting_domain")}
+        elif name == "order_block_intelligence":
+            candidate = {"basis": "displacement_candidate_lookback", "lookback": config.get("lookback_candles"),
+                         "origin_search_lookback": config.get("origin_search_lookback")}
+        elif name == "structural_dealing_range_intelligence":
+            candidate = {"basis": "supplied_confirmed_pivots_after_same_type_run_collapse"}
+        known = bool(bounds and bounds.get("candle_count") and candidate is not None
+                     and envelope["factual_availability"] in {"AVAILABLE_PRESENT", "AVAILABLE_ABSENT"})
+        if name == "liquidity_events" and not isinstance(evidence.get("historical_reporting_domain"), dict):
+            known = False
+        insufficient = evidence.get("insufficient_history_count", 0) or evidence.get("insufficient_context_count", 0)
+        bounded = config.get("lookback_candles", 0) and bounds and bounds["candle_count"] > config["lookback_candles"]
+        state = "UNKNOWN_COVERAGE" if not known or insufficient else "TRUNCATED" if truncated else "SOURCE_BOUNDED" if bounded else "FULLY_COVERED"
         timestamps = [item["event_timestamp"] for item in events]
-        return {"factual_availability": envelope["factual_availability"], "coverage_state": state, "evaluated_empty_event_set": envelope["factual_availability"] == "AVAILABLE_ABSENT", "source_event_count": len(events), "normalized_event_count": len(events), "deduplicated_event_count": 0, "source_truncated_count": truncated, "chronology_truncated_count": 0, "earliest_available_event_timestamp": min(timestamps) if timestamps else None, "latest_available_event_timestamp": max(timestamps) if timestamps else None}
+        available_times = [item["causal_availability_timestamp"] for item in events]
+        scope = {"event_families": list(EVENT_FAMILIES[name]), "source_bounds": bounds,
+                 "requested_evaluation_timestamp": envelope["requested_evaluation_timestamp"],
+                 "effective_causal_cutoff": envelope["effective_causal_cutoff"], "candidate_domain": candidate,
+                 "interaction_domain": "subsequent_supplied_candles_for_eligible_objects" if name in {"fvg_imbalance_intelligence", "order_block_intelligence"} else "supplied_candles",
+                 "output_filters": filters, "filter_omissions": omissions,
+                 "retention": {key: config[key] for key in ("maximum_events", "maximum_order_blocks", "maximum_interactions_per_block", "maximum_ranges") if key in config},
+                 "source_truncated_event_count": truncated, "source_bounded": bool(bounded),
+                 "capability_rule_version": envelope["capability"]["rule_version"],
+                 "configuration_fingerprint": envelope["provenance"]["configuration_fingerprint"],
+                 "effective_configuration": config,
+                 "absence_meaning": "no_output_in_configured_domain_only"}
+        return {"factual_availability": envelope["factual_availability"], "coverage_state": state, "coverage_scope": scope,
+                "evaluated_empty_event_set": envelope["factual_availability"] == "AVAILABLE_ABSENT",
+                "source_event_count": len(events), "normalized_event_count": len(events), "deduplicated_event_count": 0,
+                "source_truncated_count": truncated, "chronology_truncated_count": 0,
+                "earliest_retained_event_timestamp": min(timestamps) if timestamps else None,
+                "latest_retained_event_timestamp": max(timestamps) if timestamps else None,
+                "earliest_retained_causal_availability_timestamp": min(available_times) if available_times else None,
+                "latest_retained_causal_availability_timestamp": max(available_times) if available_times else None}
 
     @staticmethod
     def _timeframe_state(record: dict[str, Any], family_states: dict[str, str]) -> str:
@@ -303,8 +369,8 @@ class CausalFactualEventChronologyAnalyzer:
     def _groups(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         groups: list[dict[str, Any]] = []
         for event in events:
-            if not groups or groups[-1]["event_timestamp"] != event["event_timestamp"]:
-                groups.append({"chronology_group_index": len(groups), "event_timestamp": event["event_timestamp"], "event_ids": []})
+            if not groups or groups[-1]["causal_availability_timestamp"] != event["causal_availability_timestamp"]:
+                groups.append({"chronology_group_index": len(groups), "causal_availability_timestamp": event["causal_availability_timestamp"], "within_group_ordering": "ORDER_UNPROVEN", "event_ids": []})
             groups[-1]["event_ids"].append(event["chronology_event_id"])
         return groups
 
@@ -312,7 +378,7 @@ class CausalFactualEventChronologyAnalyzer:
     def _edges(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
         edges = []
         for previous, following in zip(groups, groups[1:]):
-            edges.append({"from_group_index": previous["chronology_group_index"], "to_group_index": following["chronology_group_index"], "ordering": "BEFORE"})
+            edges.append({"from_group_index": previous["chronology_group_index"], "to_group_index": following["chronology_group_index"], "ordering": "BEFORE", "ordering_basis": "causal_availability_timestamp"})
         return edges
 
 

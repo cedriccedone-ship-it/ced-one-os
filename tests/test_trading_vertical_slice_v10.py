@@ -240,3 +240,18 @@ def test_v10_retention_order_is_deterministic():
     second = analyze(candles, config={"maximum_order_blocks": 1})
     assert first.to_dict() == second.to_dict()
     assert first.order_blocks == sorted(first.order_blocks, key=lambda item: (item["created_at"], item["source_timestamp"], item["direction"], item["order_block_id"]))
+
+
+@pytest.mark.parametrize("preceding_opposite", [False, True])
+def test_h3_origin_search_never_wraps_to_future_candle(preceding_opposite):
+    candles = [
+        candle(0, open_price=100.5 if preceding_opposite else 100, high=101, low=99, close=100),
+        candle(1, open_price=100, high=110, low=100, close=109),
+        candle(2, open_price=109, high=110, low=107, close=108),
+    ]
+    result = analyze(candles, config={"displacement_config": {"baseline_window": 1}})
+    assert len(result.order_blocks) == int(preceding_opposite)
+    for block in result.order_blocks:
+        assert block["source_index"] == 0
+        assert block["source_timestamp"] < block["source_displacement_timestamp"]
+    assert result.evidence["origin_searches"][0]["inspected_candle_count"] == 1
