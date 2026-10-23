@@ -384,4 +384,27 @@ class CausalFactualEventChronologyAnalyzer:
 
 CAUSAL_FACTUAL_EVENT_CHRONOLOGY = CausalFactualEventChronologyAnalyzer()
 
-__all__ = ["CAUSAL_FACTUAL_EVENT_CHRONOLOGY", "CausalFactualEventChronologyAnalyzer", "CausalFactualEventChronologyResult", "CONTRACT", "EVENT_FAMILIES", "MANIFEST_VERSION", "RULE_VERSION"]
+__all__ = ["CAUSAL_FACTUAL_EVENT_CHRONOLOGY", "CausalFactualEventChronologyAnalyzer", "CausalFactualEventChronologyResult", "CONTRACT", "EVENT_FAMILIES", "MANIFEST_VERSION", "RULE_VERSION", "validate_factual_chronology"]
+
+def validate_factual_chronology(value: Any, factual_context: Any, factual_envelopes: Any,
+                               composition: Any = None) -> dict[str, Any]:
+    """Reconstruct normalization/coverage through this owner; never invoke detectors."""
+    try:
+        supplied = _as_dict(value)
+        context = _as_dict(factual_context)
+        if composition is not None:
+            from ced_one.business_divisions.trading.factual_market_context_composition import validate_factual_composition
+            composition = validate_factual_composition(composition, context)
+        # Existing chronology permits an omitted composition reference. If one is
+        # present, the exact bound composition is required, not just a matching label.
+        linked = supplied.get("source_composition_id") is not None
+        if linked and composition is None:
+            raise ValueError("Chronology requires its bound composition.")
+        expected = CausalFactualEventChronologyAnalyzer().analyze({
+            "factual_context": context, "factual_envelopes": factual_envelopes,
+            "composition": composition if linked else None}).to_dict()
+        if json.dumps(supplied, sort_keys=True, allow_nan=False) != json.dumps(expected, sort_keys=True, allow_nan=False):
+            raise ValueError("Chronology content or binding mismatch.")
+        return supplied
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("Malformed factual chronology.") from exc

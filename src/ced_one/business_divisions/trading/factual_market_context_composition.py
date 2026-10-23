@@ -168,7 +168,8 @@ class FactualMarketContextCompositionAnalyzer:
                     for capability in CAPABILITY_ORDER
                 ],
             }
-            for timeframe, record in context["timeframes"].items()
+            for timeframe in TIMEFRAME_ORDER
+            for record in [context["timeframes"][timeframe]]
         ]
         composition_id = _hash_id([RULE_VERSION, PROFILE_VERSION, context["factual_context_id"], source_context_id, symbol, requested_text, list(TIMEFRAME_ORDER), list(CAPABILITY_ORDER), identity_descriptors, [item["relationship_type"] for item in relationships], composition_state])
         return FactualMarketContextCompositionResult(
@@ -326,4 +327,16 @@ __all__ = [
     "RELATIONSHIP_TYPES",
     "RULE_VERSION",
     "TIMEFRAME_ORDER",
+    "validate_factual_composition",
 ]
+
+def validate_factual_composition(value: Any, factual_context: Any) -> dict[str, Any]:
+    """Validate every serialized field using the owner, without factual detection."""
+    try:
+        supplied = _as_dict(value)
+        expected = FactualMarketContextCompositionAnalyzer().analyze({"factual_context": factual_context}).to_dict()
+        if json.dumps(supplied, sort_keys=True, allow_nan=False) != json.dumps(expected, sort_keys=True, allow_nan=False):
+            raise ValueError("Composition content or binding mismatch.")
+        return supplied
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("Malformed factual composition.") from exc
