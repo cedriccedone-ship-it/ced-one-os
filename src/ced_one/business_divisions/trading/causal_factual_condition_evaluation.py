@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import json
 from types import MappingProxyType
 from typing import Any
 
@@ -132,6 +133,11 @@ class CausalFactualConditionEvaluationResult:
         return deepcopy({"evaluation_id": self.evaluation_id, **self.payload})
 
 
+def condition_identity(value: Any) -> str:
+    """Owner-controlled identity of the complete normalized condition."""
+    return _hash_id("factual_condition_", normalize_condition(value))
+
+
 def _equal(actual: Any, operator: str, expected: Any) -> bool:
     return (actual == expected) if operator == "EQ" else (actual != expected)
 
@@ -141,7 +147,7 @@ def _evaluate(synthesis: dict[str, Any], condition: dict[str, Any]) -> dict[str,
     tf, family = condition["timeframe"], condition["predicate_type"]
     result = {"contract": CONTRACT, "rule_version": RULE_VERSION, "identity_scope": "snapshot_deterministic",
         "condition_id": condition["condition_id"], "condition": deepcopy(condition),
-        "condition_identity": _hash_id("factual_condition_", condition),
+        "condition_identity": condition_identity(condition),
         "timeframe": tf, "effective_causal_cutoff": synthesis["timeframes"][tf]["effective_causal_cutoff"],
         "requested_evaluation_timestamp": synthesis["requested_evaluation_timestamp"],
         "source_synthesis_id": synthesis["synthesis_id"], "predicate_type": family,
@@ -228,3 +234,19 @@ class CausalFactualConditionEvaluationAnalyzer:
 
 
 CAUSAL_FACTUAL_CONDITION_EVALUATION = CausalFactualConditionEvaluationAnalyzer()
+
+
+def validate_causal_factual_condition_evaluation(
+    value: Any, synthesis: Any, upstream_bundle: Any, condition: Any,
+) -> dict[str, Any]:
+    """Reconstruct and compare all serialized content; never rerun detectors."""
+    try:
+        supplied = value.to_dict() if hasattr(value, "to_dict") else value
+        expected = CAUSAL_FACTUAL_CONDITION_EVALUATION.analyze({
+            "synthesis": synthesis, "upstream_bundle": upstream_bundle, "condition": condition,
+        }).to_dict()
+        if json.dumps(supplied, sort_keys=True, allow_nan=False) != json.dumps(expected, sort_keys=True, allow_nan=False):
+            raise ValueError("Condition evaluation content or input binding mismatch.")
+        return expected
+    except (KeyError, TypeError, AttributeError, RecursionError) as exc:
+        raise ValueError("Malformed serialized condition evaluation.") from exc
