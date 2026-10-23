@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import json
 from typing import Any
 
 from ced_one.business_divisions.trading.causal_factual_intelligence_envelope import (
@@ -269,3 +270,19 @@ class CausalMarketStateSynthesisAnalyzer:
 
 
 CAUSAL_MARKET_STATE_SYNTHESIS = CausalMarketStateSynthesisAnalyzer()
+
+
+def validate_market_state_synthesis(value: Any, upstream_bundle: Any) -> dict[str, Any]:
+    """Validate complete serialized synthesis through its owner, without detectors.
+
+    Reconstruction proves consistency with the supplied bundle, not authenticity.
+    A detached copy of the reconstructed result is returned to the consumer.
+    """
+    try:
+        supplied = value.to_dict() if hasattr(value, "to_dict") else value
+        expected = CAUSAL_MARKET_STATE_SYNTHESIS.analyze(upstream_bundle).to_dict()
+        if json.dumps(supplied, sort_keys=True, allow_nan=False) != json.dumps(expected, sort_keys=True, allow_nan=False):
+            raise ValueError("Synthesis content or upstream binding mismatch.")
+        return expected
+    except (KeyError, TypeError, AttributeError, RecursionError) as exc:
+        raise ValueError("Malformed serialized synthesis.") from exc
