@@ -352,3 +352,71 @@ A future consumer must owner-validate both artifacts and compare exactly:
 Do not compare #24 source fields to #25 metadata provenance, or compare their source snapshot IDs. Account currency need not equal price currency; a difference exposes a later conversion requirement. Namespace equality alone does not authorize calculation. Consumers still need supported/complete economics as required, compatible knowledge boundaries, applicability to the measurement time, governing-revision selection, valuation evidence and any necessary conversion evidence.
 
 Tick size/value, point value, quantity increments/minima, settlement/profit/margin currencies, rates, leverage, fees, financing, account-specific conditions and expiry are deferred. #25 performs no price selection, valuation, conversion, exposure, margin, risk, sizing, proposal/decision, capacity reservation, broker mutation or execution. No runtime, routing, registry or Mission Control changes are introduced.
+
+## Slice #26 causal financial price observation snapshot
+
+`CausalFinancialPriceObservationSnapshotAnalyzer.analyze()` in `causal_financial_price_observation_snapshot.py` owns exactly one supplied point-price observation/revision or explicit unavailable-price report. This is an independent factual library capability consuming neither #23, #24 nor #25. Contract: `trading.causal_financial_price_observation_snapshot.v1`; rule: `causal_financial_price_observation_snapshot_v1`; identity scope: `snapshot_deterministic`.
+
+### Exact schemas and provenance
+
+| Object | Exact fields |
+| --- | --- |
+| Input | `contract`, `rule_version`, `requested_evaluation_timestamp`, `observation` |
+| Observation | `source`, `target_namespace`, `denomination`, `timing`, `price_type`, `availability`, `price` |
+| Source | `source_id`, `source_contract`, `source_contract_version`, `source_snapshot_id` |
+| Target namespace | `source_id`, `source_contract`, `source_contract_version`, `environment`, `instrument_id` |
+| Denomination | `specification_source`, `reference_asset_id`, `reference_unit`, `price_currency` |
+| Specification source | `source_id`, `source_contract`, `source_contract_version`, `source_snapshot_id` |
+| Timing | `price_time`, `observed_at`, `source_available_at` |
+
+Objects require exactly their declared fields and types, without defaults or coercion. Environment is DEMO or LIVE. Opaque identifiers are strings containing at least one non-whitespace character and are preserved exactly, including surrounding whitespace. Price currency is exactly three uppercase ASCII letters, without registry authentication.
+
+`source` identifies the price supplier and exact supplied observation/revision. `target_namespace` identifies the account/instrument namespace; its provider may differ from the price supplier. `denomination.specification_source` is an opaque supplied reference to the specification revision whose dimensional vocabulary is asserted. It is not a consumed or validated #25 artifact. No external authentication, source lookup, symbol parsing or dimensional inference occurs.
+
+Price means `price_currency` per exactly one `reference_unit` of `reference_asset_id` under that referenced vocabulary. No quantity unit, multiplier or conversion belongs in this observation.
+
+### Price types, values and availability
+
+The closed price-type vocabulary is BID, ASK, MID, MARK and LAST. These are source-declared types: bid, ask, midpoint-type, marking/reference and last-traded price respectively. No executable-size guarantee, midpoint calculation, marking-method verification or suitability determination is supplied. Unknown/null types, aliases and case variants reject.
+
+AVAILABLE requires a decimal string matching `-?(0|[1-9][0-9]*)(\.[0-9]+)?`. Negative, zero and positive prices are accepted; acceptance does not establish economic suitability. Integers, floats, booleans, exponent notation, non-finite values, commas, leading plus, whitespace and invalid leading zeros reject. Normalization removes trailing fractional zeros and an unnecessary decimal point, and maps signed zero to `"0"`, without rounding or ambient decimal-context dependence.
+
+UNAVAILABLE requires `price: null`. Zero remains a real available value. No PARTIAL state exists. All provenance, target, denomination, type and timing fields remain required for unavailable reports. Such a report establishes no claim that no quote or trade existed in the market.
+
+### Point time and causal corrections
+
+`price_time` is the market time represented by the observation, or the market time to which an unavailable report pertains. `observed_at` is when this exact observation/revision first became available to the consuming system. `source_available_at` is publication/availability time or null. Require `price_time <= observed_at <= requested_evaluation_timestamp`; when publication is supplied, also require `price_time <= source_available_at <= observed_at`.
+
+Timestamps require valid calendar datetimes with seconds, explicit Z or ±HH:MM, at most six fractional digits, no leap seconds and no timezone-free values. Canonical output uses UTC `YYYY-MM-DDTHH:MM:SS.ffffffZ`. There is no future-effective price exception.
+
+A correction retains its represented market time and supplies its own revision identity and causal availability times. A revision first available at 10:05 rejects at a 10:02 knowledge boundary even when its market time is earlier. This owner does not compare histories, select a governing correction or authenticate backdated assertions. One point observation establishes no validity interval, valid-until-superseded behavior, freshness or latest-observation status.
+
+CANDLE_CLOSE and interval-derived types are excluded. No candle adapter or OHLC conversion exists, and copying a numeric close cannot relabel it as LAST or MARK. A future consumer may explicitly consume owner-validated completed candle-close evidence under an appropriate contract preserving interval/completion semantics.
+
+### Output, identity and validation
+
+Exactly nine output fields: `contract`, `rule_version`, `identity_scope`, `snapshot_id`, `requested_evaluation_timestamp`, `observation`, `source_authentication`, `limitations`, `authority`. Observation contains the complete normalized supplied content. Source authentication is exactly `NOT_VERIFIED_BY_THIS_CAPABILITY`. Limitations are exactly this ordered list: `["PRICE_SELECTION_NOT_PERFORMED", "FRESHNESS_NOT_EVALUATED", "PRICE_SUITABILITY_NOT_EVALUATED", "SPECIFICATION_COMPATIBILITY_NOT_VALIDATED", "VALUATION_NOT_PERFORMED", "FINANCIAL_EXPOSURE_NOT_CALCULATED"]`. Authority is exactly `{"trade_decision": false, "financial_risk": false, "execution": false}`. No support, usability, freshness or valuation status is added.
+
+Identity uses `_hash_id("financial_price_observation_snapshot_", complete_normalized_result_without_snapshot_id)`. All normalized output content is bound. Equivalent accepted decimals/timestamps and dictionary insertion orders produce the same identity; opaque identifier and correction provenance/content changes remain significant. No clock, randomness or mutable external state enters identity.
+
+`validate_causal_financial_price_observation_snapshot(value, snapshot_input)` reconstructs through the #26 owner from the complete exact input and compares the entire sorted-key JSON serialization with non-finite values rejected. Missing, extra, changed, type-substituted or noncanonical content at every depth rejects with `ValueError`, including identity, provenance, dimensions, timing, limitations and authority. Validation returns detached reconstructed content. Mutation of caller input, serialization results or validator returns cannot rewrite prior snapshots. Validation establishes consistency of supplied evidence, not authenticity.
+
+### Future compatibility and measurement path (not implemented)
+
+A future consumer must owner-validate both #26 and #25 artifacts and compare exactly:
+
+| #26 | #25 |
+| --- | --- |
+| `observation.target_namespace` fields `source_id`, `source_contract`, `source_contract_version`, `environment`, `instrument_id` | Same five fields in `specification.position_namespace` |
+| `observation.denomination.specification_source` (all four fields) | `specification.source` |
+| `observation.denomination.reference_asset_id` | `specification.economics.reference_asset_id` |
+| `observation.denomination.reference_unit` | `specification.economics.reference_unit` |
+| `observation.denomination.price_currency` | `specification.economics.price_currency` |
+
+Do not compare #26 `observation.source` to #25 `specification.source`: price and specification suppliers are separate concepts. Quantity units and reference-units-per-quantity-unit remain on the specification side. These comparisons establish consistency of assertions, not authenticity, governing applicability, freshness, price suitability or financial-use authorization. #26 performs none of these comparisons at runtime.
+
+The future position measurement path is #24 position → #25 quantity/instrument semantics → #26 price denomination/evidence. No separate direct #24 binding owner is introduced. Direct target-namespace comparison may check consistency but cannot replace #25 quantity semantics. Account currency may differ from price currency, exposing a future conversion requirement.
+
+Remaining blockers to financial measurement include governing/applicable specification selection, supported and sufficiently complete economics, compatible knowledge boundaries, price selection and suitability, and any required conversion evidence. No valuation or exposure capability is established by #26. Risk limits, financial-risk authorization, sizing, action quantity, pending commitments and capacity reservation remain separate future responsibilities as required by their eventual consumers.
+
+#26 performs no governing revision or price selection, freshness assessment, price suitability determination, compatibility validation, valuation, reference notional, market value, exposure, currency conversion, PnL, margin, financial-risk evaluation/authorization, position sizing, trade selection/decision, capacity reservation, broker mutation, execution or Mission Control authorization. No registries, routing, existing public contracts or execution systems change.
