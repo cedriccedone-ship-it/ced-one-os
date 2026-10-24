@@ -420,3 +420,88 @@ The future position measurement path is #24 position → #25 quantity/instrument
 Remaining blockers to financial measurement include governing/applicable specification selection, supported and sufficiently complete economics, compatible knowledge boundaries, price selection and suitability, and any required conversion evidence. No valuation or exposure capability is established by #26. Risk limits, financial-risk authorization, sizing, action quantity, pending commitments and capacity reservation remain separate future responsibilities as required by their eventual consumers.
 
 #26 performs no governing revision or price selection, freshness assessment, price suitability determination, compatibility validation, valuation, reference notional, market value, exposure, currency conversion, PnL, margin, financial-risk evaluation/authorization, position sizing, trade selection/decision, capacity reservation, broker mutation, execution or Mission Control authorization. No registries, routing, existing public contracts or execution systems change.
+
+## Slice #27 causal instrument specification lifecycle evidence snapshot
+
+`CausalInstrumentSpecificationLifecycleEvidenceSnapshotAnalyzer.analyze()` in `causal_instrument_specification_lifecycle_evidence_snapshot.py` owns one source-relative, namespace-scoped collection of immutable lifecycle assertions and its declared coverage. Contract: `trading.causal_instrument_specification_lifecycle_evidence_snapshot.v1`; rule: `causal_instrument_specification_lifecycle_evidence_snapshot_v1`; identity scope: `snapshot_deterministic`. It represents factual propositions and validates structure and causal availability; it does not resolve applicability or select a governing revision.
+
+### Exact caller schemas and provenance
+
+| Object | Exact fields |
+| --- | --- |
+| Input | `contract`, `rule_version`, `requested_evaluation_timestamp`, `evidence` |
+| Evidence | `source`, `target_namespace`, `timing`, `coverage`, `assertions` |
+| Source / specification revision reference | `source_id`, `source_contract`, `source_contract_version`, `source_snapshot_id` |
+| Target namespace | `source_id`, `source_contract`, `source_contract_version`, `environment`, `instrument_id`, `quantity_unit` |
+| Assertion | `assertion_id`, `timing`, `statement` |
+| Timing (report, assertion, coverage) | `observed_at`, `source_available_at` |
+| Economic scope | `effective_from`, `effective_until` |
+| Coverage | `declaration_id`, `timing`, `completeness`, `assertion_kinds`, `economic_domain`, `source_information_cutoff`, `starting_basis`, `omissions` |
+| Omissions | `assertions_omitted`, `history_truncated` |
+
+Schemas reject missing/extra fields, incompatible types, coercion and defaults. Identifiers are exact strings containing at least one non-whitespace character; surrounding whitespace and case are preserved. Environment is DEMO or LIVE. Arrays are lists; omission booleans cannot be numbers. Malformed or structurally contradictory input raises `ValueError`.
+
+The evidence source identifies the reporting source/schema and exact report revision. It need not equal the target namespace source. The six-field namespace includes quantity unit because the specification governs quantity-unit economics. Revision references identify #25 `specification.source`, including its source revision ID, not the derived #25 top-level snapshot ID. No economics are embedded or validated. Assertion IDs and coverage declaration IDs are scoped to the reporting-source schema and full namespace; they imply neither precedence nor authentication. This stateless owner cannot detect identity reuse across invocations. Coverage from an independently identified reporter is outside v1.
+
+### Immutable statement vocabulary
+
+| Kind | Exact statement fields | Supplied proposition |
+| --- | --- | --- |
+| APPLIES | `kind`, `revision`, `economic_scope` | The revision applies to the target namespace over the stated scope. |
+| SUPERSEDES | `kind`, `predecessor_revision`, `successor_revision`, `economic_scope` | The distinct successor replaces the predecessor for applicability within the stated scope. |
+| WITHDRAWS | `kind`, `revision`, `economic_scope` | The revision is withdrawn from applicability within the stated scope. |
+| CORRECTS | `kind`, `target_assertion_id`, `replacement_statement` | The identified assertion's whole proposition is erroneous and is replaced, or retracted without replacement. |
+
+SUPERSEDES asserts the successor applies in place of the named predecessor within scope; it establishes no precedence over unrelated revisions, complete history or absence of revision C. WITHDRAWS targets a revision and never automatically reinstates a predecessor. Neither changes #25 artifacts.
+
+A correction targets another assertion in the same collection, possibly an earlier correction. Its replacement is a complete APPLIES, SUPERSEDES or WITHDRAWS statement, or null for whole-proposition retraction. Embedded CORRECTS and field patches are forbidden. Embedded replacement content is identified through the correction and inherits its availability. Direct correction of #25 economics is outside scope. Correcting a correction preserves an explicit challenge; this owner does not determine which propositions become operative.
+
+### Economic scope and causal availability
+
+Primitive propositions have half-open intervals `[effective_from, effective_until)`. Start is required; a non-null end must be strictly later. Null explicitly asserts no scheduled economic end, not permanent validity or valid-until-superseded semantics. Point-only and zero-length intervals are unsupported. Future-effective assertions and retroactive corrections are valid; economic time has no ordering requirement against publication or observation. Corrections have no additional interval: replacement content supplies its own scope, while null retracts the whole target proposition.
+
+Every timing object requires observation at or before the requested knowledge boundary; non-null source publication must be at or before observation. Assertion and coverage observations must be at or before report observation. Correction targets must be observed no later than their corrections; when both publication times exist, target publication must also be no later. Equality is allowed. No separate event timestamp is introduced.
+
+Timestamps use #24–#26 grammar: valid calendar timestamps with seconds, explicit Z or ±HH:MM, at most six fractional digits, no leap seconds, canonical UTC with six fractional digits and trailing Z. No causal filtering occurs: any unavailable assertion, correction, coverage declaration or report rejects the entire input. A later correction or completeness claim cannot be used at an earlier knowledge boundary. Later snapshots do not rewrite historical snapshots.
+
+### Coverage universe and starting basis
+
+`assertion_kinds` is exactly the ordered list `["APPLIES", "SUPERSEDES", "WITHDRAWS", "CORRECTS"]`; `economic_domain` is exactly `ALL_ECONOMIC_TIMES`. Coverage inherits the report source/schema and full target namespace. It never claims cross-source completeness.
+
+| Completeness | Cutoff | Starting basis | Omission flags |
+| --- | --- | --- | --- |
+| COMPLETE | Required timestamp | FROM_INCEPTION | Both false |
+| LIMITED | Required timestamp | FROM_INCEPTION | Both booleans, at least one true |
+| UNKNOWN | Null | UNKNOWN | Both null |
+
+COMPLETE is the source's declaration that every lifecycle assertion in the four families, for this full namespace, from the inception of its assertion history through the source-information cutoff inclusive, is included across all economic times. This includes original, corrected, withdrawn, conflicting and future-effective propositions published by that cutoff. Completeness is not independently verified and does not imply consistency or unique applicability.
+
+`assertions_omitted` declares known exclusions such as filtering or selective reporting; `history_truncated` declares loss of earlier history through retention or availability. No omission count is inferred. LIMITED acknowledges incompleteness of the defined universe. UNKNOWN makes no usable cutoff/history claim; known omissions belong in LIMITED. Complete history cannot be inferred from record counts, empty arrays or retained timestamp bounds.
+
+Known coverage requires publication times for every assertion and the coverage declaration: assertion publication <= cutoff <= coverage publication <= coverage observation. UNKNOWN permits null publication times, but validates all supplied times normally. A coverage cutoff before the requested knowledge boundary cannot establish absence of intervening updates.
+
+An empty COMPLETE collection is valid and means only that the source declares no assertions in the defined universe through the cutoff. It does not establish no specification exists/applies, no other source has evidence, or trading prohibition. V1 supports only from-inception known coverage; economically filtered domains, explicit starting-state snapshots and compressed/current-applicable anchors are excluded.
+
+### Structural rejection versus preserved conflicts
+
+Duplicate assertion IDs reject even if identical; no deduplication occurs. Missing correction targets, self-corrections and correction-reference cycles reject. LIMITED collections must still be closed under correction references. Identical supersession endpoints, invalid intervals, malformed references and contradictory coverage declarations reject.
+
+Overlapping APPLIES for distinct revisions, overlapping APPLIES/WITHDRAWS, competing corrections and revision-level supersession cycles remain evidence. They are substantive conflicts for a later resolver. Only correction-reference cycles are structural errors. COMPLETE coverage may contain all such substantive conflicts.
+
+### Output, identity and owner validation
+
+Exactly nine output fields: `contract`, `rule_version`, `identity_scope`, `snapshot_id`, `requested_evaluation_timestamp`, `evidence`, `source_authentication`, `limitations`, `authority`. Evidence is complete normalized content; no selected revision, resolved applicability or conflict-resolution result appears. Authentication is exactly `NOT_VERIFIED_BY_THIS_CAPABILITY`. Limitations are exactly `["GOVERNING_SELECTION_NOT_PERFORMED", "APPLICABILITY_RESOLUTION_NOT_PERFORMED", "CROSS_SOURCE_PRECEDENCE_NOT_EVALUATED", "COVERAGE_CLAIMS_NOT_INDEPENDENTLY_VERIFIED", "SPECIFICATION_REFERENCES_NOT_VALIDATED", "FINANCIAL_MEASUREMENT_NOT_PERFORMED"]`. Authority is exactly `{"trade_decision": false, "financial_risk": false, "execution": false}`.
+
+Assertions sort by exact assertion ID string for serialization only, never chronology or precedence. Dictionary insertion order is non-semantic. Equivalent timestamps and reordered input assertion lists normalize identically; opaque identifier differences remain significant. Identity is `_hash_id("instrument_specification_lifecycle_evidence_snapshot_", complete_normalized_result_without_snapshot_id)`, binding all facts, coverage, references, economic and knowledge times, limitations and authority without clocks, randomness or external state.
+
+`validate_causal_instrument_specification_lifecycle_evidence_snapshot(value, snapshot_input)` reconstructs through the owner from exact caller input, compares full sorted-key JSON with non-finite values rejected, and returns detached reconstructed content. Missing/extra/changed/type-substituted/noncanonical content rejects with `ValueError`. Caller inputs, exposed payload copies, serialization results and validator returns cannot mutate prior snapshots. Hashing establishes consistency, not authentication.
+
+### Future resolver and downstream chain
+
+#27 has no runtime dependency on #23/#24/#25/#26. A future resolver must owner-validate #27 and consumed #25 artifacts against their exact inputs; compare the full #27 namespace with #25 `specification.position_namespace`; and compare revision references with all four fields of #25 `specification.source`. It must reject inconsistent binding, including different economics supplied under one revision reference when jointly consumed. Matching strings alone neither validates an artifact nor authenticates evidence. Referenced metadata must be causally available within the intended knowledge boundary.
+
+The resolver must define measurement versus knowledge time, adequate coverage, relationship interpretation, competing corrections, substantive conflicts, accepted source scope, and unresolved/absent/uniquely established applicability. It must not infer precedence from timestamps or sorting, authority from labels, completeness from records, or applicability from #25 effective-start status alone.
+
+The downstream chain is #25 + #27 → future applicability resolver → #24 + applicable #25 → reference quantity. #27 makes the necessary evidence representable; incomplete/conflicting collections need not resolve. Reference notional using #26 still requires owner-validated AVAILABLE price evidence; exact namespace/specification/denomination compatibility; price-purpose suitability and selection; temporal alignment/freshness rules; and financial arithmetic/output semantics. Account-currency amounts may additionally require conversion evidence.
+
+No governing selection, applicability resolution, cross-source precedence, authentication, reference quantity calculation, price consumption, valuation, exposure, FX, financial-risk evaluation, sizing, trade authorization or execution occurs here. Existing contracts, registries, routing and Mission Control remain unchanged.
