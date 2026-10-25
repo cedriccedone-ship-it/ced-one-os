@@ -623,3 +623,315 @@ Identity is `_hash_id("instrument_specification_applicability_resolution_", comp
 Authority is exactly `{"trade_decision": false, "financial_risk": false, "execution": false}`. Source authentication and authorization exclusions use those established fields rather than redundant limitation strings.
 
 A UNIQUE result may unlock a later #24 position + selected owner-valid #25 revision → reference quantity capability. A downstream consumer must validate #28 and bind the consumed #25 artifact to the selected reference, then separately establish economics support/completeness, dimensional compatibility and arithmetic semantics. #28 consumes neither #24 nor #26 and performs no financial calculation, price selection/suitability/freshness assessment, valuation, exposure, sizing, risk authorization, trade decision or execution. Reference notional remains dependent on future suitable #26 selection, temporal alignment, exact dimensions and arithmetic/conversion rules.
+
+## Slice #29 causal account rule regime assessment
+
+`CausalAccountRuleRegimeAssessmentAnalyzer.analyze()` in
+`causal_account_rule_regime_assessment.py` assesses one exact account at economic
+T using evidence available by K. It consumes one replacement manifest and explicit
+approval provenance. It selects no market direction, constructs no candidate,
+calculates no financial measurement and issues no authorization. The singleton is
+`CAUSAL_ACCOUNT_RULE_REGIME_ASSESSMENT`; the owner validator is
+`validate_causal_account_rule_regime_assessment(value, assessment_input)`.
+
+Contract: `trading.causal_account_rule_regime_assessment.v1`; rule version:
+`causal_account_rule_regime_assessment_v1`; identity scope:
+`snapshot_deterministic`.
+
+### Exact input and common records
+
+All objects require exactly their declared fields, without aliases, coercion,
+extra metadata or implicit defaults. All collections below are lists. Identifiers
+are opaque, case-sensitive strings containing at least one non-whitespace
+character; they are not stripped or inferred from display names. Timestamps follow
+#24–#28's explicit-offset grammar and normalize to six-fractional-digit UTC `Z`.
+Financial values are plain decimal strings, normalized without floating point or
+arithmetic rounding. NaN, infinity and exponent notation are rejected.
+
+| Record | Exact fields |
+| --- | --- |
+| Input | `contract`, `rule_version`, `requested_knowledge_boundary`, `economic_timestamp`, `account`, `manifest`, `approvals` |
+| Account | `source_id`, `source_contract`, `source_contract_version`, `account_id`, `environment` |
+| Artifact reference | `source_id`, `source_contract`, `source_contract_version`, `source_snapshot_id` |
+| Package key | `package_id`, `package_revision` |
+| Period | `effective_from`, `effective_until`, `end_status` |
+| Timing | `observed_at`, `source_available_at` |
+| Clause reference | `evidence_id`, `clause_locator` |
+| Manifest | `source`, `timing`, `coverage`, `evidence`, `assignments`, `packages` |
+| Manifest coverage | `completeness`, `economic_period`, `source_information_cutoff`, `limitations` |
+
+Account environment is `DEMO` or `LIVE`. A simulated funded account may use
+`DEMO`; provider/program/type/phase are separately evidenced. Manifest source is
+an artifact reference. A period is half-open. `end_status=KNOWN` requires a known
+end; `OPEN_ENDED` and `UNKNOWN` require a null end. A null start means unknown.
+Known start must precede known end. Open-ended is an explicit validity assertion,
+not an inference from missing source information. Manifest and calendar coverage
+periods must have known finite endpoints.
+
+Manifest completeness is `COMPLETE`, `LIMITED` or `UNKNOWN`. A non-null cutoff
+cannot exceed report observation; only UNKNOWN permits a null cutoff. COMPLETE
+requires an empty limitations list. Limitations are unique sorted opaque strings.
+This inventory covers account assignments, package bindings, changes and approval
+history over its economic period. It does not establish completeness of rules
+within a package.
+
+### Evidence, assignment, interpretation and approval
+
+| Record | Exact fields |
+| --- | --- |
+| Evidence | `evidence_id`, `source`, `acquisition`, `document_reference`, `document_revision`, `document_date`, `document_sha256`, `timing`, `captured_by`, `limitations` |
+| Assignment | `assignment_id`, `account`, `provider_id`, `program_id`, `account_type_id`, `phase_id`, `agreement`, `enrollment_period`, `phase_period`, `package_bindings`, `evidence_refs` |
+| Agreement | `status`, `agreement_id` |
+| Package binding | `package`, `effective_period`, `evidence_refs` |
+| Package | `package_id`, `package_revision`, `provider_id`, `program_id`, `account_type_id`, `phase_id`, `effective_period`, `evidence_refs`, `interpretation`, `coverage`, `rules` |
+| Interpretation | `interpretation_id`, `interpretation_version`, `interpreted_at`, `interpreter_ref`, `limitations` |
+| Rule coverage | `completeness`, `scope`, `evidence_refs`, `limitations` |
+| Approval | `approval_reference`, `authority_role`, `policy_id`, `policy_version`, `context_fingerprint`, `assignment_id`, `assignment_content_fingerprint`, `package`, `package_content_fingerprint`, `decision`, `decided_at`, `observed_at`, `effective_period` |
+
+Evidence acquisition is `SOURCE_OBSERVED` or `MANUAL_TRANSCRIPTION`. Document
+reference and capture process/actor are opaque required references; evaluation
+never fetches a URL. Document revision, calendar date and lowercase 64-hex SHA256
+may be null. A document date is not automatically its publication timestamp.
+Unknown source publication remains null; observation by K can still establish
+availability. Structural validation authenticates neither the source nor the
+transcription.
+
+Every assignment binds the exact requested account. Its four provider/program/
+type/phase identifiers may be null, making a potentially active assignment
+unresolved. Packages require all four identifiers. A known assignment identifier
+must exactly match its bound package. Agreement status is `IDENTIFIED`,
+`NOT_APPLICABLE` or `UNKNOWN`; only IDENTIFIED has a non-null ID. Nonapplicability
+is an evidenced assertion, not a missing-value default. Clause lists are nonempty
+and reference supplied evidence. All supplied evidence and packages must be used;
+dangling references and unrelated extras reject.
+
+Packages are immutable interpretations with one exact phase. Changing content,
+provenance, coverage or effectiveness requires a new opaque revision; revision
+ordering conveys no precedence. Rule-specific effectiveness is represented by a
+replacement package, not a second lifecycle mechanism.
+
+Approval roles are `mission_control` or `governance`, preserving existing role
+vocabulary without introducing a human identity directory. Policy version is a
+positive integer. Decisions are `APPROVED` or `REJECTED`. Approval binds the exact
+normalized assignment and package fingerprints; a generic APPROVED state is
+insufficient. Approval cannot fabricate enrollment or phase. Authority and context
+fingerprints are preserved claims, not independently authenticated policy results.
+An approval cannot predate the package interpretation. Explicit retrospective
+approval is interpretation approval as known at K, not historical trade authority.
+
+### Typed rule inventory
+
+Every rule has exactly `rule_id`, `representation`, `effects`, `instrument_scope`,
+`evidence_refs`, `body`. Rule IDs are unique within a package. Representation is
+`SUPPORTED` or `UNSUPPORTED`. Effects are a nonempty subset, in canonical order,
+of `ENTRY`, `HOLDING`, `EXIT`, `ACCOUNT_ELIGIBILITY`, `PHASE_TRANSITION`, `PAYOUT`,
+`UNKNOWN`; UNKNOWN must stand alone.
+
+Instrument scope is `{kind: ALL_ACCOUNT_INSTRUMENTS}` or
+`{kind: EXACT_INSTRUMENTS, instruments: [...]}`. An exact list is nonempty; each
+instrument has `source_id`, `source_contract`, `source_contract_version`,
+`environment`, `instrument_id`. Quantity limits require exactly one instrument.
+
+Supported bodies are strict tagged unions:
+
+| Type | Other exact body fields | Semantics |
+| --- | --- | --- |
+| `ACCOUNT_STATE_REQUIREMENT` | `required_facts` | Nonempty subset of ACCOUNT_ACTIVE, PHASE_OPEN_FOR_TRADING, NO_PRIOR_DISQUALIFYING_BREACH |
+| `INSTRUMENT_ACTION_PERMISSION` | `actions`, `permission` | Actions ENTRY_LONG, ENTRY_SHORT, HOLD, EXIT; PERMITTED or PROHIBITED |
+| `POSITION_LIMIT` / PER_POSITION_QUANTITY | `limit_kind`, `quantity_unit`, `maximum` | Positive decimal maximum for one position in one exact instrument |
+| `POSITION_LIMIT` / CONCURRENT_POSITION_COUNT | `limit_kind`, `maximum` | Nonnegative integer open-position count in scope |
+| `STATIC_FLOOR` | `measure`, `threshold`, `compliant_when` | Absolute floor or retained fraction of an initial reference |
+| `DAILY_RESET_FLOOR` | `measure`, `reset_anchor`, `deduction`, `compliant_when`, `reset_schedule`, `adjustment_policy` | Reset-anchor amount minus specified deduction |
+| `ACTION_WINDOW` | `actions`, `mode`, `source_timezone`, `schedule_period`, `intervals`, `evidence_refs` | Explicit finite UTC action schedule |
+| `AUTOMATION_PERMISSION` | `operation_mode`, `permission` | MANUAL/AUTOMATED and PERMITTED/PROHIBITED only |
+
+All bodies also contain `type`. Permissions never override other applicable
+constraints or grant execution authority. The position-count model does not
+silently include orders, netting equivalence or other accounts. Automation
+permission does not classify prohibited strategy behavior.
+
+Floor measure has exactly `kind`, `currency`, `definition_refs`, `cost_treatment`.
+Kind is BALANCE/EQUITY; currency is three uppercase ASCII letters. Cost treatment
+has exactly `commissions`, `financing`, `other_charges`, each IN_MEASURE,
+SUBTRACT_SEPARATELY or NOT_APPLICABLE. These assert source-defined accounting
+semantics; a later assessor must establish compatible measures and avoid double
+subtraction. Unknown/conditional semantics require an unsupported rule.
+
+Threshold/deduction is `{kind: ABSOLUTE, amount}` or
+`{kind: INITIAL_REFERENCE_FRACTION, reference, fraction}`. Reference is
+INITIAL_BALANCE/INITIAL_EQUITY; fraction is in [0,1]. Absolute static amounts may
+be signed; deductions must be nonnegative. Static fraction is the retained floor
+fraction, whereas daily fraction is the amount deducted from the reset anchor.
+Comparator is GREATER_THAN or GREATER_THAN_OR_EQUAL. Reset anchor is BALANCE or
+EQUITY. Adjustment policy is exactly
+NO_UNREPRESENTED_CAPITAL_OR_PHASE_ADJUSTMENTS. No threshold, loss, headroom or
+margin is calculated here.
+
+Reset schedule has exactly `source_timezone`, `source_local_reset_time`,
+`schedule_period`, `boundaries`, `evidence_refs`. Local time is HH:MM:SS. Boundaries
+are unique explicit UTC instants sorted chronologically and include the schedule's
+finite endpoints. Adjacent boundaries define reset periods. Source calendar and
+DST translation are approved interpretation claims, not runtime calculations.
+
+Action-window actions are ENTRY_LONG, ENTRY_SHORT or HOLD. Mode is
+PERMITTED_ONLY_WITHIN or PROHIBITED_WITHIN. Intervals are finite half-open Period
+objects, sorted, nonoverlapping and contained in schedule_period. Empty lists
+respectively permit nothing or declare no prohibition within coverage. Outside
+coverage, downstream evaluability is not established. No timezone database,
+recurrence engine, holiday lookup or schedule extrapolation is used.
+
+An unsupported body has exactly `type: UNSUPPORTED`, `source_rule_label`,
+`unsupported_reason`, `description`. Reason is SEMANTICS_NOT_SUPPORTED,
+SEMANTICS_AMBIGUOUS, REQUIRED_TIMING_UNKNOWN or REQUIRED_PARAMETERS_UNKNOWN.
+Scope, effects and clauses remain visible. There is no material=false or ignore
+escape hatch. Trailing drawdown, arbitrary strategy/consistency formulas and
+cross-account rules are preserved this way when outside supported semantics.
+
+### Coverage, causal selection and replacement lifecycle
+
+Package coverage scope is ACCOUNT_TRADING_AND_ELIGIBILITY. COMPLETE declares all
+rules capable of affecting entry, holding, exit or continued account eligibility
+have been inventoried for the exact package scope, including unsupported rules.
+It requires an empty coverage-limitations list. LIMITED declares omissions or
+unresolved inventory; UNKNOWN establishes no completeness claim. Complete scoped
+absence can support only an inventory-relative absence statement. Incomplete
+absence cannot. Neither complete coverage nor approval proves provider agreement.
+
+All consumed evidence must be observed by K; known publication cannot follow
+observation. Evidence must be available by report observation and package source
+clauses by interpretation time. Interpretation must be available by report time.
+Approval decision must be no later than its observation, which must be by K.
+Unavailable evidence rejects the whole input, including economically inactive
+records; no filtering or later-artifact rewriting is permitted.
+
+T and K have no ordering restriction. Selection requires complete manifest
+coverage containing T with cutoff equal to K. Earlier cutoff, incomplete coverage
+or potentially active unknown identity/effectiveness returns UNRESOLVED. Known
+inactive periods do not create ambiguity. Active enrollment and phase identify
+one assignment; package bindings and package effectiveness then identify one
+package. Competing packages are checked before approval, including unapproved
+competitors. No revision ordering or lexical tie-breaker is used.
+
+No eligible assignment/package/approval yields
+NO_APPLICABLE_APPROVED_REGIME_ESTABLISHED. Conflicting active APPROVED/REJECTED
+claims yield UNRESOLVED. Exact active approval yields
+UNIQUE_APPLICABLE_APPROVED_REGIME. Multiple consistent approval records support
+one regime. Applicability remains separate from package coverage and
+interpretation support: ALL_DECLARED_RULES_SUPPORTED, UNSUPPORTED_RULES_PRESENT,
+or NOT_ASSESSED when nothing is selected.
+
+One replacement manifest expresses explicit predecessor closure and successor
+start, phase changes and approval validity. Corrections require new source
+manifest revisions and changed package content requires new package revisions.
+Earlier-K assessments use artifacts available at that K; later corrections cannot
+rewrite historical knowledge. Unresolved overlapping correction claims remain
+conflicting assignments/bindings. There is no generic lifecycle graph or
+multi-source precedence mechanism.
+
+Reason codes use this exact order, emitting only findings whose prerequisites
+have been assessed:
+
+```text
+MANIFEST_COVERAGE_LIMITED
+MANIFEST_COVERAGE_UNKNOWN
+MANIFEST_CUTOFF_BEFORE_K
+T_OUTSIDE_MANIFEST_COVERAGE
+ACCOUNT_ASSIGNMENT_NOT_ESTABLISHED
+ACCOUNT_ASSIGNMENT_IDENTITY_UNKNOWN
+APPLICABILITY_TIMING_UNKNOWN
+MULTIPLE_ACCOUNT_ASSIGNMENTS
+MULTIPLE_APPLICABLE_PACKAGES
+NO_APPLICABLE_PACKAGE
+APPROVAL_NOT_ESTABLISHED
+APPROVAL_NOT_EFFECTIVE_AT_T
+APPROVAL_REJECTED
+APPROVAL_CONFLICT
+UNIQUE_APPLICABLE_APPROVED_REGIME_ESTABLISHED
+RULE_COVERAGE_LIMITED
+RULE_COVERAGE_UNKNOWN
+UNSUPPORTED_RULES_PRESENT
+```
+
+Malformed schemas, invalid times/decimals, duplicate identities, unavailable
+information, dangling/extra references, known scope mismatch and approval-content
+mismatch raise ValueError. Coherent competing evidence, missing approval,
+expired approval, unknown phase and incomplete inventories are deterministic
+non-affirmative results. A unique package with limited rule coverage or unsupported
+rules stays uniquely applicable and exposes the separate downstream blockers.
+
+### Output, fingerprints and reconstruction
+
+Exact output fields: `contract`, `rule_version`, `identity_scope`, `assessment_id`,
+`requested_knowledge_boundary`, `economic_timestamp`, `account`,
+`manifest_reference`, `manifest_content_fingerprint`, `manifest_coverage`,
+`outcome`, `selected_regime`, `interpretation_support`, `reason_codes`,
+`source_authentication`, `limitations`, `authority`.
+
+Selected regime is null unless uniquely established and approved. Otherwise it
+has exactly `regime_id`, `assignment`, `assignment_content_fingerprint`, `package`,
+`package_content_fingerprint`, `approval_references`, `applicable_period`,
+`evidence`. Assignment and package are complete normalized records. Evidence is
+exactly their referenced source inventory. Approval references carry complete
+supporting approval records, including connected approved validity intervals.
+Applicable period intersects enrollment, phase, binding, package and the connected
+union of supporting approval periods containing T. Calendar horizons remain
+explicit in rules and are not extended by this period. Point selection at T does
+not establish candidate-lifetime compliance or future approval consistency.
+
+Fingerprint prefixes are `account_rule_assignment_`, `account_rule_package_`,
+`account_rule_manifest_`; regime prefix is `account_rule_regime_`, binding account,
+assignment and package. Assessment prefix is `account_rule_regime_assessment_`.
+Hashes use existing `_hash_id` canonical content conventions. Package and
+assignment fingerprints contain normalized content without derived fingerprints;
+approvals reference these without cycles. Assessment identity hashes the complete
+normalized output excluding itself. Hash equality is not authentication.
+
+Evidence, assignments, packages and rules sort by their respective exact identity;
+approvals sort by the four-field reference tuple. Bindings sort by package key
+and canonical period. Clauses sort by evidence ID and locator. Enumerated sets use
+fixed enum order; opaque string sets sort lexically. Duplicates reject. Dates,
+decimal spellings and set-like list ordering normalize before hashing.
+
+The owner reconstructs from original input and compares the complete canonical
+output with allow_nan=False. Altered identifiers, provenance, rules, authority or
+limitations cannot be excused by matching selected fields. Validator returns,
+result payload access and serialization are detached copies. Analysis has no
+clock, randomness, external fetching, mutation or runtime registration.
+
+Source authentication is NOT_VERIFIED_BY_THIS_CAPABILITY. Authority is exactly
+`{trade_decision: false, financial_risk: false, execution: false}`. Fixed ordered
+limitations are:
+
+```text
+SOURCE_CLAIMS_NOT_INDEPENDENTLY_AUTHENTICATED
+OPERATIONAL_APPROVAL_CLAIMS_NOT_INDEPENDENTLY_AUTHENTICATED
+PROVIDER_AGREEMENT_WITH_INTERPRETATION_NOT_ESTABLISHED
+COVERAGE_CLAIMS_NOT_INDEPENDENTLY_VERIFIED
+RULE_COMPLETENESS_RELATIVE_TO_DECLARED_SCOPE
+CROSS_SOURCE_PRECEDENCE_NOT_EVALUATED
+SOURCE_CALENDAR_TRANSLATION_NOT_INDEPENDENTLY_VERIFIED
+CANDIDATE_COMPLIANCE_NOT_EVALUATED
+FINANCIAL_RISK_NOT_EVALUATED
+ACCOUNT_STATE_AND_HEADROOM_NOT_EVALUATED
+TRADE_AUTHORIZATION_NOT_PERFORMED
+EXECUTION_NOT_PERFORMED
+```
+
+### Downstream obligations and deliberate exclusions
+
+A combined assessor must owner-validate, bind the exact account and candidate,
+require unique approved applicability and complete scoped rule coverage, evaluate
+all supported constraints and reject unresolved candidate-relevant unsupported
+rules. Irrelevance requires candidate-lifetime evidence, not a caller flag. It
+must establish source-compatible measures, prior-breach status, initial and reset
+anchors, commitments, payoff, prices and costs as needed, then combine provider
+constraints with strategy policy. It cannot equate a #24 measure label with the
+provider's measure definition. Point applicability does not authorize crossing a
+phase, rule, approval or calendar boundary. New K requires sufficiently current
+input; an old result cannot be relabeled.
+
+Mission Control remains responsible for current trust, approval, revocation,
+expiry, atomic commitments and bounded authorization. This slice neither issues
+those artifacts nor changes #23–#28 or governance contracts. Every result belongs
+to one exact account; accounts sharing capital or provider are not interchangeable.
+Cross-account constraints remain visible rather than assuming independence.
