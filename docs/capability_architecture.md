@@ -505,3 +505,121 @@ The resolver must define measurement versus knowledge time, adequate coverage, r
 The downstream chain is #25 + #27 → future applicability resolver → #24 + applicable #25 → reference quantity. #27 makes the necessary evidence representable; incomplete/conflicting collections need not resolve. Reference notional using #26 still requires owner-validated AVAILABLE price evidence; exact namespace/specification/denomination compatibility; price-purpose suitability and selection; temporal alignment/freshness rules; and financial arithmetic/output semantics. Account-currency amounts may additionally require conversion evidence.
 
 No governing selection, applicability resolution, cross-source precedence, authentication, reference quantity calculation, price consumption, valuation, exposure, FX, financial-risk evaluation, sizing, trade authorization or execution occurs here. Existing contracts, registries, routing and Mission Control remain unchanged.
+
+## Slice #28 causal instrument specification applicability resolver
+
+`CausalInstrumentSpecificationApplicabilityResolverAnalyzer.analyze()` in `causal_instrument_specification_applicability_resolver.py` consumes exactly one owner-validated #27 snapshot and exactly the required collection of owner-validated #25 revisions. It answers whether this reporter's supplied lifecycle history, complete through knowledge boundary K, uniquely establishes a supplied revision as applicable at economic timestamp T. It has no global governing or operational authority.
+
+Contract: `trading.causal_instrument_specification_applicability_resolver.v1`; rule: `causal_instrument_specification_applicability_resolver_v1`; identity scope: `snapshot_deterministic`. The callable singleton is `CAUSAL_INSTRUMENT_SPECIFICATION_APPLICABILITY_RESOLVER`. No registration, routing, package export, runtime or Mission Control changes are introduced.
+
+### Exact caller input and owner reconstruction
+
+| Object | Exact fields |
+| --- | --- |
+| Input | `contract`, `rule_version`, `requested_knowledge_boundary`, `economic_timestamp`, `lifecycle_evidence`, `specification_revisions` |
+| Lifecycle evidence | `snapshot`, `snapshot_input` |
+| Each specification revision entry | `snapshot`, `snapshot_input` |
+
+`specification_revisions` is a list, possibly empty. Each snapshot is an owner result object or serialized artifact accepted by its owner validator. Each `snapshot_input` is the complete exact original owner reconstruction input. The resolver invokes the #27 validator and every supplied #25 validator and uses their detached reconstructed returns; object wrappers, matching labels and hashes alone never establish validation. Resolver objects require exact fields/types, with no defaults, aliases or coercion. Constants must match.
+
+T and K use the #25/#27 timestamp grammar: valid calendar timestamp with seconds, explicit Z or ±HH:MM, at most six fractional digits, no leap seconds or timezone-free values. Output is canonical UTC with six fractional digits and trailing Z. Opaque strings retain whitespace and case.
+
+### Required revision collection and binding
+
+Before corrections or economic filtering, extract every distinct four-field revision reference from every APPLIES, WITHDRAWS and SUPERSEDES statement, including both supersession endpoints and all non-null correction replacements. Require exactly one #25 artifact per reference. Missing, extra/unreferenced and duplicate representations reject with `ValueError`. Duplicates reject even when identical, or when only their owner evaluation boundaries differ. Incompatible economics, timing, namespace or model facts under one jointly consumed reference cannot be selected between. Corrected-away and economically inactive references remain required. An empty reference universe requires an empty metadata list.
+
+For each artifact, compare the full #27 `evidence.target_namespace` with #25 `specification.position_namespace`: `source_id`, `source_contract`, `source_contract_version`, `environment`, `instrument_id`, `quantity_unit`. Compare lifecycle revision references with all four #25 `specification.source` fields: `source_id`, `source_contract`, `source_contract_version`, `source_snapshot_id`. The reporting source is independent of the metadata supplier. A source revision ID is not the derived #25 snapshot ID.
+
+Canonical metadata order is lexicographic on the exact tuple `(source_id, source_contract, source_contract_version, source_snapshot_id)`. Ordering determines serialization only. The collection covers the references in this evidence, not every specification revision that exists globally.
+
+### Temporal and through-K coverage semantics
+
+T is economic time; K is the consuming-system knowledge boundary; E is #27's owner evaluation boundary; C is the coverage source-information cutoff. Each #25 artifact also retains its own evaluation boundary. Owner boundaries may precede, equal or follow K, but artifacts must validate against their unchanged original reconstruction inputs, then pass explicit availability checks against K.
+
+Require report, coverage, every assertion and every consumed specification `observed_at <= K`, and every non-null `source_available_at <= K`. Owner constraints additionally require publication at or before observation and their existing report/correction relationships. Owner-valid-at-E does not establish availability at K when E > K. Unavailable evidence rejects the entire input; no filtering or artifact rewriting occurs. T has no ordering constraint against K: future economic scopes are supplied assertions, not guaranteed future reality.
+
+| Coverage | Through-K behavior |
+| --- | --- |
+| COMPLETE, C = K | Eligible for resolution |
+| COMPLETE, C < K | UNRESOLVED: `COVERAGE_CUTOFF_BEFORE_KNOWLEDGE_BOUNDARY` |
+| LIMITED | UNRESOLVED: `COVERAGE_LIMITED` |
+| UNKNOWN | UNRESOLVED: `COVERAGE_UNKNOWN` |
+| C > K | Invalid causal input; reject |
+
+The theoretical condition C >= K reduces to C = K because known coverage requires `C <= coverage.source_available_at <= coverage.observed_at <= K`. Successful through-K coverage consequently has publication, coverage observation and report observation equal to K. This strict boundary is intentional; no lag tolerance or freshness window is inferred. Earlier #27 evaluation boundaries cannot establish COMPLETE coverage through a later K.
+
+COMPLETE remains source-declared and unauthenticated. Empty COMPLETE at C = K establishes only no applicable candidate in the declared evidence universe. It does not establish that no specification exists/applies globally, that trading is prohibited, or that another source lacks information.
+
+### Conservative correction calculus
+
+Analyze the entire assertion collection before filtering by T. Map assertion IDs to assertions and target IDs to incoming corrections. Any correction targeting an original CORRECTS assertion yields `CORRECTION_OF_CORRECTION`. Any target with more than one incoming correction yields `MULTIPLE_CORRECTIONS_FOR_ASSERTION`. Emit both when applicable, in that order, and stop interpretation. These rules apply even to identical/null replacements and apparently irrelevant economic scopes. There is no branch pruning, latest-wins, lexical/list precedence or automatic reinstatement.
+
+Otherwise retain primitives without corrections. A primitive with one correction is wholly displaced: substitute its complete non-null primitive replacement, or nothing for null. Replacement availability is the correction's availability; all timing has already passed validation. Replacement scope alone determines activity. A replacement outside T still displaces the original whole proposition. Correction-reference cycles, self-corrections and missing targets remain #27 structural failures.
+
+### Lifecycle resolution algorithm and outcomes
+
+Stages are fixed: validate all inputs/bindings/availability; coverage gate; correction gate; economic activity; substantive conflicts; candidate count. A failed semantic gate emits only its stage's applicable reasons; later stages are not evaluated. Validation failures always remain `ValueError`, even when evidence would otherwise be unresolved.
+
+A primitive is active exactly when `effective_from <= T` and its end is null or `T < effective_until`. Construct sets P (APPLIES revisions plus SUPERSEDES successors), D (SUPERSEDES predecessors), W (WITHDRAWS revisions), and directed graph G of active predecessor → successor edges. Repeated evidence contributes the same set member/edge without creating an additional candidate.
+
+Before displacement, detect all of: a directed cycle in G; nonempty P intersect W; any revision in P whose validated #25 `specification.timing.effective_at > T`. Emit all applicable reasons in canonical order and return UNRESOLVED. Cycle detection is iterative. Contradictions cannot be hidden by subsequent displacement.
+
+The effective-start comparison uses T directly, never #25 `effective_start_status`, which is relative to that owner's boundary. A lifecycle-positive claim before the factual start is substantive conflicting evidence: unresolved, not invalid binding, clipped scope or ordinary absence. This also applies to a positive revision later displaced by another edge. A predecessor-only or withdrawal-only reference is not positive evidence.
+
+With no conflicts, candidates are P minus D:
+
+| Outcome | Necessary and sufficient conditions after successful validation |
+| --- | --- |
+| `UNIQUE_APPLICABLE_REVISION` | COMPLETE C = K, supported correction calculus, no substantive conflict, exactly one candidate |
+| `NO_APPLICABLE_REVISION_ESTABLISHED` | Same gates, zero candidates |
+| `UNRESOLVED` | Insufficient coverage, unsupported correction structure, substantive conflict, or multiple candidates |
+
+APPLIES(A) plus A → B selects B. A → B → C selects C absent other conflicts. A → B and A → C leave two candidates; adding B → C explicitly displaces B and leaves C. Unrelated positive revisions remain candidates. Withdrawals add no positive evidence and never reinstate predecessors; withdrawal of a positive successor is a conflict. Bounded relationships have no effect outside their half-open scopes. Null ends assert no scheduled end, not permanence.
+
+NO_APPLICABLE_REVISION_ESTABLISHED means only that complete, interpretable source-relative evidence through K establishes no candidate at T. Only UNIQUE carries selected references. Unsupported economic models or partial/unavailable economics alone do not prevent selection: applicability is not measurement readiness.
+
+### Exact reason vocabulary and stage emission
+
+The closed canonical order is:
+
+1. `COVERAGE_LIMITED`
+2. `COVERAGE_UNKNOWN`
+3. `COVERAGE_CUTOFF_BEFORE_KNOWLEDGE_BOUNDARY`
+4. `CORRECTION_OF_CORRECTION`
+5. `MULTIPLE_CORRECTIONS_FOR_ASSERTION`
+6. `ACTIVE_SUPERSESSION_CYCLE`
+7. `POSITIVE_APPLICABILITY_WITHDRAWAL_CONFLICT`
+8. `SPECIFICATION_EFFECTIVE_START_CONFLICT`
+9. `MULTIPLE_APPLICABLE_CANDIDATES`
+10. `UNIQUE_APPLICABLE_REVISION_ESTABLISHED`
+11. `NO_APPLICABLE_CANDIDATE_ESTABLISHED`
+
+Reasons are a nonempty list without duplicates. Coverage failure emits exactly one coverage reason. Correction failure emits all applicable correction reasons. Substantive failure emits all applicable substantive reasons. Otherwise emit exactly the candidate-count reason corresponding to multiple, one or zero candidates. Reasons describe the stopping stage, not an exhaustive diagnosis. No free-text reasoning enters output or identity.
+
+### Exact output, identity and validation
+
+Exactly eighteen top-level fields, in serialization order: `contract`, `rule_version`, `identity_scope`, `resolution_id`, `requested_knowledge_boundary`, `economic_timestamp`, `target_namespace`, `reporting_source`, `coverage`, `lifecycle_evidence_reference`, `specification_revision_references`, `outcome`, `selected_revision`, `selected_specification_snapshot_reference`, `reason_codes`, `source_authentication`, `limitations`, `authority`.
+
+| Object | Exact fields |
+| --- | --- |
+| Coverage | `completeness`, `source_information_cutoff` |
+| Owner artifact reference | `contract`, `rule_version`, `snapshot_id`, `content_fingerprint` |
+| Each canonical specification revision reference | `revision`, `snapshot_reference` |
+
+Target namespace is the six-field #27 namespace; reporting source is its four-field evidence source. Coverage preserves the validated completeness and cutoff (null for UNKNOWN). The lifecycle reference identifies the one #27 artifact. Each metadata entry contains its four-field source revision and an owner artifact reference. `selected_revision` and `selected_specification_snapshot_reference` are both null unless UNIQUE; when unique they exactly match one consumed entry. No economics, full owner artifacts, candidate arrays or free-text explanations are embedded.
+
+Each owner reference fingerprints its entire reconstructed serialized result, including its snapshot ID, using `_hash_id("validated_owner_content_", validated_owner_result)`. These are content-consistency references, not authentication and not substitutes for owner validation.
+
+Identity is `_hash_id("instrument_specification_applicability_resolution_", complete_normalized_output_without_resolution_id)`, using existing canonical JSON and truncated SHA-256 conventions. It binds every consumed owner's full content through fingerprints, including nonselected/corrected-away metadata, all boundaries and coverage, outcome/reasons/selection, namespace/source, limitations and authority. Equivalent accepted collection permutations, map ordering and normalized timestamps/decimals produce identical output/identity. Opaque strings and owner evaluation boundary changes remain significant. No clocks, randomness or external state enter the result.
+
+`validate_causal_instrument_specification_applicability_resolver(value, resolver_input)` reconstructs through this owner from the exact caller input and compares the entire output using sorted-key JSON with `allow_nan=False`. Missing/extra/changed/type-substituted/noncanonical/nonfinite content rejects. Supplied output is not normalized into acceptance. The validator returns detached reconstructed content. Caller inputs, exposed payload copies, serialization results and validator returns cannot mutate previous results; payload access follows #27's defensive-copy pattern.
+
+### Limitations, authority and downstream boundary
+
+`source_authentication` is exactly `NOT_VERIFIED_BY_THIS_CAPABILITY`. Ordered limitations are exactly:
+
+`["COVERAGE_CLAIMS_NOT_INDEPENDENTLY_VERIFIED", "GLOBAL_GOVERNING_SELECTION_NOT_PERFORMED", "CROSS_SOURCE_PRECEDENCE_NOT_EVALUATED", "FINANCIAL_MEASUREMENT_NOT_PERFORMED", "VALUATION_NOT_PERFORMED", "PRICE_SELECTION_NOT_PERFORMED", "PRICE_SUITABILITY_NOT_EVALUATED", "FRESHNESS_NOT_EVALUATED", "FINANCIAL_EXPOSURE_NOT_CALCULATED", "POSITION_SIZING_NOT_PERFORMED"]`.
+
+Authority is exactly `{"trade_decision": false, "financial_risk": false, "execution": false}`. Source authentication and authorization exclusions use those established fields rather than redundant limitation strings.
+
+A UNIQUE result may unlock a later #24 position + selected owner-valid #25 revision → reference quantity capability. A downstream consumer must validate #28 and bind the consumed #25 artifact to the selected reference, then separately establish economics support/completeness, dimensional compatibility and arithmetic semantics. #28 consumes neither #24 nor #26 and performs no financial calculation, price selection/suitability/freshness assessment, valuation, exposure, sizing, risk authorization, trade decision or execution. Reference notional remains dependent on future suitable #26 selection, temporal alignment, exact dimensions and arithmetic/conversion rules.
