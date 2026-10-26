@@ -935,3 +935,130 @@ expiry, atomic commitments and bounded authorization. This slice neither issues
 those artifacts nor changes #23–#28 or governance contracts. Every result belongs
 to one exact account; accounts sharing capital or provider are not interchangeable.
 Cross-account constraints remain visible rather than assuming independence.
+
+## Strategy #1 — XAUUSD Causal Liquidity Reversal v0.2, Revision 2.1
+
+The additive `xauusd_causal_liquidity_reversal` module owns the strategy's
+prerequisite assessment and reconstruction. Its contract is
+`trading.xauusd_causal_liquidity_reversal.assessment.v0.2`; its definition contract
+is `trading.xauusd_causal_liquidity_reversal.definition.v0.2`. The supported ID is
+`xauusd_causal_liquidity_reversal`, version `0.2`, rule `revision_2.1`, instrument
+`XAUUSD`, with an explicit `LONG` or `SHORT` direction.
+
+`XAUUSD_CAUSAL_LIQUIDITY_REVERSAL.analyze(input).to_dict()` accepts exactly:
+
+- `strategy_definition`: contract, strategy ID/version, rule version, instrument,
+  direction and configuration.
+- `as_of`: one timezone-aware boundary. The result's evaluation and knowledge
+  boundaries both equal this boundary.
+- `sources`: H4, H1, M15, M5 and M1 snapshots serialized by #13, each evaluated at
+  the same `as_of`. The assessor validates these through the #13 source owner.
+- `setup_ordinal`: zero-based selection among successive, causally founded
+  distinct tuples in the declared domain. Zero selects the first setup. Births
+  are independent: a distinct tuple can become provable while an earlier setup
+  remains active. Required prior history is replayed, never discarded. The
+  ordinal is a request selector, not economic identity.
+
+Configuration explicitly supplies `history_starts` for all five timeframes,
+`founding_start`, `founding_end`, `windows_seconds` for E1/R1/K1/RT1/T1, and
+`order_block`, `liquidity`, `displacement`, `fvg` configuration dictionaries.
+Factual configuration defaults are normalized by their existing owners. Nested
+order-block displacement lookback remains controlled by #10. Domain boundaries
+and durations have no trading defaults: the caller chooses these research
+parameters. The history starts define a fixed bounded source domain, including
+pivot and displacement context; founding start/end delimit admissible births.
+They must remain unchanged when evaluating the same setup later. A different
+domain is a different effective definition, not a continuation of the old one.
+
+Each source must cover every expected completed interval from its declared start
+through the boundary being replayed. Exact interval adjacency is required;
+missing intervals fail closed without calendar inference. Extra leading candles
+outside the declared domain are ignored after source validation. Losing required
+leading or internal history produces UNKNOWN. Later missing intervals do not
+rewrite an already established terminal outcome. Malformed OHLC, contradictory
+snapshots, overlapping intervals and unsupported definitions raise `ValueError`.
+Valid but unavailable snapshots produce UNKNOWN.
+
+The replay invokes the existing #3, #6, #7, #8, #10 and liquidity-event owners on
+completed prefixes. It does not add a detector, generic strategy language,
+persistent registry, strategy-aware #22 or execution component. Producer rule
+versions are recorded in the assessment and founding identity. Owner validation
+establishes content consistency, not external data authenticity.
+
+Founding requires exact aligned H4 structure; latest causally confirmed H1 CA1;
+latest eligible direction-compatible native **unvisited** H1 P1; and exactly one
+eligible M15 single-swing L1 inside P1's inclusive full range. Native P1 visitation
+uses the producer's body-based rules; strategy geometry uses its full range.
+CA1 availability is confirmation-candle completion. H1 directional agreement is
+not required. L1 prior touches are allowed; prior sweeps/closes are not. A cluster
+cannot replace a single level, and lost single-object continuity is UNKNOWN.
+Canonical SB1 is the first covered boundary where all birth predicates hold,
+including availability exactly equal to SB1.
+
+CA1/P1/L1 bindings are immutable. The first exact L1 sweep establishes E1; a
+close beyond L1 before it invalidates. B1 is the latest opposite-type M5 pivot
+whose confirmation completion strictly precedes E1's occurrence start. Proven
+absence invalidates at E1 completion. R1 is the first directional M5 displacement
+starting no earlier than E1 completion. K1 is the first directional completed M5
+close beyond B1, allowing joint R1/K1. Required M5 evidence is contiguous.
+
+Q1 uses the exact A–R1–C FVG formation, with R1 as its middle candle and C as the
+immediate successor. No qualifying Q1 at C completion invalidates; unfinished C
+waits and missing C is UNKNOWN. Q1 eligibility is the later of formation and K1
+availability. Pre-eligibility touch/partial fill cannot be RT1; pre-eligibility
+full fill invalidates. RT1 is the first subsequent M5 range overlap with Q1,
+excluding creation and pre-eligibility candles. Producer fill labels do not
+replace geometric overlap. T1 is the first directional M1 displacement starting
+no earlier than RT1's M5 completion.
+
+Completed closes through CA1, P1 or Q1 and opposite H4 structure invalidate before
+completion. Unresolved H4 context is UNKNOWN. Wick-only penetration does not
+establish close invalidation. Materially competing completion/invalidation, or
+RT1/invalidation without provable order, is UNKNOWN. No intrabar ordering is
+invented from finer data.
+
+Stage deadlines use configured elapsed seconds from SB1, E1 completion, R1
+completion, Q1 eligibility and RT1 completion respectively. Endpoints are
+inclusive. Missing observations never move deadlines; required missing evidence
+is UNKNOWN. An unfinished candle at the deadline cannot qualify later. Adequate
+negative coverage at a deadline produces EXPIRED. Before a deadline, proven
+prerequisites with the next event absent produce WAITING. COMPLETE records the
+first canonical completion and survives subsequent adverse evidence.
+
+The replay remembers exhausted founding tuples locally while reconstructing the
+requested setup. INVALIDATED, EXPIRED and COMPLETE exhaust the exact
+strategy/version/config/instrument/direction/CA1/P1/L1 tuple. A later setup needs a
+distinct CA1, P1 or L1 and complete birth proof. No runtime state is persisted.
+Setup identity is available at birth, completion identity binds that setup to its
+first T1, and assessment identity binds the complete evaluation-specific result.
+Descriptors include immutable source candles, confirmation boundaries, geometry,
+membership and rule/configuration provenance; producer indices, ordinal event
+IDs, recency counters and current lifecycle states are excluded from economic
+identity. `validate_strategy_assessment(assessment, assessment_input)` rebuilds
+the complete expected result and compares its full canonical content.
+
+### Additive StrategyAssessment consumption in #23
+
+`causal_trading_policy_strategy_action_formulation` exposes
+`STRATEGY_ACTION_FORMULATION.analyze(input).to_dict()`, under
+`trading.causal_trading_policy_action_formulation.strategy.v1`. Existing #21,
+#22 and #23 v1 modules and contracts are unchanged.
+
+The input contains `action_policy_definition`, `strategy_assessment` and exact
+`assessment_input` reconstruction material. The policy definition uses contract
+`trading.causal_trading_policy_action_definition.strategy.v1`, a nonempty
+`policy_id`, positive integer `policy_version`, the complete `strategy_definition`,
+its `configuration_fingerprint`, and `declared_action` containing
+`action_type: DIRECTIONAL_ENTRY_INTENT` and the same direction as the strategy.
+
+This path delegates full reconstruction to the strategy owner, then checks exact
+definition/configuration/fingerprint/direction agreement. Only owner-valid
+COMPLETE assessments produce FORMULATED; all other lifecycle states produce
+NOT_FORMULATED with no action. The formulation carries the assessment's setup,
+completion and evaluation/knowledge bindings. It declares the policy's intent
+without evaluating strategy semantics itself. Every assessment and formulation
+retains false trade-decision, financial-risk and execution authority, and an
+explicit false execution flag. There is no account, sizing, risk or order logic.
+
+Real producer integration and adversarial contract tests are in
+`tests/test_xauusd_causal_liquidity_reversal.py`.
