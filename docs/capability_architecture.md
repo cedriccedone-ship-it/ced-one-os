@@ -1271,3 +1271,145 @@ percentage, permitted loss, FX, spread, commission, fees, financing, slippage,
 margin, compliance, authorization or execution is performed. Costs are excluded,
 not zero-filled. Authority remains exactly trade_decision=false,
 financial_risk=false, execution=false.
+
+## Candidate gross reference financial measurement v1
+
+`xauusd_candidate_gross_reference_financial_measurement.py` provides
+`XAUUSD_CANDIDATE_GROSS_REFERENCE_FINANCIAL_MEASUREMENT.analyze()` and
+`validate_candidate_gross_reference_financial_measurement()`.
+Contract: `trading.xauusd_candidate_gross_reference_financial_measurement.v1`;
+rule: `xauusd_candidate_gross_reference_financial_measurement_v1`.
+
+This deterministic, stateless assessment measures the hypothetical frozen
+entry-to-stop reference move under the instrument economics applicable at T1
+candle completion, using evidence available through K. Scenario identifier:
+`T1_COMPLETION_FROZEN_REFERENCE_V1`. Economic T is reconstructed candidate
+`valid_from`, checked against the opening-labelled T1 candle plus M1 duration.
+It is not actual entry, fill, receipt or order time. Point applicability suffices
+for this frozen-terms scenario; no holding-interval economics are asserted.
+Current candidate validity is neither consumed nor identity-bound. Later
+INVALIDATED/EXPIRED/UNKNOWN validity does not erase historical geometry.
+MEASURED never implies current actionability.
+
+### Exact input and local assertion
+
+Input fields are exactly `contract`, `rule_version`, `knowledge_boundary`,
+`candidate_formulation`, `formulation_input`, `applicability`,
+`applicability_input`, `bridge_assertions`. The frozen candidate formulation is
+reconstructed by its owner. Applicability must reconstruct through #28 v2 with
+its economic timestamp equal T and knowledge boundary equal K. All nested
+lifecycle and specification artifacts are owner-validated. Selected metadata is
+obtained from that reconstruction input and matched to the resolver's exact
+selected owner reference, never accepted as an independent substitute.
+
+Each bridge assertion has exactly:
+
+| Field | Meaning |
+| --- | --- |
+| `contract` | `CANDIDATE_FINANCIAL_PRICE_DOMAIN_BINDING_ASSERTION_V1` |
+| `assertion_revision_id` | Nonblank assertion revision identifier |
+| `source` | Exactly nonblank `source_id`, `source_contract`, `source_contract_version` |
+| `available_at` | Explicit timestamp, normalized to UTC, admitted by K |
+| `candidate_formulation` | Complete exact reconstructed frozen formulation |
+| `selected_specification` | Complete exact selected owner artifact, v1 or v2 |
+| `relationship` | `DIRECT_PRICE_DENOMINATION_COMPATIBILITY` |
+| `verdict` | `COMPATIBLE` or `INCOMPATIBLE` |
+
+Full formulation binding covers candidate identity, technical symbol, both exact
+T1/E1 references, original M1 source and upstream strategy/action provenance.
+It introduces no external feed identity. Full financial binding covers source
+revision, namespace, owner version, identity and dimensions. The assertion
+expressly covers both frozen references under the versioned numeric rule and
+selected price domain. No scaling, reciprocal transformation, unit conversion
+or hidden FX is supported. A known need for such transformation is expressed
+as INCOMPATIBLE, not as another supported relationship type.
+
+No bridge effective interval, registry, service or persistent lifecycle exists.
+Assertions refer to this exact candidate/specification subject. A bridge cannot
+claim a selected subject when the resolver selected none. Source assertions
+remain unauthenticated: `NOT_VERIFIED_BY_THIS_CAPABILITY`.
+
+Every supplied assertion is admitted evidence: `available_at > K` rejects,
+never filters. Empty collection means missing proof. Normalize timestamps,
+collapse only complete normalized duplicates, and sort by canonical complete
+content. Distinct provenance stays identity-significant. Same assertion revision
+identifier with differing normalized content rejects across the collection.
+COMPATIBLE and INCOMPATIBLE assertions together reject. Multiple compatible or
+multiple incompatible assertions retain their distinct provenance. There is no
+claim that supplied evidence exhausts all external sources.
+
+### Numeric interpretation and monetary meaning
+
+`CANDIDATE_PRICE_DECIMAL_INTERPRETATION_V1` interprets built-in integers exactly
+without float conversion; built-in finite floats through exact parsing of
+Python `repr`. Scientific notation is allowed only during parsing. Booleans and
+nonfinite numbers reject. Other owner-valid representations are unsupported,
+never coerced. The result is exact relative to this rule, not recovered original
+feed decimal precision.
+
+Arithmetic uses signed integer coefficients and decimal scales. Scale alignment,
+subtraction and multiplication are exact and independent of ambient Decimal
+precision. Canonical values are plain decimal strings, with unnecessary trailing
+fractional zeros removed and signed zero normalized. No rounding occurs.
+LONG distance is entry minus stop; SHORT distance is stop minus entry. No
+absolute-value repair is performed. Nonpositive interpreted distance rejects
+with `INTERPRETED_GEOMETRY_INCONSISTENCY`, which is not automatically an
+accusation of upstream tampering: mixed integer/float interpretation can collapse
+previously strict geometry.
+
+For MEASURED, exact selected metadata v2 must establish supported complete
+UNIFORM `LINEAR_SAME_CURRENCY_PAYOFF_V1` economics. Native P&L currency must equal
+price currency. Reference asset/unit and quantity unit must be established.
+Gross reference loss per quantity unit equals distance times the independent
+positive payoff coefficient. The reference-notional multiplier is not used or
+required. Output is a positive magnitude in P&L currency per quantity unit,
+not signed/realized P&L, executable loss, an account risk or a quantity-one trade.
+
+### Failure precedence and output
+
+Validate every supplied schema, owner artifact, subject binding and contradiction;
+validate causal admissibility; evaluate decisive blockers; otherwise evaluate
+missing proof; calculate only when all requirements pass. A blocker never hides
+malformed supplied evidence. T and the frozen upstream knowledge boundary must
+not exceed K.
+
+| Outcome | Meaning |
+| --- | --- |
+| `NOT_MEASURABLE` | Selected v1, explicit unsupported payoff model, NONUNIFORM scope, direct incompatibility, or owner-valid unsupported price representation |
+| `UNKNOWN` | No decisive blocker and missing bridge/payoff proof, PARTIAL economics, UNRESOLVED or NO_APPLICABLE_REVISION_ESTABLISHED |
+| `MEASURED` | Complete supported applicable compatible evidence and positive interpreted geometry |
+
+REJECT is a ValueError input/contract failure, not an outcome. In particular,
+selected v1 plus absent bridge is NOT_MEASURABLE; selected v1 plus malformed or
+post-K bridge rejects. No-applicable-revision remains source-relative, not a
+claim of universal absence. Unselected metadata cannot establish a selected
+payoff blocker.
+
+Output includes contract/rule/scenario/numeric interpretation, reconstructed
+candidate formulation, canonical assertions, reconstructed applicability,
+selected specification or null, T/K, interpreted entry/stop or null, distance
+or null, usable payoff coefficient or null, established P&L currency/quantity
+unit or null, outcome, ordered reasons, monetary result, source-authentication
+limitation, authority, exclusions and `assessment_identity`. Monetary result is
+null for every non-MEASURED outcome, never zero-filled.
+
+Decisive reasons are ordered: unsupported price representation, selected v1,
+unsupported payoff model, nonuniform payoff, direct incompatibility. If no
+blocker applies, missing reasons are ordered: unresolved/absent applicability or
+incomplete payoff, then missing bridge. Successful reason is
+`GROSS_REFERENCE_LOSS_MEASURED`.
+
+Identity hashes complete normalized output before adding its identity field.
+It binds actual selected content (including v1), explicit absence, evidence
+provenance and availability, scenario, interpretation, boundaries, outcomes and
+exclusions. Assertion permutations/exact duplicates normalize identically.
+Validation reconstructs complete output and rejects altered content even with a
+matching-looking identity. Results and validation returns provide detached copies.
+
+Authority remains `{trade_decision: false, financial_risk: false, execution: false}`.
+Excluded: current actionability, supplied-quantity loss, sizing, account binding,
+balance/equity, account risk, permitted loss/headroom, FX, spread, slippage,
+commission, swap, margin, executable bid/ask, tick/order rounding, quantity
+minima/maxima/steps, candidate compliance, trade authorization and execution.
+Costs are excluded rather than represented as zero. No existing production
+contract is modified.
