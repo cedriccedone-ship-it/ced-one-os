@@ -160,10 +160,10 @@ def _resolve(evidence: dict[str, Any], revisions: dict, economic: str, boundary:
     return "NO_APPLICABLE_REVISION_ESTABLISHED", None, ["NO_APPLICABLE_CANDIDATE_ESTABLISHED"]
 
 
-def _normalize(payload: Any) -> dict[str, Any]:
+def _normalize(payload: Any, *, contract=CONTRACT, rule_version=RULE_VERSION, validator=None) -> dict[str, Any]:
     _keys(payload, {"contract", "rule_version", "requested_knowledge_boundary", "economic_timestamp",
                     "lifecycle_evidence", "specification_revisions"})
-    for key, expected in (("contract", CONTRACT), ("rule_version", RULE_VERSION)):
+    for key, expected in (("contract", contract), ("rule_version", rule_version)):
         if type(payload[key]) is not str or payload[key] != expected:
             raise ValueError("Unsupported resolver contract or rule.")
     boundary = _timestamp(payload["requested_knowledge_boundary"])
@@ -178,8 +178,8 @@ def _normalize(payload: Any) -> dict[str, Any]:
     validated = []
     for entry in payload["specification_revisions"]:
         _keys(entry, {"snapshot", "snapshot_input"})
-        validated.append(metadata.validate_causal_financial_instrument_contract_metadata_snapshot(
-            entry["snapshot"], entry["snapshot_input"]))
+        validate = validator or metadata.validate_causal_financial_instrument_contract_metadata_snapshot
+        validated.append(validate(entry["snapshot"], entry["snapshot_input"]))
     required = set()
     for row in evidence["assertions"]:
         required.update(_references(row["statement"]))
@@ -208,7 +208,7 @@ def _normalize(payload: Any) -> dict[str, Any]:
     references = [{"revision": deepcopy(revisions[key]["specification"]["source"]),
                    "snapshot_reference": _artifact_reference(revisions[key])} for key in sorted(revisions)]
     return {
-        "contract": CONTRACT, "rule_version": RULE_VERSION, "identity_scope": "snapshot_deterministic",
+        "contract": contract, "rule_version": rule_version, "identity_scope": "snapshot_deterministic",
         "requested_knowledge_boundary": boundary, "economic_timestamp": economic,
         "target_namespace": deepcopy(evidence["target_namespace"]),
         "reporting_source": deepcopy(evidence["source"]),
@@ -257,3 +257,47 @@ def validate_causal_instrument_specification_applicability_resolver(value: Any, 
         return expected
     except (KeyError, TypeError, AttributeError, RecursionError) as exc:
         raise ValueError("Malformed serialized applicability resolution.") from exc
+
+
+CONTRACT_V2 = "trading.causal_instrument_specification_applicability_resolver.v2"
+RULE_VERSION_V2 = "causal_instrument_specification_applicability_resolver_v2"
+
+
+def _validate_metadata_version(value, snapshot_input):
+    from . import causal_financial_instrument_contract_metadata_snapshot_v2 as metadata_v2
+
+    supplied = value.to_dict() if hasattr(value, "to_dict") else value
+    if type(supplied) is not dict:
+        raise ValueError("Metadata artifact must be an object.")
+    contract = supplied.get("contract")
+    if contract == metadata.CONTRACT:
+        return metadata.validate_causal_financial_instrument_contract_metadata_snapshot(value, snapshot_input)
+    if contract == metadata_v2.CONTRACT:
+        return metadata_v2.validate_causal_financial_instrument_contract_metadata_snapshot_v2(value, snapshot_input)
+    raise ValueError("Unsupported metadata contract version.")
+
+
+class CausalInstrumentSpecificationApplicabilityResolverV2Analyzer:
+    def analyze(self, payload):
+        try:
+            result = _normalize(payload, contract=CONTRACT_V2, rule_version=RULE_VERSION_V2,
+                                validator=_validate_metadata_version)
+            return CausalInstrumentSpecificationApplicabilityResolverResult(
+                _hash_id("instrument_specification_applicability_resolution_v2_", result), result)
+        except (KeyError, TypeError, AttributeError, RecursionError) as exc:
+            raise ValueError("Malformed v2 applicability input.") from exc
+
+
+CAUSAL_INSTRUMENT_SPECIFICATION_APPLICABILITY_RESOLVER_V2 = CausalInstrumentSpecificationApplicabilityResolverV2Analyzer()
+
+
+def validate_causal_instrument_specification_applicability_resolver_v2(value, resolver_input):
+    """Validate exact versioned selection, including every owner's complete content."""
+    try:
+        supplied = value.to_dict() if hasattr(value, "to_dict") else value
+        expected = CAUSAL_INSTRUMENT_SPECIFICATION_APPLICABILITY_RESOLVER_V2.analyze(resolver_input).to_dict()
+        if json.dumps(supplied, sort_keys=True, allow_nan=False) != json.dumps(expected, sort_keys=True, allow_nan=False):
+            raise ValueError("V2 applicability content or input binding mismatch.")
+        return expected
+    except (KeyError, TypeError, AttributeError, RecursionError) as exc:
+        raise ValueError("Malformed serialized v2 applicability resolution.") from exc

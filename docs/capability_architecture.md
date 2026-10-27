@@ -1161,3 +1161,113 @@ plus `execution: false`. Technical VALID is not financial or account admissibili
 No account/provider/environment, quantity, risk percentage, margin, funded-account
 result, TP or trade management is added. Later account-bound consumers must bind
 the immutable candidate and current owner-valid validity result independently.
+
+## Payoff-bearing instrument metadata v2
+
+`causal_financial_instrument_contract_metadata_snapshot_v2.py` owns contract
+`trading.causal_financial_instrument_contract_metadata_snapshot.v2`, rule
+`causal_financial_instrument_contract_metadata_snapshot_v2`. The v1 owner and
+public contract remain unchanged. V2 is one complete source revision, not a v1
+artifact relabeled or accompanied by a separately selected payoff attachment.
+
+The exact input retains `contract`, `rule_version`,
+`requested_evaluation_timestamp`, and `specification`. Specification retains all
+v1 fields and adds exactly `payoff`: `model`, `payoff_units_per_quantity_unit`,
+`pnl_currency`, `uniformity`. Model, coefficient and P&L currency may be null;
+uniformity is required and exactly UNIFORM, NONUNIFORM or UNKNOWN. Source,
+six-field position namespace, reference economics and timing are reused.
+
+The sole supported model is `LINEAR_SAME_CURRENCY_PAYOFF_V1`. For future
+consumers, LONG signed change is exit minus entry; SHORT is entry minus exit.
+Gross reference P&L is signed change times the constant positive payoff
+coefficient times positive quantity magnitude. Prices have dimensions C/R,
+coefficient R/Q, quantity Q, result C. Reference asset/unit and price currency
+come from reference economics; Q is the namespace quantity unit. Explicit
+`pnl_currency` must equal known `price_currency`; mismatch rejects, never converts.
+P&L currency does not establish settlement currency. The model is symmetric,
+entry-level-independent and linear in finite-decimal fractional quantities,
+without an executability claim. Reciprocal, nonlinear, asymmetric, tiered,
+cross-currency and undocumented transformed payoffs are unsupported.
+
+`reference_units_per_quantity_unit` and `payoff_units_per_quantity_unit` are
+independent assertions. Neither is derived from the other, even when equal.
+Reference `model_support`/`completeness` retain their existing meaning.
+Payoff completeness does not depend on the reference-notional multiplier.
+
+UNIFORM explicitly asserts economics uniform across the entire six-field
+namespace. NONUNIFORM declares material variation that namespace cannot
+represent; UNKNOWN does not establish uniformity. No account ID is added.
+Missing account ID never proves uniformity. The source revision identifies the
+whole declaration; owner validation checks supplied consistency, not external
+truth. Source authentication remains `NOT_VERIFIED_BY_THIS_CAPABILITY`.
+
+V2 adds derived output `payoff_model_support` and `payoff_completeness`:
+
+| Declaration | Support | Completeness |
+| --- | --- | --- |
+| Recognized, UNIFORM, required values/dimensions present | SUPPORTED | COMPLETE |
+| Recognized, UNIFORM, required evidence missing | SUPPORTED | PARTIAL |
+| Recognized, UNKNOWN uniformity | SUPPORTED | PARTIAL |
+| Recognized, NONUNIFORM | UNSUPPORTED | COMPLETE or PARTIAL by supplied evidence |
+| Unknown nonempty model | UNSUPPORTED | UNAVAILABLE |
+| Null model | UNAVAILABLE | UNAVAILABLE |
+
+Unknown/null models require null coefficient and P&L currency. Recognized
+models require coefficient, P&L currency, reference asset, reference unit and
+price currency for completeness. Malformed supplied values reject even for
+unsupported scope. A usable interpretation requires SUPPORTED plus COMPLETE
+plus separate applicability; no state implies freshness, authenticity,
+executability, compliance or authorization. Missing economics never becomes zero.
+
+Financial numbers use canonical plain decimal strings: no exponents, floats,
+bools, whitespace, leading plus or nonfinite values. Trailing fractional zeros
+and signed zero normalize; zero/negative payoff coefficients reject. No rounding
+or candidate arithmetic occurs. Future arithmetic must preserve exact finite
+Decimal results independently of ambient precision; candidate-number conversion
+and any later explicit tick/currency rounding rules are outside this owner.
+
+Identity binds the complete normalized v2 result, including all source,
+namespace, timing, reference/payoff content, uniformity, derived statuses,
+requested evidence boundary, limitations and false authority. Equivalent
+normalized inputs agree; changes in economic meaning change identity. Owner
+validation reconstructs and compares complete content, rejects substitutions,
+and returns detached content. Candidate identity, quantity and a particular
+applicability T/K result are absent.
+
+### Versioned applicability under the existing owner
+
+The existing applicability module adds `CONTRACT_V2`, `RULE_VERSION_V2`,
+`CAUSAL_INSTRUMENT_SPECIFICATION_APPLICABILITY_RESOLVER_V2` and
+`validate_causal_instrument_specification_applicability_resolver_v2`.
+Contract/rule are `trading.causal_instrument_specification_applicability_resolver.v2`
+and `causal_instrument_specification_applicability_resolver_v2`.
+Input/output fields and lifecycle algorithm retain their existing meanings.
+V1 behavior is unchanged and does not accept v2 metadata.
+
+The v2 entry point dispatches v1/v2 metadata to the exact owner validator and
+retains each owner's contract, rule, snapshot identity and complete-content
+fingerprint. Mixed lifecycle collections may transition from v1 to v2. Selecting
+v1 does not provide payoff semantics. Unknown versions, relabeling, tampering,
+input disagreement and duplicate source revision representations (including
+v1/v2 collisions) reject. Applicability does not itself test payoff completeness.
+
+Lifecycle evidence v1 is unchanged: its references identify whole economic
+revisions. Payoff changes require a distinct source revision. A stateless owner
+cannot detect undisclosed historical revision reuse. Resolution remains
+source-relative, without global governing precedence. The fact exposes timing;
+the future consumer chooses economic T for its claim, and the resolver applies
+supplied T/K. No candidate economic time is chosen here.
+
+### Deferred bridge and exclusions
+
+A later financial measurement must establish evidence-backed compatibility of
+technical symbol and source/data-contract domain with the financial namespace,
+selected payoff-bearing revision, price denomination, provenance and temporal
+scope. Matching XAUUSD strings is insufficient. No bridge, registry or symbol
+resolver is implemented here.
+
+No candidate P&L/loss, sizing, account state, current market price, account risk
+percentage, permitted loss, FX, spread, commission, fees, financing, slippage,
+margin, compliance, authorization or execution is performed. Costs are excluded,
+not zero-filled. Authority remains exactly trade_decision=false,
+financial_risk=false, execution=false.
