@@ -1413,3 +1413,187 @@ commission, swap, margin, executable bid/ask, tick/order rounding, quantity
 minima/maxima/steps, candidate compliance, trade authorization and execution.
 Costs are excluded rather than represented as zero. No existing production
 contract is modified.
+
+## RESEARCH-ONLY — XAUUSD reference trade management experiment v0.1
+
+`xauusd_reference_trade_management_experiment.py` is an additive, deterministic
+research evaluator. It is not part of the authoritative production BUY/SELL
+chain. It does not change Strategy #1, Technical Trade Candidate, current
+candidate validity, financial measurement, #24–#29, Mission Control or execution.
+It asks when a frozen candidate's protective reference stop should advance.
+There is no account sizing, quantity, daily-loss gate, partial close, financial
+P&L, optimizer, persistent replay, or broker order/fill model.
+
+The public functions are `evaluate_reference_scenario(request)`,
+`validate_reference_scenario(assessment, request)`,
+`aggregate_reference_experiment(request)` and
+`validate_reference_experiment(assessment, request)`. Detached validators fully
+reconstruct their result; supplied identities never replace validation.
+Contracts use `trading.xauusd_reference_trade_management_experiment` followed by
+`.policy.v1`, `.scenario.v1`, `.aggregate.v1`, or `.dataset_relationship.v1`.
+The experiment rule is `xauusd_reference_trade_management_experiment_v1`; the
+relationship rule is `xauusd_reference_trade_management_dataset_relationship_v1`.
+Policy values are frozen constants, not an optimization configuration surface.
+
+### Frozen experiment and causal observation
+
+All variants use the same owner-reconstructed candidate and original directional
+R: entry minus initial stop for LONG, initial stop minus entry for SHORT. The
+exact interpreted distance must be positive. BE and +1R/+2R/+3R remain anchored
+to that immutable distance. A keeps its initial stop. B advances to BE after
++1R. C advances to BE after +1R and to +1R after +2R. D and E use C's stages but
+require an eligible M1 or M5 directional pivot gate respectively. The target is
+always +3R; it is not an optimal-target claim.
+
+T is candidate `valid_from`, the frozen T1 completion. H is T plus exactly
+1440 elapsed minutes. Eligible M1 intervals open at T or later and complete no
+later than H. The T1-producing candle and the interval opening at H are excluded.
+Entry eligibility expiry is not an open-position timeout. Missing candles do not
+pause or extend H. This is a predeclared research observation duration only.
+
+M1 owns all stop, milestone, target and gap observations. Equality is a touch.
+Each completed interval first evaluates the previously active stop and target.
+An opening already terminal uses the opening as its reference simulation mark;
+otherwise an intrabar terminal touch uses the exact terminal level. Neither is
+a fill claim. Opening-derived milestones are established at completion, only if
+the interval survives. All reached milestones latch, the highest permitted stop
+stage is selected, and activation begins with the next M1 interval. A newly
+selected stop already beyond the close is evaluated at the next opening.
+
+D/E use the strict three-consecutive-candle pivot predicate: LONG center low
+below both neighbors; SHORT center high above both neighbors. Comparisons use
+exact interpreted prices locally, without changing MarketStructureAnalyzer.
+The center must open at or after T; its following candle must complete strictly
+after first +1R establishment. Equal-boundary confirmation is permanently
+ineligible. M5 contributes only E's gate. On gate opening, previously latched
++2R permits immediate completion-time catch-up to the +1R stop. No pivot or
+management protection is backdated.
+
+### Exact inputs and research relationship assumptions
+
+A scenario request has exactly `contract`, `rule_version`, `variant`,
+`candidate_formulation`, `formulation_input`, `research_boundary` and `evidence`.
+Evidence contains `m1`, `m5` (null except where supplied for E), and `declarations`.
+Source artifacts follow the existing causal snapshot contract; bounded histories
+include the frozen T1 anchor and required pivot warm-up. The research boundary
+must be at least H. Every supplied artifact is validated before replay, including
+content that would follow an early terminal event. Overlapping original M1
+history cannot replace the frozen source content.
+
+Prices accept only built-in integers and finite built-in floats interpreted
+through decimal `repr`. Bool, numeric subclasses, strings and Decimal inputs are
+rejected. Exact rational arithmetic is equivalent to integer coefficient/scale
+arithmetic for these finite-decimal prices and derived levels. Exact OHLC
+validation supplements existing source validation. Ratios serialize as reduced
+`numerator`/`denominator`, positive denominator, numerator sign, and zero `0/1`.
+Undefined metrics are null. Decimal context and display rounding cannot affect
+branching, results or identities.
+
+Relationship declarations are explicit, non-authenticated research assumptions.
+They do not prove external feed identity. Exactly two types are supported:
+`CANDIDATE_ORIGIN_TO_M1_SAME_RESEARCH_PRICE_DOMAIN` and
+`M1_TO_M5_COMMON_RESEARCH_DATASET`. The latter asserts a common research price
+domain, dataset lineage and compatible declared grids; it does not assert that
+M5 was aggregated from M1. Symbol/value/timestamp coincidences are insufficient.
+
+Each declaration has exact fields: `contract`, `rule_version`, `declaration_id`,
+`declaration_revision`, `relationship_type`, `source_namespace`,
+`dataset_revision`, `price_domain`, `available_at`, `subject_bindings`,
+`timeframe_grid_bindings`, `coverage_declarations`, `declaration_provenance`,
+`authority`. Provenance contains `declarant_namespace` and `record_id`.
+Revision is a positive built-in integer. The candidate-origin binding includes
+complete formulation SHA256, reconstruction-input SHA256, candidate identity,
+original M1 source reference, and explicitly both entry/stop reference fields.
+Observation bindings include contract/rule, symbol/timeframe, snapshot identity
+and full-artifact SHA256. All bindings are recomputed against supplied evidence.
+
+Grid bindings contain timeframe, anchor opening and fixed duration (60 or 300
+seconds). Equivalent anchor phases normalize against the UTC epoch. An M5
+anchor must lie on the declared M1 grid; UTC modulo-five alignment is not
+assumed. Per-timeframe coverage contains `requested_start`, `requested_end`,
+`declared_coverage_start`, `declared_coverage_end`, and nullable `dataset_end`.
+Coverage is half-open and requested coverage includes warm-up through H. A
+coverage assertion never supplies missing candles. The last supplied candle
+never establishes dataset end, and candles beyond a declared endpoint reject.
+
+Declarations support only boundaries at or after `available_at`. Availability
+itself is asserted research provenance. Post-research-boundary declarations
+reject. Missing candidate-to-M1 compatibility censors at the first required
+completed M1 interval. E's relationship/structural evidence censors only when it
+could change the next active stop; unbound M5 values cannot prove "no pivot."
+An established gate survives later irrelevant gaps. Later declarations cannot
+repair earlier consequential absence. All declarations are checked for conflict
+before replay: higher revisions do not supersede contradictions. Exact duplicates
+collapse; distinct consistent provenance remains significant.
+
+Declaration authority is exactly false for `authenticated_source_truth`,
+`trade_decision`, `financial_risk` and `execution`. Scenario/aggregate authority
+is false for trade decision, financial risk and execution, with `execution=false`.
+
+### Outcomes, shared paths and excursions
+
+Completion statuses are RESOLVED, AMBIGUOUS, HORIZON_CENSORED,
+MISSING_DATA_CENSORED and END_OF_DATA_UNRESOLVED. An internal hole differs from
+reaching an explicitly declared dataset endpoint. Missing structural evidence is
+consequential only when its unknown predicate could change the next stop. A known
+neighbor that already disproves the strict predicate can make another missing
+neighbor irrelevant. No structural dependency solely after H prevents horizon
+censoring. Established terminals survive subsequent missing data; malformed
+supplied data still rejects the entire request.
+
+Mechanisms INITIAL_RISK_STOP, BREAK_EVEN_STOP, PROTECTED_PROFIT_STOP and
+FINAL_TARGET are separate from economic sign; censored scenarios use NONE.
+A BE opening mark can be negative R. Censoring creates no terminal mark, zero R,
+or invented eventual bounds. Same-bar unresolved stop/target order retains
+complete terminal alternatives with mark, exact R, occurrence kind, completion
+boundary, supporting candle, ordering condition and excursion lower bounds.
+
+Paired comparisons share the same candle evidence and nested adverse barriers.
+Compatibility excludes target-before-nearer-stop paired with farther-stop-before-
+target, and requires equal stop barriers to agree. This small first-touch ordering
+calculation preserves shared paths without a generic path solver.
+
+MAE/MFE start at zero. Completed nonterminal intervals contribute full extremes.
+Terminal intervals contribute only their opening and branch-specific terminal
+mark. Values are labelled CONSERVATIVE OBSERVED-PREFIX LOWER-BOUND EXCURSIONS;
+branch ranges describe uncertainty in these lower bounds, not upper bounds on
+actual full-path excursions. Censored scenarios retain their observed prefix.
+Retained-MFE is not a primary metric.
+
+### Cohorts, identities, metrics and leakage restrictions
+
+Aggregate requests contain `contract`, `rule_version`, `cohort` (candidate
+identities), `scenarios` (assessment/request pairs), and `partitions`. Every
+candidate requires exactly one validated A–E scenario. All five share the same
+candidate reconstruction, normalized M1 artifact and normalized base declaration
+set. E alone may add M5 evidence/declarations. Missing, rejected, duplicate or
+inconsistent members do not silently shrink the cohort.
+
+Scenario identity hashes complete normalized assessment content, including
+reconstruction input, source artifacts, declarations, frozen policy, exact terms,
+transitions, coverage, reasons, alternatives and metrics. Accepted raw numeric
+representations remain in provenance. Aggregate identity binds the complete
+validated matrix, cohort, partitions, policy, counts and results. Unordered sets
+normalize deterministically; candle chronology remains significant. Existing
+snapshot IDs and declaration IDs alone are never trusted as full fingerprints.
+
+Per-variant metrics report status counts, resolved coverage, resolved mechanism
+counts, resolved-subset mean R and median, excursion summaries with denominators,
+and full-cohort terminal mean bounds only when every member has terminal
+alternatives. Paired results include compatible alternatives, exact delta bounds,
+jointly assessable counts, and definite/possible/indeterminate/no mechanism and
+economic loss avoidance. Economic loss avoidance requires A negative and the
+comparison nonnegative on compatible paths. Censoring is not treated as avoidance.
+Mean and expectancy are one field, not duplicate statistics.
+
+Drawdown is a secondary DESCRIPTIVE RESOLVED-SCENARIO CLOSED-R DRAWDOWN. Resolved
+increments sharing a terminal evidence-completion time are summed before the
+cumulative update. Coverage is explicit. Overlapping scenarios are independent
+references, not an executable shared-account equity curve.
+
+Partitions are named, nonoverlapping half-open UTC entry intervals with optional
+selection boundaries. Entry T assigns membership. Selection requires H <= B and
+all validated evidence used by the assessment available by B. Later retrospective
+outcomes remain descriptive and cannot enter earlier selection statistics. There
+is no walk-forward/optimization machinery. Primary policy and 1440-minute horizon
+remain frozen; secondary sensitivity analysis cannot redefine the primary result.
