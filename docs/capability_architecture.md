@@ -1062,3 +1062,102 @@ explicit false execution flag. There is no account, sizing, risk or order logic.
 
 Real producer integration and adversarial contract tests are in
 `tests/test_xauusd_causal_liquidity_reversal.py`.
+
+## XAUUSD technical trade candidate v1
+
+`xauusd_technical_trade_candidate.py` implements one strategy-specific owner for
+unsized, account-independent technical candidate formulation and current validity
+reconstruction. It does not modify Strategy #1 or the strategy-aware #23 contract.
+It supplies technical references only: no financial approval, authorization,
+executable fill, quantity, order or execution semantics.
+
+The singleton is `XAUUSD_TECHNICAL_TRADE_CANDIDATE`. Its `analyze()` method accepts
+exactly `candidate_policy_definition`, `strategy_assessment`, `action_formulation`
+and `action_formulation_input`. The last field is the original #23 reconstruction
+input, including original strategy reconstruction material. The #23 analyzer
+delegates strategy reconstruction to its existing owner. This owner compares the
+complete reconstructed #23 artifact and requires its embedded assessment to equal
+the supplied COMPLETE assessment. It does not implement strategy detection again.
+
+The policy has exactly `contract`, `policy_id`, `policy_version`, `configuration`.
+Its contract is `trading.xauusd_technical_trade_candidate.policy.v1`; ID is a
+nonempty string, version a positive integer, and configuration contains exactly
+`entry_validity_duration_seconds`, an explicit positive integer elapsed duration.
+There is no default trading duration, price buffer or tick-size normalization.
+
+Formulation contract: `trading.xauusd_technical_trade_candidate.formulation.v1`.
+Candidate contract: `trading.xauusd_technical_trade_candidate.v1`.
+Validity contract: `trading.xauusd_technical_trade_candidate.validity.v1`.
+All use rule version `xauusd_technical_trade_candidate_v1`.
+
+The formulation result contains `contract`, `rule_version`,
+`candidate_policy_definition`, `upstream_formulation`, `m1_origin_source`,
+`formulation_status`, `candidate`, `reason`, `authority`, and `execution`.
+The original #23 artifact (including its StrategyAssessment) and original #13 M1
+snapshot are frozen provenance. A candidate contains their content fingerprints,
+the policy fingerprint, original assessment/formulation identities, reconstructed
+strategy ID/version, instrument/direction and setup/completion identities.
+`entry_reference` and `stop_reference` each contain `kind`, `value`, and the exact
+bound event `evidence`. Entry is `TECHNICAL_ENTRY_REFERENCE`: T1's completed close.
+Stop is `TECHNICAL_STOP_REFERENCE`: E1's low for LONG or high for SHORT. These
+numeric values are preserved from the owner-valid evidence without financial
+denomination conversion or executable-order interpretation.
+
+LONG requires entry strictly above stop; SHORT requires entry strictly below stop.
+Failure returns `NOT_FORMULATED`, null candidate and
+`ENTRY_STOP_GEOMETRY_NOT_ADMISSIBLE`. It does not create an INVALIDATED candidate
+or change historical COMPLETE. Successful formulation returns `FORMULATED` and
+`CANDIDATE_FORMULATED`. Non-COMPLETE upstream input or inconsistent, forged or
+malformed artifacts reject with `ValueError`.
+
+The candidate also carries `entry_validity_duration_seconds`, `valid_from`
+(T1 availability), derived `valid_until`, authority/execution fields and
+`candidate_identity`. Identity hashes the complete candidate without its own ID,
+including full-content policy/upstream/origin fingerprints. Exposed aliases are
+reconstructed, never separately editable inputs. Current evaluation time and
+status are excluded from this immutable identity.
+
+`evaluate_validity()` accepts exactly `candidate_formulation`, `formulation_input`,
+`evaluation_boundary`, and `m1_source`. It reconstructs the frozen formulation
+from its original inputs. K cannot predate the original upstream knowledge
+boundary or T1 availability. The current #13 source must be XAUUSD M1 at K.
+Its snapshot ID may differ from the original: legitimate extension changes IDs.
+All supplied completed candles must follow the original one-minute grid, and
+timestamp/OHLC content must agree wherever current and original histories overlap.
+The current source must retain the exact T1 anchor; missing anchor is UNKNOWN,
+conflicting content rejects. The frozen original reconstruction material supplies
+the strategy context; the continuation need not repeat unrelated earlier candles.
+
+Required post-T1 intervals start at `valid_from` and complete no later than
+`min(K, valid_until)`. They must be exactly adjacent. A missing required completed
+interval is UNKNOWN; an unfinished interval is excluded. No calendar assumptions
+or gap bridging occur. LONG low strictly below stop, or SHORT high strictly above
+stop, establishes a breach at that M1 completion. Equality does not breach.
+The first breach wins, including completion exactly at expiry. A candle completing
+after expiry cannot backdate its extreme even if it opened before expiry.
+
+Without a breach and with sufficient evidence, status is VALID for K at or before
+`valid_until`; it is EXPIRED only for K strictly after that threshold. EXPIRED
+reports `terminal_boundary = valid_until`; this is the expiry threshold, not a
+claim that EXPIRED applied at the inclusive endpoint. INVALIDATED reports the
+first breach completion. VALID and UNKNOWN have null terminal boundaries. Gaps
+after a proven terminal event do not erase it; later breaches cannot replace
+EXPIRED. Consistent missing evidence can resolve UNKNOWN in a new evaluation.
+There is no independent post-T1 Q1 predicate or post-T1 M5 input requirement.
+
+Validity output contains exactly `contract`, `rule_version`, `candidate_identity`,
+`evaluation_boundary`, the complete supplied validated `m1_source`, `status`,
+`reason`, `terminal_boundary`, `authority`, and `execution`. No separate evaluation
+identifier or persistent state is introduced. The validators
+`validate_technical_candidate_formulation(value, formulation_input)` and
+`validate_technical_candidate_validity(value, validity_input)` reconstruct and
+compare complete canonical content, including evidence and types. Outputs and
+validator returns are detached copies. Source consistency is not feed
+authentication; this stateless owner cannot detect an unsupplied earlier revision
+or independently authenticate when a source correction was learned.
+
+Every result retains false trade-decision, financial-risk and execution authority,
+plus `execution: false`. Technical VALID is not financial or account admissibility.
+No account/provider/environment, quantity, risk percentage, margin, funded-account
+result, TP or trade management is added. Later account-bound consumers must bind
+the immutable candidate and current owner-valid validity result independently.
