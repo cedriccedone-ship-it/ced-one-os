@@ -1597,3 +1597,208 @@ all validated evidence used by the assessment available by B. Later retrospectiv
 outcomes remain descriptive and cannot enter earlier selection statistics. There
 is no walk-forward/optimization machinery. Primary policy and 1440-minute horizon
 remain frozen; secondary sensitivity analysis cannot redefine the primary result.
+
+## Causal Account-Specific Risk Policy Evaluation v1
+
+`xauusd_account_specific_risk_policy_evaluation.py` adds deterministic,
+read-only, causal **pre-quantity policy evaluation** after facts and derived
+financial measurements, before authorization/decision and execution. It does
+not extend or mutate #23–#29, Strategy #1, candidate formulation, financial
+measurement, reference experiments, Mission Control or execution.
+
+Public functions are `evaluate_account_specific_risk_policy(request)` and
+`validate_account_specific_risk_policy(assessment, request)`. The assessment
+contract is `trading.xauusd_account_specific_risk_policy_evaluation.v1`, with
+rule `xauusd_account_specific_risk_policy_evaluation_v1`.
+
+### Inputs and reconstruction
+
+The exact request contains `contract`, `rule_version`,
+`assessment_economic_time`, `knowledge_boundary`, `operation_mode`,
+`account_state`, `candidate`, `financial_measurement`, `account_rule_regime`,
+`own_policy`, `timezone_evidence`, `actual_trade_evidence`, `trade_coverage`,
+`financial_compatibility` and `provider_operands`.
+
+The four upstream pairs contain respectively `snapshot`/`snapshot_input`,
+`formulation`/`formulation_input`, `assessment`/`measurement_input` and
+`assessment`/`assessment_input`. Public owner validators reconstruct every
+artifact; detached IDs are insufficient. The measurement must reconstruct the
+same candidate and original formulation input. One #24 snapshot binds the
+account/source/environment, account currency and current measures. Candidate
+direction determines ENTRY_LONG or ENTRY_SHORT; no separate caller action is
+accepted. Operation mode is MANUAL or AUTOMATED.
+
+Nested serialized evidence contracts belong only to this evaluator:
+
+| Evidence | Contract | Rule |
+| --- | --- | --- |
+| Own policy | `trading.xauusd_account_specific_risk_policy_evaluation.policy.v1` | `own_account_risk_policy_v1` |
+| Actual trade | `trading.account_actual_trade_outcome_evidence.v1` | `account_actual_trade_outcome_evidence_v1` |
+| Coverage | `trading.account_actual_trade_outcome_coverage.v1` | `account_actual_trade_outcome_coverage_v1` |
+| Reference compatibility | `trading.xauusd_account_specific_risk_policy_evaluation.reference_compatibility.v1` | `frozen_reference_account_compatibility_v1` |
+
+These are bounded local evidence structures, not standalone ledger, accounting,
+calendar, FX or risk services. Source provenance is retained and bound; this
+capability does not authenticate external source assertions.
+
+### Fixed own policy and temporal admissibility
+
+`OWN_EQUITY_RISK_POLICY_V1` uses only #24
+`observation.account_measures.equity` and `observation.account.currency`.
+Target and maximum fractions are both exactly `0.01`; for admissible positive
+equity E, both monetary budgets are E/100. Integer-rational arithmetic avoids
+floating point and ambient Decimal precision. Financial results serialize as
+canonical plain decimals, including zero. Nonpositive admissible equity fails;
+missing or stale equity is UNKNOWN, with no balance/free-margin substitution.
+The budget is not a claim of provider-safe headroom.
+
+Own policy binds ID/revision, account, effective interval, availability,
+provenance, equity admissibility and timezone artifact. EXACT_TIME requires
+T_account = T_assessment. MAX_AGE requires an explicit nonnegative built-in
+integer `maximum_age_microseconds`, excludes bool, and admits equality at the
+limit. There is no default age. A policy outside its effective half-open
+interval leaves own-policy gates UNKNOWN.
+
+T_account <= T_assessment <= K. Account evidence and measurement knowledge
+boundaries must be no later than K; #29 economic time and K must exactly match
+the request. All admitted local evidence must be available by K. T1 and the
+financial measurement's historical economic scope remain unchanged. K greater
+than T_assessment means an as-known-at-K assessment of that economic instant,
+not a reconstruction of knowledge available at T_assessment. A later decision
+has a separate semantic role even if its timestamp equals T_assessment.
+
+### Amsterdam day and actual trades
+
+`OWN_POLICY_TRADING_DAY_EUROPE_AMSTERDAM_V1` uses the local civil date of
+T_assessment, local midnight inclusive through next local midnight exclusive.
+The policy binds Europe/Amsterdam, `tzdb_release` and exact `tzif_sha256`.
+Request evidence supplies those fields plus strict `tzif_base64`, provenance
+and availability. The evaluator verifies the digest and policy binding and
+loads only those bytes with `ZoneInfo.from_file`. No host timezone fallback or
+new dependency exists. Independently constructed consecutive local midnights
+preserve 23-hour and 25-hour DST days. Tests embed a fixed Amsterdam TZif artifact
+inside the authorized test module.
+
+Actual close time assigns each completed episode to the day. Relevant closes
+satisfy day_start <= close <= T_assessment, with the day end exclusive. The
+`SINGLE_ENTRY_SINGLE_TERMINAL_EXIT_TRADE_UNIT_V1` supports one logical entry and
+one complete terminal exit, with no scale-in, partial exit or mixed exit.
+Explicit structured source evidence binds group identity, role, interpretation
+and execution membership; multiple fills can constitute a single logical group.
+No grouping is inferred from price, symbol or proximity. Underlying execution
+reuse across independent episodes or roles rejects. Unsupported scale-in,
+partial/mixed exits, netting and reversals remain visible unresolved population.
+
+Terminal attribution separately binds the complete terminal group, original
+protective instruction revision/content, and supporting causal interpretation.
+INITIAL_PROTECTIVE_STOP differs from BREAK_EVEN_STOP, PROTECTED_PROFIT_STOP,
+AMENDED_STOP, TARGET, MANUAL and OTHER. UNRESOLVED cannot assert a causal proof.
+Price equality or negative economics cannot establish original-stop causation;
+a gap execution can qualify through the same explicit causal evidence.
+
+`ACTUAL_REALIZED_NET_PNL_FINAL_V1` binds the episode, terminal group,
+interpretation/version, status, amount/currency, provenance and availability.
+FINAL_COMPLETE requires source evidence that all required economic components
+are incorporated and cannot predate the close. PROVISIONAL and UNAVAILABLE
+remain distinct; provisional negative results do not establish qualifying losses.
+No broker accounting or commissions ledger is reconstructed here.
+
+### Corrections, coverage and daily threshold
+
+`AS_KNOWN_AT_K_REASSESSABLE_DAILY_GATE_V1` validates every supplied revision
+before selecting a unique effective successor. Corrections bind both predecessor
+identity and complete predecessor content. Exact duplicates collapse; conflicting
+revision identities, missing/cross-trade predecessors, branches, cycles,
+backwards availability and post-K evidence reject. Arrival order or a larger
+revision number cannot supersede evidence. Later correction can change mechanism,
+net economics or close/day assignment without rewriting an earlier assessment.
+There is no persistent daily latch.
+
+Coverage binds account/source, ID/revision, availability, trade-unit model, exact
+own-policy day, requested and covered close intervals with explicit endpoint
+inclusion, inventory completeness, effective population references, unresolved
+population and correction cutoff. Adequate coverage includes closes exactly at
+T_assessment and establishes correction completeness through K. Complete
+inventory must include all supplied relevant effective members, including
+unsupported structures; supported-subset completeness is not account-wide
+completeness. Inventory completeness does not imply classification completeness.
+An empty list without adequate coverage proves nothing.
+
+`OWN_DAILY_INITIAL_RISK_STOP_LOSS_GATE_V1` classifies each effective episode as
+qualifying, nonqualifying or potentially qualifying. Only a supported completed
+original initial-stop episode with FINAL_COMPLETE negative net economics counts.
+Other mechanisms do not count merely because they lose money. Wins never reset
+prior qualifying losses. At least two established qualifying losses fail the
+gate. Adequate coverage with a possible qualifying upper bound below two
+satisfies it; otherwise it is UNKNOWN. Incomplete account coverage or unsupported
+inseparable population yields an explicit unbounded upper bound. Two established
+losses remain decisive while every other gate and all supplied material are
+still validated and reported.
+
+### Frozen-reference compatibility and provider policy
+
+Compatibility assertions bind complete reconstructed account, candidate,
+measurement and selected specification content, quantity unit, both currencies,
+T_assessment/K, intended use, source, revision and availability. The only supported
+use is `PRE_QUANTITY_FROZEN_REFERENCE_RISK_CALCULATION`, in the same currency.
+Missing assertions, unsupported measurement or currency conversion needs are
+UNKNOWN. Wrong subjects or contradictory supplied assertions reject. This does
+not establish current executable prices, spread, slippage, instrument economics,
+guaranteed loss or execution permission.
+
+Provider policy is separate from own policy. The selected approved #29 regime
+and complete rule coverage are required. Local tagged operands bind exact rule
+content, account/context, source, availability, effective interval and structured
+support. Tags are MEASURE_BINDING, INITIAL_REFERENCE, RESET_ANCHOR,
+COST_ADJUSTMENTS, ACCOUNT_FACT, POSITION_COUNT_CONTEXT and INSTRUMENT_BINDING.
+Conflicting values for a required role reject; no precedence resolver or implicit
+zero costs exist. Exact instrument scope requires a candidate/provider instrument
+binding. Unknown rule effects and relevant unsupported mandatory rules remain
+UNKNOWN; later lifetime rules remain obligations.
+
+| #29 type | Pre-quantity handling |
+| --- | --- |
+| INSTRUMENT_ACTION_PERMISSION | Candidate-derived action and established instrument scope; explicit prohibition fails. |
+| AUTOMATION_PERMISSION | Match explicit operation mode; applicable prohibition fails. |
+| ACTION_WINDOW | Preserve #29 half-open schedules and permitted-only/prohibited intervals; absent schedule coverage is UNKNOWN. |
+| ACCOUNT_STATE_REQUIREMENT | Bound required facts; false fails, missing/unresolved is UNKNOWN. |
+| STATIC_FLOOR | Bound current measure, exact absolute/initial-reference threshold, required costs and original strict/non-strict comparator. |
+| DAILY_RESET_FLOOR | As above plus exact provider reset interval/anchor and deduction; never substitute the own-policy Amsterdam day. |
+| CONCURRENT_POSITION_COUNT | Complete bound inventory and commitments plus established count effect; exact instrument scope filters positions only in a compatible source namespace. |
+| PER_POSITION_QUANTITY | Retain exact rule as downstream quantity obligation; final compliance is not evaluated. |
+| UNSUPPORTED | Relevant mandatory pre-quantity rule is UNKNOWN. |
+
+Missing non-quantity operands cannot become quantity-dependent obligations.
+Known current floor comparisons do not establish post-entry headroom; post-entry
+floor compliance remains an obligation. Quantity-dependent count effects defer
+only after inventory and commitments are established.
+
+### Results, identity and authority boundary
+
+Results retain account/candidate identity, T/K, complete reconstruction evidence,
+derived day, effective trade references, equity/daily gates and monetary budgets,
+compatibility, regime/rule results, reasons, supporting references and outstanding
+obligations. Gates use exactly SATISFIED, NOT_SATISFIED or UNKNOWN. Malformed,
+contradictory and causally inadmissible input instead raises ValueError. All
+supplied material is validated before policy evaluation; a conclusive failure
+cannot hide malformed material or unrelated unknown gates.
+
+Any conclusive applicable pre-quantity failure makes the overall result
+NOT_SATISFIED; otherwise any unresolved required gate makes it UNKNOWN;
+otherwise it is SATISFIED. Both failure and uncertainty block progression.
+SATISFIED is not authorization. Current candidate validity, current executable
+risk/instrument suitability, risk-constrained quantity selection and Mission
+Control authorization remain explicit downstream obligations.
+
+Assessment identity hashes complete canonical normalized content, excluding only
+its own identity field. Object keys are sorted, JSON is compact and finite,
+timestamps are UTC with six fractional digits, local set-like evidence has
+stable semantic ordering, and explicit predecessor links preserve correction
+relationships. Existing owner reconstruction inputs remain complete provenance.
+The detached validator re-evaluates the original request and compares the whole
+canonical assessment, never merely its supplied fingerprint.
+
+Authority is exactly false for `trade_decision`, `financial_risk`, and `execution`;
+`execution` is also false at the assessment level. No BUY/SELL authorization,
+quantity selection, reservation, order placement, research-scenario substitution
+for actual trades, generic ledger/FX service or runtime integration is introduced.
