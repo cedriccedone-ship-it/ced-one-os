@@ -1414,6 +1414,125 @@ minima/maxima/steps, candidate compliance, trade authorization and execution.
 Costs are excluded rather than represented as zero. No existing production
 contract is modified.
 
+## Current executable entry-to-stop risk basis v1
+
+`xauusd_current_entry_to_stop_risk_basis.py` exposes
+`evaluate_current_entry_to_stop_risk_basis(request, *, trusted_planning_context=None)`
+and `validate_current_entry_to_stop_risk_basis(assessment, request, *,
+trusted_planning_context=None)`. Contract:
+`trading.xauusd_current_entry_to_stop_risk_basis.v1`; rule:
+`xauusd_current_entry_to_stop_risk_basis_v1`. The capability is a point-in-time,
+deterministic, read-only financial measurement. It can establish a typed monetary
+loss function for a prospective immediate market entry and the original
+technical stop, conditional on an explicitly admitted planning scenario. It
+does not choose a quantity or authorize an order. Historical T1 measurement
+continues to describe the frozen historical reference, not current execution.
+
+The exact request fields are `contract`, `rule_version`,
+`assessment_economic_time`, `knowledge_boundary`, `candidate`, `validity`,
+`applicability`, `price_observations`, `scenario_evidence`, `planning_evidence`
+and `account_state`. Candidate, validity, #28 v2 applicability, each #26 price,
+selected payoff metadata v2 and optional #24 account evidence are reconstructed
+through their public owners with full input/artifact pairs. #28's selected
+revision is a source reference: the selected specification body is recovered
+from the validated resolver revisions. Historical policy source specifications
+are carried inside the local planning evidence, never added to #28's exact
+current-revision inventory. Candidate validity has no native assessment ID, so
+the local binding references its complete reconstructed content.
+
+Current economic time, validity evaluation time and knowledge boundary are the
+same instant K. Compare parsed UTC instants because technical candidate stamps
+and financial snapshot stamps have different fractional-second formatting.
+Financial owners preserve their own content and identifiers. Quote age uses the
+actual `price_time` and exact integer microseconds, with equality at the
+approved maximum admitted. An old receipt cannot refresh an old quote. #28
+must establish current applicability through K. Post-K admitted evidence
+rejects. The result is not a reusable authorization lease.
+
+For an established result, two owner-valid #26 observations provide one
+explicitly source-declared coherent BID/ASK event. Matching timestamps alone
+do not prove coherence. Both observations must match the selected financial
+namespace and denomination, have compatible supplier provenance, positive
+prices and `BID <= ASK`. The only supported entry mechanism is
+`IMMEDIATE_MARKET_ENTRY_SCENARIO_V1`, with output
+`order_entry_constraint=NONE`. The prospective LONG entry reference is ASK;
+SHORT is BID. No liquidity or fill guarantee follows from an observed quote.
+
+The frozen candidate stop S is interpreted under directly compatible financial
+price terms. A prospective LONG stop triggers on BID <= S; a SHORT stop on
+ASK >= S. These touch semantics differ from the candidate owner's completed-M1
+strict-breach validity rule. The current quote must be on the safe side of S.
+The original stop must lie exactly on the declared grid `(S-origin)/tick`, and
+the declared minimum trigger distance must be met without rounding or widening.
+No actual trigger or fill is inferred.
+
+Only complete, supported, uniform
+`LINEAR_SAME_CURRENCY_PAYOFF_V1` metadata v2 can establish the monetary
+expression. The payoff coefficient is `payoff_units_per_quantity_unit`, not
+the reference-notional multiplier. Quantity and P&L dimensions must match
+charges and any bound account. No FX conversion is performed. Built-in integer
+candidate prices are exact; finite built-in float candidate prices use their
+decimal Python `repr` interpretation. All subsequent arithmetic is exact.
+
+With approved adverse-entry allowance `a_e`, adverse-stop allowance `a_s`,
+payoff coefficient `p` and supported positive quantity `0 < q <= Q`:
+
+| Direction | Assessed entry E | Assessed stop fill X | Distance d |
+| --- | --- | --- | --- |
+| LONG | ASK + a_e | S - a_s | E - X |
+| SHORT | BID - a_e | S + a_s | X - E |
+
+The typed model `POSITIVE_QUANTITY_LINEAR_PLUS_MINIMUM_AFFINE_CHARGES_V1`
+represents `R(q) = p*d*q + Σ max(minimum_i, fixed_i + per_unit_i*q)` for that
+positive domain. Its separate `R(0)=0` branch is mathematical no-trade. Every
+opening, closing, other-charge and financing category needs explicit INCLUDED,
+NOT_APPLICABLE, UNKNOWN or UNSUPPORTED coverage. INCLUDED needs supported
+aggregate terms; no missing cost becomes zero. Financing must cover the whole
+entry-to-terminal-stop scenario or be explicitly inapplicable. Candidate expiry
+is not a holding deadline. Spread is already represented by the appropriate
+quote sides and is not charged again.
+
+The local scenario declaration contract is
+`trading.xauusd_current_entry_to_stop_risk_basis.scenario_evidence.v1`.
+Declarations bind full candidate, validity, applicability, selected
+specification, current BID/ASK and optional account references. They carry
+status, effective interval, exact terms and typed supporting evidence.
+`SOURCE_DECLARED_TERM`, `PLANNING_ASSUMPTION` and `BROKER_CONSTRAINT` remain
+distinct; a label or prose alone cannot establish a term. A coherent event is
+dynamic evidence. The local planning inventory contract is
+`trading.xauusd_current_entry_to_stop_risk_basis.planning_evidence.v1` with
+rule `APPROVED_CONDITIONAL_PLANNING_SCENARIO_V1`. It carries a complete
+approval/rejection/revocation history and source-relative coverage through K.
+An explicit full-content predecessor reference is required for replacement.
+Conflicting revisions, missing predecessors, cycles, branches, retrospective
+approval and altered content reject. A currently effective rejection or
+revocation prevents admission; a future-effective one does not apply early.
+Expiration does not revive a predecessor. No highest-version selection occurs.
+
+The planning inventory is admissible only when an independently supplied host
+`trusted_planning_context` pins its complete canonical digest, issuer,
+planning-only mandate, scope and K. The keyword parameter represents a
+host-assigned trust assumption, not external authentication or protection
+against hostile in-process Python. Without it, planning admission remains
+UNKNOWN; a detached validator also needs it to reproduce an established
+assessment. Approval binds static candidate/specification/scope and scenario
+terms. Current quotes, quote event, validity and #28 resolution remain dynamic.
+Planning approval permits an exact conditional analytical assumption; it is
+not a broker guarantee, prudence judgment, financial-risk authorization or
+trade decision.
+
+The outcomes are ESTABLISHED, NOT_SUITABLE and UNKNOWN. Every supplied owner
+artifact and local declaration is checked before outcomes; malformed,
+contradictory or post-K admitted content raises ValueError. Decisive
+incompatibility outranks uncertainty, while retaining all justified reasons.
+`risk_function` is null for every non-established assessment. Detached
+validation reconstructs and compares the entire result, including a full
+canonical content identity. All authority flags and top-level execution remain
+false. Excluded: quantity selection, equity and daily-loss budget comparison,
+provider compliance, FX, margin, actual fills, realized P&L, stop management,
+BUY/SELL authorization and execution. Mission Control remains the final
+decision authority.
+
 ## RESEARCH-ONLY — XAUUSD reference trade management experiment v0.1
 
 `xauusd_reference_trade_management_experiment.py` is an additive, deterministic
