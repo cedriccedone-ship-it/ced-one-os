@@ -1533,6 +1533,232 @@ provider compliance, FX, margin, actual fills, realized P&L, stop management,
 BUY/SELL authorization and execution. Mission Control remains the final
 decision authority.
 
+## Current entry quantity-domain assessment v1
+
+`xauusd_current_entry_quantity_domain.py` exposes
+`evaluate_current_entry_quantity_domain(request, *, trusted_quantity_context=None)`
+and `validate_current_entry_quantity_domain(assessment, request, *,
+trusted_quantity_context=None)`. Contract:
+`trading.xauusd_current_entry_quantity_domain.v1`; rule:
+`xauusd_current_entry_quantity_domain_v1`.
+
+This read-only derived assessment establishes only the independently admitted,
+current entry-order grid and bounds for one exact source/account/instrument
+scope. It has no candidate, account-state, instrument-metadata, #28, #29 or
+risk-policy dependency. A later consumer must reconstruct those owners and prove
+their joins. Entry-order volume bounds are distinct from a resulting-position
+maximum and a risk scenario's maximum supported quantity. No existing contract,
+registry, Mission Control route, executor or connector changes.
+
+### Exact request and source evidence
+
+All listed keys are required; extra keys are rejected. Explicit unknowns use
+null, declared gaps or unknown tagged values. IDs are nonblank strings preserved
+without trimming, case folding or Unicode normalization. Times require seconds,
+an explicit timezone and at most microsecond precision; normalization uses UTC
+with six fractional digits. Intervals include their start and exclude their end;
+a null end explicitly means open-ended. Hashes are lowercase SHA-256 hex.
+
+The request keys are `contract`, `rule_version`, `assessment_economic_time`,
+`knowledge_boundary`, `scope`, `quantity_inventory`. Current assessment requires
+`T = K`. Missing inventory is null. Scope keys are `provider_id`, `venue_id`,
+`environment` (DEMO/LIVE), `account_id`, `instrument_id`, `quantity_unit`,
+`entry_direction` (LONG/SHORT), `entry_mechanism`
+(`IMMEDIATE_MARKET_ENTRY_SCENARIO_V1`). Identities belong to that exact namespace;
+no aliases or quantity-unit conversions are inferred.
+
+Source references contain `source_id`, `source_contract`,
+`source_contract_version`, `source_snapshot_id`. Original evidence items contain
+`evidence_id`, `source`, `media_type`, `content_base64`, `source_available_at`,
+`observed_at`. Base64 is canonical padded RFC 4648, encoding nonempty original
+bytes. Evidence references contain `evidence_id`, `content_sha256`; they bind the
+whole normalized evidence item, including bytes, provenance and timing.
+
+Inventory contract is
+`trading.xauusd_current_entry_quantity_domain.inventory.v1`; rule is
+`xauusd_current_entry_quantity_domain_inventory_v1`. Its keys are `contract`,
+`rule_version`, `model`, `source`, `scope`, `source_available_at`, `observed_at`,
+`evidence`, `coverage`, `records`, `unsupported_lifecycle_evidence`. Its only model
+is `WHOLE_ENTRY_DOMAIN_REPLACEMENT_STREAM_V1`. Scope must exactly match the
+request. Unsupported lifecycle events are preserved as evidence references;
+they produce UNKNOWN rather than being discarded. The owner preserves original
+documents but does not parse arbitrary documents or authenticate providers.
+
+### Stream records and coverage
+
+Declaration keys are `record_id`, `kind` (DECLARE), `predecessor`,
+`effective_from`, `effective_until`, `source_available_at`, `observed_at`,
+`evidence_refs`, `domain`. A null domain honestly reports unavailable terms.
+Withdrawal keys are `record_id`, `kind` (WITHDRAW), `predecessor`,
+`effective_from`, `source_available_at`, `observed_at`, `evidence_refs`. A
+withdrawal has no expiry or domain and cannot be a root.
+
+Predecessors are exactly `{kind: ROOT}`, `{kind: UNKNOWN}`, or
+`{kind: RECORD, record: {record_id, content_sha256}}`. Record references bind the
+whole normalized immutable record. Source records retain their immutable
+identity within the issuer namespace and scope across inventory snapshots.
+
+Coverage keys are `declaration_id`, `source_available_at`, `observed_at`,
+`economic_from`, `economic_until`, `source_information_cutoff`,
+`quantity_rule_completeness`, `revision_completeness`, `starting_basis`,
+`root_records`, `missing_record_ids`, `records_omitted`, `history_truncated`,
+`evidence_refs`. Completeness is COMPLETE/LIMITED/UNKNOWN; starting basis is
+FROM_INCEPTION/INCOMPLETE_OR_UNKNOWN. Omission flags are booleans or null.
+Root records are exact record references; known missing IDs identify absent
+record bodies. Every supplied root must be declared; declared roots must resolve
+to roots or explicitly missing records. Multiple valid roots remain evidence
+of unresolved uniqueness, not permission to select one.
+
+Complete quantity coverage requires every supplied declaration body to be
+present and supported, including historical bodies. Complete revision coverage
+requires inception coverage, known predecessors, no missing records and both
+omission flags false. LIMITED revision coverage requires a concrete declared
+limitation. UNKNOWN may preserve known partial facts. Explicit contradictions
+with COMPLETE coverage are rejected.
+
+An explicitly declared absent predecessor yields UNKNOWN. An undeclared dangling
+reference, mismatching body hash, conflicting immutable identity, self-reference
+or cycle is rejected. Missing evidence references are malformed; unavailable
+support is represented by an empty reference list and yields UNKNOWN. Duplicate
+IDs and references are rejected, including exact duplicates.
+
+Positive resolution requires one complete, acyclic, nonbranching chain from one
+root, with nondecreasing effective starts. Precedence follows exact predecessor
+links, never revision labels, input order or observation times. Branches and
+multiple roots produce UNKNOWN even when their domains agree. Conservatively,
+known future branches also prevent a supported whole-stream proof. Decreasing
+effective starts and explicitly unsupported events produce UNKNOWN.
+
+The last chain record effective by T governs; equal effective starts follow
+chain order. A known future successor does not replace the current record early.
+An effective withdrawal or expired successor yields UNKNOWN without reviving a
+predecessor. A new complete declaration explicitly following a withdrawal can
+govern; an opaque correction or reinstatement instruction remains unsupported.
+
+### Independent host admission and time
+
+Admission contract is
+`trading.xauusd_current_entry_quantity_domain.admission.v1`; rule is
+`xauusd_current_entry_quantity_domain_admission_v1`. Keys are `contract`,
+`rule_version`, `admission_id`, `authority_id`, `mandate_id`, `mandate_revision`
+(positive integer), `purpose` (ENTRY_QUANTITY_FACT_ADMISSION_ONLY),
+`admission_basis` (PROVIDER_ORIGIN_VERIFIED_EXTERNALLY or
+PROVIDER_DOCUMENTS_REVIEWED_EXTERNALLY), `inventory_source`,
+`inventory_content_sha256`, `scope`, `knowledge_boundary`, `admitted_at`,
+`available_at`, `effective_from`, `effective_until`, `assurances`.
+
+Assurances have exactly `source_authority`, `quantity_rule_semantics`,
+`revision_coverage`, `evidence_availability`. Each contains `status`
+(ADMITTED/UNRESOLVED) and `evidence_refs`; ADMITTED requires nonempty, resolvable
+support. All four must be independently admitted. They cover exact source
+authority, whole-domain semantics, inventory/revision coverage fidelity and
+availability of original evidence by K. A host context cannot override actual
+source gaps, unsupported lifecycle semantics or invalid grid terms.
+
+The host independently injects this context. Source identifiers, provenance,
+hashes and caller approval assertions do not authenticate a provider. A
+keyword-only parameter is not a security boundary against hostile Python inside
+the trusted host. No real provider connector, admission integration or verified
+live volume rules are supplied by this capability. Synthetic tests simulate the
+boundary and do not establish provider facts. Source authentication always
+remains NOT_VERIFIED_BY_THIS_CAPABILITY.
+
+Context source, scope, normalized inventory pin and K must match exactly;
+mismatches are rejected. A context with null inventory is rejected because its
+pin has no target. Admission validity must contain T; an otherwise valid expired
+or future admission produces UNKNOWN.
+
+Every observation must be at or before K. Known source availability must be at
+or before observation; unknown availability yields UNKNOWN. The inventory cannot
+precede contained observations. Known coverage cutoff must not exceed K or its
+known publication time; establishment requires cutoff exactly K and economic
+coverage containing T. All material observations must precede admission, with
+`admitted_at <= available_at <= K`. Post-K evidence or admission is rejected.
+Future effective starts are permitted independently of availability. The strict
+complete-through-K requirement may force publication, observation and admission
+to meet at K; delayed feeds must remain unresolved rather than be backdated.
+
+### Exact grid and canonical identity
+
+Grid keys are `model` (REGULAR_GRID_CLOSED_BOUNDS_V1), `origin`, `increment`,
+`minimum`, `maximum`. Maximum is exactly `{kind: FINITE, value}` or
+`{kind: UNBOUNDED}`. Terms are signed finite decimal strings; increment must be
+positive. Finite bounds must satisfy minimum <= maximum. An unknown maximum is
+not unbounded. Unsupported models, binary floats, booleans, exponents,
+nonfinite values, leading plus signs and whitespace are rejected.
+
+Decimal syntax is `-?[0-9]+(?:\.[0-9]+)?`. Normalize leading integer zeroes,
+trailing fractional zeroes and negative zero. Arbitrary-precision integer and
+rational arithmetic avoids a fixed Decimal context and Python's configurable
+integer-to-decimal digit conversion limit.
+
+For `q = o + n*d`, integer n, `d > 0`, `q > 0`, and inclusive bounds m and M,
+normalize `r = o - floor(o/d)*d`, so `0 <= r < d`. Derive
+`first = max(ceil((m-r)/d), floor(-r/d)+1)` and, for finite M,
+`last = floor((M-r)/d)`. The positive domain is empty exactly when last < first.
+The original index may be negative, and canonical first may be zero when r > 0.
+Zero/negative minimums do not admit nonpositive quantities. An explicitly
+unbounded maximum has no last index. No domain enumeration or quantity selection
+occurs.
+
+Descriptor is `{kind: EMPTY}` or
+`{kind: REGULAR_GRID, origin, increment, first_index, last_index}`. Indices are
+canonical nonnegative integer strings; null last means explicitly unbounded.
+Domain identity hashes quantity unit and descriptor. It identifies a normalized
+descriptor, not all alternative representations of the same finite set.
+
+Canonical JSON sorts keys, uses compact separators and UTF-8 without Unicode
+escaping, and rejects nonfinite values and surrogate code points. Typed times
+and decimals normalize; IDs and source bytes remain exact. Set-like collections
+sort by canonical content. Equivalent decimal spellings preserve normalized
+record/inventory identities; changing source bytes changes evidence identity.
+Origin shifts by whole increments preserve domain identity while changing
+declaration/assessment identity. The complete normalized inventory is pinned;
+hashes establish consistency, not authenticity.
+
+### Outcomes, reconstruction and authority
+
+All supplied material is validated before outcomes. Malformed schema, numeric
+terms, contradictory completeness, invalid references, pins, intervals or causal
+timing raises ValueError, even if another gate would yield UNKNOWN. Honest
+missing evidence, unresolved assurance, incomplete coverage, unsupported or
+competing histories, withdrawal and expiry produce UNKNOWN. No unadmitted or
+otherwise unresolved declaration can establish an empty effective domain.
+
+Only fully admitted, complete, uniquely current evidence permits ESTABLISHED
+for a nonempty positive grid, or NOT_SUITABLE for a mathematically empty grid.
+Reasons are deduplicated and lexicographically sorted; findings requiring absent
+inputs are not invented. The module's closed `REASON_CODES` vocabulary contains
+the frozen uncertainty reasons and the two success/empty-domain reasons.
+
+Output keys are `contract`, `rule_version`, `assessment_economic_time`,
+`knowledge_boundary`, `scope`, `outcome`, `reason_codes`, `resolved_record`,
+`domain`, `domain_identity`, `reconstruction_evidence`, `source_authentication`,
+`downstream_obligations`, `authority`, `execution`, `assessment_identity`.
+UNKNOWN has null domain and domain identity; a fully admitted resolved withdrawal
+or expired successor may retain its record reference. Reconstruction evidence
+contains the normalized `request` and `trusted_context_content_sha256` or null.
+The validator requires the independently supplied context again, rebuilds the
+entire assessment and compares complete canonical content. Serialized outputs
+require exact JSON container types. Results and validation returns are detached.
+
+Assessment identity is `current_entry_quantity_domain_` plus the SHA-256 of the
+complete result before adding that identity. Domain identity is
+`entry_quantity_domain_` plus the hash of `{quantity_unit, domain}`.
+
+Fixed sorted downstream obligations are BUDGET_AND_DAILY_LOSS_ELIGIBILITY,
+CANDIDATE_VALIDITY, INSTRUMENT_AND_UNIT_COMPATIBILITY,
+MARGIN_AND_CAPITAL_FEASIBILITY, MARKET_AND_ORDER_EXECUTION_FEASIBILITY,
+MISSION_CONTROL_AUTHORIZATION, POSITION_EFFECT_AND_OTHER_PROVIDER_COMPLIANCE,
+RISK_CONSTRAINED_QUANTITY_SELECTION. These are unresolved requirements, not
+findings that other owners passed or failed.
+
+All authority flags are false: `quantity_selection`, `budget_approval`,
+`position_effect_compliance`, `margin_capital_approval`, `trade_decision`,
+`financial_risk`, `execution`. Top-level execution is false. There is no selected
+quantity, risk-budget calculation, position-effect proof, margin/capital
+approval, trade authorization, broker mutation or execution.
+
 ## RESEARCH-ONLY — XAUUSD reference trade management experiment v0.1
 
 `xauusd_reference_trade_management_experiment.py` is an additive, deterministic
