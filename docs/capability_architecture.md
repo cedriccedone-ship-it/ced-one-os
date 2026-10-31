@@ -2872,3 +2872,473 @@ isolation and fixed false authority. Synthetic external evidence and admissions
 test contract semantics only; no production provider truth/authentication is
 claimed. Correctly shaped attacker-controlled trusted arguments require external
 host-boundary controls rather than an invented unit-test authentication guarantee.
+
+## Current Terminal Position-Limit Assessment v1
+
+`xauusd_current_terminal_position_limits.py` establishes a conditional terminal
+quantity/count predicate over the independently established finite positive
+position-effect interval P. It consumes original owner pairs and host-admitted
+original rule material. It neither consumes risk-feasible set F nor intersects a
+quantity grid or selects q. An established interval does not establish an
+executable order, continuous compliance, margin/capital feasibility or trading
+authorization.
+
+### Constants and public APIs
+
+```text
+CONTRACT = trading.xauusd_current_terminal_position_limits.v1
+RULE_VERSION = xauusd_current_terminal_position_limits_v1
+ADMISSION_CONTRACT = trading.xauusd_current_terminal_position_limits.admission.v1
+ADMISSION_RULE = xauusd_current_terminal_position_limits_admission_v1
+PURPOSE = TERMINAL_POSITION_LIMIT_FACT_ADMISSION_ONLY
+MECHANISM = IMMEDIATE_MARKET_ENTRY_SCENARIO_V1
+SOURCE_AUTHENTICATION = NOT_VERIFIED_BY_THIS_CAPABILITY
+IDENTITY_PREFIX = current_terminal_position_limits_
+PREDICATE_KIND = TERMINAL_UPPER_BOUND_CONJUNCTION
+```
+
+```python
+evaluate_current_terminal_position_limits(
+    request: dict, *, trusted_position_effect_context=None,
+    trusted_position_limit_context=None,
+) -> dict
+validate_current_terminal_position_limits(
+    assessment: dict, request: dict, *, trusted_position_effect_context=None,
+    trusted_position_limit_context=None,
+) -> dict
+```
+
+### Closed types and request
+
+All listed keys are required and extra keys reject. Null is permitted only where
+explicit. Text is UTF-8-encodable, nonempty after a whitespace check, with original
+spelling preserved. Hash is 64 lowercase hexadecimal characters. Count is a
+built-in integer >= 0 and PositiveInt is >= 1; bool never substitutes for int.
+Completeness is COMPLETE, LIMITED or UNKNOWN. Objects must be serialized JSON
+trees; cycles, non-string keys, custom objects and floating-point fields reject.
+
+Local Time accepts calendar-valid `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)`
+with 1..6 fractional digits when present, no leap seconds, offset hours <= 23 and
+minutes <= 59. Normalize to UTC with six fractional digits and Z; UTC conversion
+outside years 0001..9999 rejects. Decimal grammar is
+`-?(0|[1-9][0-9]*)(\.[0-9]+)?`; strip trailing fractional zeros and an unnecessary
+point, normalize signed zero to "0", and enforce positivity where declared.
+No exponent, plus sign, whitespace, nonfinite value or leading-zero variant is
+accepted. Native pair representations remain owned by their existing validators.
+
+```text
+Request = {contract, rule_version, assessment_economic_time: Time,
+ knowledge_boundary: Time, scope: Scope, position_effect: PositionEffectPair|null,
+ account_rule_regime: RegimePair|null, rule_support: RuleSupport|null}
+PositionEffectPair = {assessment: native object, request: native object}
+RegimePair = {assessment: native object, assessment_input: native object}
+Namespace = {source_id: Text, source_contract: Text, source_contract_version: Text}
+Source = Namespace + {source_snapshot_id: Text}
+Account = Namespace + {account_id: Text, environment: DEMO|LIVE, currency: [A-Z]{3}}
+Instrument = Namespace + {environment: DEMO|LIVE, instrument_id: Text}
+Scope = {account: Account, provider_namespace: Namespace, provider_id: Text,
+ venue_id: Text, instrument: Instrument, entry_direction: LONG|SHORT,
+ entry_mechanism: MECHANISM, quantity_unit: Text}
+```
+
+T equals K after normalization. Instrument/account environments match. Provider,
+venue, currency, instrument and unit values have no built-in defaults or implicit
+aliases. Qualified identity is an equality constraint, not issuer authentication.
+
+### Native replay and joins
+
+Invoke the public `validate_current_entry_position_effect_basis(assessment,
+request, trusted_position_effect_context=...)` and
+`validate_causal_account_rule_regime_assessment(assessment, assessment_input)`.
+The position owner transitively reconstructs the original financial-account
+snapshot. No additional account, position, commitment or revision resolver is
+introduced. Preserve complete native pairs, including original strings and array
+ordering, in local reconstruction evidence.
+
+Native economic/knowledge times equal outer T=K. Position-effect scope equals
+outer scope. Regime account equals outer account's namespace, account ID and
+environment (native regime has no currency field). The selected assignment and
+package provider IDs equal outer provider ID. Program/account-type/phase/agreement
+and native approval/revision selection remain native-owned. Provider namespace,
+venue and instrument/denomination meaning need independent SCOPE admission.
+
+Every supplied object, inactive native record, unused original and supplied
+context is structurally validated before a semantic return. Malformed material,
+contradictory known identities or failed native output replay raises ValueError
+even if another prerequisite is missing. Correctly reconstructed native UNKNOWN
+propagates uncertainty. A supplied native positive assessment with missing or
+changed native context fails native replay. A position-effect context without
+its owner pair rejects.
+
+### Original evidence and typed mappings
+
+```text
+OriginalEvidence = {evidence_id: Text, source: Source, media_type: Text,
+ content_base64: Text, content_sha256: Hash, source_available_at: Time|null,
+ observed_at: Time}
+EvidenceRef = {evidence_id: Text, envelope_sha256: Hash}
+NativeRef = {kind: MANIFEST|ASSIGNMENT|PACKAGE|APPROVAL|EVIDENCE|RULE|CLAUSE,
+ pointer: canonical JSON pointer, content_sha256: Hash}
+NativeMapping = {native_reference: NativeRef, original_reference: EvidenceRef,
+ original_locator: Text, relationship: EXACT_DOCUMENT|CLAUSE_SUPPORT|ASSERTION_SUPPORT}
+```
+
+Original bytes are nonempty canonical padded Base64: strict decode/re-encode must
+round-trip exactly. content_sha256 hashes decoded bytes without text/newline
+conversion. envelope_sha256 hashes the complete normalized OriginalEvidence,
+including raw hash, source metadata and times. NativeRef hashes the entire
+original object addressed within `account_rule_regime.assessment_input`, before
+any native normalization. Only these owner-valid pointers are accepted:
+
+```text
+MANIFEST /manifest
+ASSIGNMENT /manifest/assignments/i
+PACKAGE /manifest/packages/i
+APPROVAL /approvals/i
+EVIDENCE /manifest/evidence/i
+RULE /manifest/packages/i/rules/j
+CLAUSE /manifest/assignments/i/evidence_refs/j
+CLAUSE /manifest/assignments/i/package_bindings/j/evidence_refs/k
+CLAUSE /manifest/packages/i/evidence_refs/j
+CLAUSE /manifest/packages/i/coverage/evidence_refs/j
+CLAUSE /manifest/packages/i/rules/j/evidence_refs/k
+CLAUSE /manifest/packages/i/rules/j/body/measure/definition_refs/k
+CLAUSE /manifest/packages/i/rules/j/body/reset_schedule/evidence_refs/k
+CLAUSE /manifest/packages/i/rules/j/body/evidence_refs/k
+```
+
+The last three apply only to native bodies declaring them. Clause targets must
+be actual native `{evidence_id, clause_locator}` objects. RFC 6901 escapes are
+only ~0/~1; canonical nonnegative indices have no leading zeros. Invalid kinds,
+hashes, targets, URI fragments, wildcards, negative indices, '-' and arbitrary
+resolving paths reject.
+
+EVIDENCE requires EXACT_DOCUMENT, CLAUSE requires CLAUSE_SUPPORT and all other
+kinds require ASSERTION_SUPPORT. One mapping per native target is allowed.
+Clause and corresponding native document mappings must identify the same
+original envelope. Missing mappings are unresolved; supplied invalid references
+or contradictions reject. EXACT_DOCUMENT requires the native four-part source
+identity, equality with any known native document SHA-256, and equal known source
+availability times. A null native digest stays null; independent admission must
+establish the supplemental relationship. Locators and hashes alone cannot prove
+faithful interpretation or provider authority.
+
+All original observations <= packet observation <= K; known publication <=
+observation. Mapping originals must have been observed by the corresponding
+native assertion: manifest observation for manifest/assignment/assignment clauses;
+interpreted_at for package/rule/package clauses; approval observation for approval;
+native evidence observation for document mappings. Current exception/override
+review may use later originals available by K, without claiming the earlier
+interpretation already knew them. Required unknown source availability prevents
+proof. Unreferenced unknown availability does not block; post-K supplied evidence
+still rejects.
+
+### Supplemental assertions and every-rule disposition
+
+```text
+RuleSupport = {observed_at: Time, evidence: OriginalEvidence[],
+ native_mappings: NativeMapping[], scope_binding: ScopeBinding, coverage: Coverage,
+ rule_bindings: RuleBinding[]}
+ScopeBinding = {status: COMPATIBLE|INCOMPATIBLE|UNKNOWN, evidence_refs: EvidenceRef[]}
+Coverage = {terminal_limit_inventory: Completeness,
+ exceptions_and_overrides: Completeness, source_information_cutoff: Time|null,
+ evidence_refs: EvidenceRef[]}
+RuleBinding = {rule_reference: NativeRef<RULE>, population: Population,
+ quantity_denomination: QuantityMeaning, terminal_projection: TerminalProjection,
+ force: RuleForce}
+Population = {relation: CONTAINS_ENTRY_INSTRUMENT|DISJOINT|UNKNOWN,
+ evidence_refs: EvidenceRef[]}
+QuantityMeaning = {relation: IDENTICAL|INCOMPATIBLE|UNKNOWN|NOT_APPLICABLE,
+ evidence_refs: EvidenceRef[]}
+TerminalProjection = {kind: EXPLICIT_TERMINAL_STATE|CONTINUOUS_NECESSARY_TERMINAL|UNKNOWN,
+ evidence_refs: EvidenceRef[]}
+RuleForce = {status: MANDATORY_THROUGHOUT_P|UNKNOWN, exception_coverage: Completeness,
+ exception_resolution: NONE_APPLICABLE|RESOLVED_WITH_BOUND_UNCHANGED|UNKNOWN,
+ source_information_cutoff: Time|null, evidence_refs: EvidenceRef[]}
+```
+
+No supplemental ceiling, relevance flag, precedence ranking, selected q or approval
+boolean exists. NOT_APPLICABLE is forbidden for per-position quantity rules;
+denomination is unused for other bodies. Positive terminal projections are
+permitted only for native supported POSITION_LIMIT bodies. Cutoffs cannot exceed
+packet observation. Empty support arrays cannot establish a positive assertion.
+
+Every rule in the selected native package receives exactly one derived disposition:
+
+1. Unusable regime/scope admission, exact binding, originals or own RULE receipt:
+   UNRESOLVED.
+2. Independently established disjoint population: DISJOINT_POPULATION.
+3. Unresolved population or UNKNOWN lifecycle effect: UNRESOLVED.
+4. Effects exclusively EXIT/PHASE_TRANSITION/PAYOUT, faithfully admitted:
+   OTHER_OBLIGATION.
+5. Any ENTRY/HOLDING/ACCOUNT_ELIGIBILITY and unsupported representation:
+   UNRESOLVED.
+6. Relevant supported non-position body: OTHER_OBLIGATION.
+7. Relevant supported position limit with P and every numerical proof gate:
+   TERMINAL_LIMIT; otherwise UNRESOLVED.
+
+Supported other bodies are ACCOUNT_STATE_REQUIREMENT, INSTRUMENT_ACTION_PERMISSION,
+AUTOMATION_PERMISSION, STATIC_FLOOR, DAILY_RESET_FLOOR and ACTION_WINDOW. HOLDING
+is potentially terminal-relevant. OTHER_OBLIGATION is retained, never passed.
+Unsupported semantics cannot become a numeric bound via free text or a receipt.
+An empty selected rule list still requires independently complete coverage.
+
+Account-wide and admitted included-instrument populations have terminal count 1;
+proven disjoint populations have count 0. Same-namespace distinct instrument IDs
+still need admitted exhaustive population meaning. Different namespaces alone
+establish neither identity nor disjointness; cross-namespace reconciliation stays
+UNKNOWN. A disjoint claim contradicting account-wide scope or explicit membership,
+or a containing claim contradicting exact same-namespace exclusion, rejects.
+IDENTICAL quantity meaning requires exact native/outer unit spelling; honest
+INCOMPATIBLE means UNKNOWN. No unit, currency or contract-size conversion occurs.
+
+EXPLICIT_TERMINAL_STATE requires original support explicitly applying the bound
+to the defined terminal state. CONTINUOUS_NECESSARY_TERMINAL requires a genuine
+continuous restriction whose quantified states include that terminal state. The
+native CONCURRENT_POSITION_COUNT tag alone does not prove either interpretation.
+A passing necessary terminal comparison never discharges intermediate/peak/path
+compliance. All outputs carry these conditional assumptions in exactly this order:
+
+```text
+ACCEPTED_ENTRY_FULLY_FILLED
+ALL_ENTRY_FILLS_AGGREGATED_UNDER_ADMITTED_MECHANICS
+NO_UNRELATED_INTERVENING_STATE_CHANGE
+ADMITTED_MECHANICS_REMAIN_APPLICABLE
+ADMITTED_RULES_REMAIN_APPLICABLE_AT_TERMINAL_STATE
+```
+
+### Independent host admission and target support closure
+
+```text
+PositionLimitContext = {contract: ADMISSION_CONTRACT, rule_version: ADMISSION_RULE,
+ admission_id: Text, authority_namespace: Namespace, authority_id: Text,
+ mandate_id: Text, mandate_revision: PositiveInt, purpose: PURPOSE,
+ request_content_sha256: Hash, knowledge_boundary: Time, effective_from: Time,
+ effective_until: Time|null, admitted_at: Time, available_at: Time,
+ applicable_approval_refs: NativeRef<APPROVAL>[], admissions: Receipt[]}
+Receipt = {target: AdmissionTarget, status: ADMITTED|UNRESOLVED,
+ evidence_refs: EvidenceRef[]}
+AdmissionTarget = {kind: REGIME}|{kind: SCOPE}|{kind: COVERAGE}
+ | {kind: RULE, rule_reference: NativeRef<RULE>}
+```
+
+Context pins H(complete normalized Request), exact K and purpose. Require packet
+observation <= admitted_at <= available_at <= K, and no consumed native observation
+after admission. Current admission uses the half-open interval
+effective_from <= T < effective_until, or no upper end. Expired/future-effective
+well-formed admission gives UNKNOWN. Wrong pins, purpose, K, chronology, orphan
+context without support, invalid/duplicate targets and references reject.
+applicable_approval_refs equals exactly the native selected regime's returned
+approval component, mapped to original input pointers, or [] with no selection.
+Known future-effective connected approvals are preserved without requiring every
+individual interval to contain T.
+
+Each ADMITTED receipt has nonempty references and includes the complete required
+original-support closure. Extra valid references cannot replace missing support:
+
+- REGIME admits source authority, faithful assignment/interpretation, approval
+  provenance and complete current assignment/package/approval revision inventory.
+  Its closure includes manifest, selected assignment/package and all selected
+  approval mappings, all selected assignment/binding clauses, selected package's
+  own clauses and corresponding document mappings.
+- SCOPE admits exact request/native account/provider/venue/instrument/unit
+  relationships, with scope_binding evidence.
+- COVERAGE admits complete current terminal inventory and exception/override
+  review, including material interpretation limitations; its closure includes
+  native package coverage clauses/documents and supplemental coverage evidence.
+- RULE admits one exact native rule's faithful classification, population and
+  each interpretation used. Closure includes its rule mapping, all nested native
+  clauses/documents, population evidence and any denomination/projection/force
+  evidence used numerically. Unused numerical assertions need not be proved for
+  disjoint/other dispositions.
+
+Global receipts cannot replace a RULE receipt. Missing support/receipts means
+UNKNOWN; UNRESOLVED receipts cannot establish a claim. Required originals must
+have known causal source availability. Numerical force requires mandatory status,
+complete rule-specific exceptions, NONE_APPLICABLE or resolved with unchanged
+bound, and rule-specific cutoff exactly K.
+
+This module does not authenticate source, provider or host identities. Its trusted
+argument must be injected by an independently controlled host that establishes
+issuer, mandate, evidence access and review. Correct hashes and an ADMITTED label
+cannot authenticate a caller-created dictionary. No trusted provider integration,
+source registry or ingestion connector is introduced. Without real evidence and
+independently established admission, the honest result remains UNKNOWN.
+
+### Exact predicate, scoped exclusions and outcomes
+
+P=[a,b], 0<a<=b<infinity, comes only from established native position-effect support.
+Applicable admitted native quantity ceilings contribute q<=U_i; count maxima
+contribute N_j<=M_j. Count is constant across P. Disjoint count 0 is tautological
+because native M>=0 and is recorded in disposition without a predicate constraint.
+Only unconditional mandatory bounds after exception closure enter the conjunction.
+
+For a complete predicate, any failing count gives EMPTY. Otherwise
+u=min({b} union {U_i}); u<a gives EMPTY, else inclusive [a,u]. A proved empty
+constraint universe gives P. Comparisons use arbitrary-precision exact arithmetic,
+without floating point, rounding, ambient Decimal precision or grid enumeration.
+Never extrapolate beyond P or assert grid membership/nonempty executable quantity.
+
+Each independently usable rule can produce:
+
+- U<a: ALL_SUPPORT, QUANTITY_LIMIT_EXCLUDES_ALL_P.
+- a<=U<b: UPPER_TAIL (U,b], QUANTITY_LIMIT_EXCLUDES_UPPER_TAIL.
+- N>M: ALL_SUPPORT, COUNT_LIMIT_EXCLUDES_ALL_P.
+- Otherwise no exclusion.
+
+All exclusions require P, unique current native regime, admitted REGIME/SCOPE/that
+RULE, exact population/units, supported projection and independently closed
+mandatory force/exceptions through K. An unrelated incomplete global inventory
+does not erase a self-contained proof. If missing coverage could conceal an
+exception defeating that rule, no such proof exists. Minimum arithmetic is never
+an authority or precedence resolver.
+
+```text
+NegativeProof = {rule_reference: NativeRef<RULE>, reason_code: negative code,
+ excluded_domain: {kind: ALL_SUPPORT}
+  | {kind: UPPER_TAIL, lower_exclusive: PositiveDecimal, upper_inclusive: PositiveDecimal},
+ admission_targets: AdmissionTarget[], evidence_refs: EvidenceRef[]}
+```
+
+Targets are exactly REGIME, SCOPE and that RULE in canonical order. Evidence is
+the union of those receipts and their required closures; reconstructed position
+evidence/context separately pins P.
+
+Precedence is ValueError for any supplied structural invalidity; NOT_SUITABLE for
+an independently sufficient all-P exclusion; otherwise UNKNOWN for any unresolved
+complete-predicate gate; otherwise ESTABLISHED with a complete nonempty interval.
+NOT_SUITABLE is scoped to P and never a final NO TRADE decision. All unrelated
+unknowns and partial exclusions remain visible. UNKNOWN returns null predicate
+and domain. A decisive negative returns EMPTY even if unrelated uncertainty
+requires the complete predicate to remain null. With complete coverage the full
+predicate is returned for either definite outcome.
+
+### Output, reasons, identity and authority
+
+```text
+Assessment = {contract, rule_version, assessment_economic_time: Time,
+ knowledge_boundary: Time, scope: Scope, outcome: ESTABLISHED|NOT_SUITABLE|UNKNOWN,
+ reason_codes: ReasonCode[], position_effect_support: PositionSupport|null,
+ rule_dispositions: RuleDisposition[], terminal_limit_predicate: Predicate|null,
+ terminal_satisfying_domain: SatisfyingDomain|null, negative_proofs: NegativeProof[],
+ unresolved_findings: UnresolvedFinding[], conditions: fixed five strings,
+ reconstruction_evidence: ReconstructionEvidence, downstream_obligations: fixed strings,
+ source_authentication: SOURCE_AUTHENTICATION, authority: Authority, execution: false,
+ assessment_identity: IDENTITY_PREFIX + Hash}
+Interval = {minimum: PositiveDecimal, maximum: PositiveDecimal}, minimum<=maximum
+PositionSupport = {position_effect_identity: Text, quantity_unit: Text, interval: Interval}
+RuleDisposition = {rule_reference: NativeRef<RULE>,
+ disposition: TERMINAL_LIMIT|DISJOINT_POPULATION|OTHER_OBLIGATION|UNRESOLVED,
+ terminal_count: 0|1|null, reason_codes: ReasonCode[]}
+Predicate = {kind: TERMINAL_UPPER_BOUND_CONJUNCTION, support: Interval,
+ quantity_unit: Text, constraints: Constraint[]}
+Constraint = {kind: PER_POSITION_QUANTITY, rule_reference: NativeRef<RULE>,
+ maximum: PositiveDecimal, projection: EXPLICIT_TERMINAL_STATE|CONTINUOUS_NECESSARY_TERMINAL}
+ | {kind: TERMINAL_POSITION_COUNT, rule_reference: NativeRef<RULE>, terminal_count: 0|1,
+ maximum: Count, projection: EXPLICIT_TERMINAL_STATE|CONTINUOUS_NECESSARY_TERMINAL}
+SatisfyingDomain = {kind: EMPTY}
+ | {kind: CLOSED_INTERVAL, minimum: PositiveDecimal, maximum: PositiveDecimal}
+UnresolvedFinding = {reason_code: unresolved code, subject: canonical JSON pointer}
+ReconstructionEvidence = {request: complete normalized Request with native pairs preserved,
+ trusted_position_effect_context_sha256: Hash|null,
+ trusted_position_limit_context_sha256: Hash|null}
+```
+
+PositionSupport is present iff native position-effect reconstruction establishes P.
+Disposition terminal_count is non-null only for count rules with admitted population
+and established native count; it can survive another failed numerical gate.
+Non-count rows always have null. Finding subjects address the conceptual root
+{request, trusted_position_effect_context, trusted_position_limit_context}; missing
+objects use their existing null field, never an invented dangling descendant.
+
+The closed unresolved vocabulary and emission gates are:
+
+```text
+OWNER_MISSING                       null required owner pair
+OWNER_NOT_ESTABLISHED               reconstructed position owner is not established
+REGIME_NOT_UNIQUE                   native regime selects no unique current regime
+RULE_SUPPORT_MISSING               null supplemental packet
+ADMISSION_MISSING                  null terminal context
+ADMISSION_NOT_CURRENT              context does not cover T
+RECEIPT_MISSING                    required target absent
+RECEIPT_UNRESOLVED                 target explicitly unresolved
+ORIGINAL_SUPPORT_MISSING           required mapping/support/receipt closure absent
+SOURCE_AVAILABILITY_UNKNOWN         required original publication unavailable
+SCOPE_UNRESOLVED                   scope assertion UNKNOWN
+SCOPE_INCOMPATIBLE                 scope assertion INCOMPATIBLE
+COVERAGE_INCOMPLETE                required native/supplemental completeness not COMPLETE
+COVERAGE_NOT_CURRENT               required supplemental cutoff null or before K
+RULE_BINDING_MISSING               selected rule has no binding
+POPULATION_UNRESOLVED              supported population relation unestablished
+QUANTITY_SEMANTICS_UNRESOLVED        required denomination UNKNOWN
+QUANTITY_SEMANTICS_INCOMPATIBLE      required denomination INCOMPATIBLE
+RULE_EFFECT_UNKNOWN                relevant native lifecycle UNKNOWN
+RULE_UNSUPPORTED                   potentially terminal-relevant unsupported representation
+TERMINAL_PROJECTION_UNRESOLVED      required terminal projection UNKNOWN
+RULE_FORCE_UNRESOLVED              mandatory force unestablished
+EXCEPTIONS_UNRESOLVED              rule exception coverage/resolution/cutoff insufficient
+```
+
+Positive disposition codes are TERMINAL_RULE_ESTABLISHED,
+DISJOINT_POPULATION_ESTABLISHED and OTHER_OBLIGATION_RETAINED. Their codes stay
+in their own rows. UNRESOLVED rows contain applicable shared and local blocking
+codes. Top reasons are the union of negative and unresolved codes, with
+TERMINAL_DOMAIN_ESTABLISHED exactly for ESTABLISHED. Collect independently
+assessable failures, suppressing descendant noise for missing parents. Unused
+numerical claims do not create findings for established disjoint/other rows.
+
+J is compact sorted-key JSON, ensure_ascii=False, allow_nan=False, UTF-8; H is
+lowercase SHA-256(J). Exact integers render without changing interpreter-wide
+conversion limits. Normalize local times/decimals only. Evidence sorts by ID;
+mappings/bindings by canonical native reference; evidence refs by ID/hash; native refs and
+receipt targets by canonical reference/target; constraints/dispositions/proofs/
+findings by complete J; reasons/obligations lexicographically. Conditions retain
+fixed order. Input duplicate identities/references reject even if identical;
+derived unions/findings/reasons deduplicate. Native arrays/spellings stay original.
+
+Native context digest is copied from the successfully replayed position owner's
+reconstruction evidence, not a duplicated private normalizer. Terminal context
+digest is H(normalized new context), or null. Assessment identity is the fixed
+prefix plus H(entire output excluding only assessment_identity). Validator fully
+reevaluates original owners, evidence and contexts, then compares every serialized
+field without normalizing a supplied output into acceptance. Rehashed tampering
+rejects. All returned data is detached from inputs, contexts and other outputs.
+
+Authority has exactly quantity_selection, budget_approval,
+position_effect_compliance, margin_capital_approval, trade_decision, financial_risk
+and execution, all false; top execution is false. Fixed sorted obligations are:
+
+```text
+ATOMIC_COMMITMENT_AND_RESERVATION_CONTROL
+CANDIDATE_VALIDITY
+CURRENT_STATE_MECHANICS_AND_RULE_REVALIDATION
+ENTRY_QUANTITY_DOMAIN_MEMBERSHIP
+EXECUTION_PATH_AND_PEAK_POSITION_LIMIT_COMPLIANCE
+MARGIN_AND_AVAILABLE_CAPITAL_FEASIBILITY
+MARKET_ORDER_AND_FILL_FEASIBILITY
+MISSION_CONTROL_CURRENT_AUTHORIZATION
+ORDER_ACCEPTANCE_AND_PENDING_COMMITMENT_RULES
+OTHER_PROVIDER_AND_ACCOUNT_RULE_COMPLIANCE
+POST_ENTRY_FLOOR_AND_PROVIDER_HEADROOM
+QUANTITY_SELECTION_POLICY_AND_SELECTION
+RISK_BUDGET_QUANTITY_FEASIBILITY
+```
+
+Acceptance tests reconstruct genuine owners across LONG/SHORT and NETTING/HEDGING,
+all lifecycle effects/dispositions, terminal/continuous interpretations, exact
+inclusive/singleton/extreme bounds, count 0/1, population relationships, conjunctive
+limits, complete absence, incomplete/competing/current/future regimes, exception
+closure and scoped negatives, native null/non-null hashes, whitelisted mappings,
+receipt targets/support, post-K and malformed unrelated evidence, rehashed owner/
+output mutations, deterministic native/local presentation and detached results.
+Synthetic external admissions do not prove production provider authentication.
+
+### Separate future profit-lock and payout lifecycle
+
+The strategic aim of controlled funded-account growth around 4–5% monthly,
+followed by an account-specific halt on new trading while awaiting payout,
+belongs to a separate future account-level profit-lock/payout-lifecycle owner.
+It must eventually use actual prop-firm terms, reliable net realized performance,
+payout-cycle definitions and current account-state authorization. This terminal
+slice introduces no performance target, profit trigger, payout eligibility or
+provider-rule reinterpretation.
