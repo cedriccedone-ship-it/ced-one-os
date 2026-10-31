@@ -2389,3 +2389,486 @@ Authority is exactly false for `trade_decision`, `financial_risk`, and `executio
 `execution` is also false at the assessment level. No BUY/SELL authorization,
 quantity selection, reservation, order placement, research-scenario substitution
 for actual trades, generic ledger/FX service or runtime integration is introduced.
+
+## Current Entry Position-Effect Basis v1
+
+`xauusd_current_entry_position_effect_basis.py` establishes a conditional terminal
+position mapping, without choosing an order quantity. Given independently
+admitted account-wide flatness and absence of outstanding position-affecting
+commitments at T=K, explicitly admitted current mechanics map an accepted,
+fully filled entry of aggregate quantity q to exactly one terminal position of
+quantity q in the same unit and direction. Initial count is 0, terminal count is
+1 and terminal count delta is 1. All fills must aggregate into that one position.
+Unrelated intervening state changes are excluded by an explicit condition; their
+future absence is not established. Peak intermediate count is not evaluated.
+
+Only finite inclusive quantity intervals `0 < minimum <= q <= maximum` are
+supported, including singleton intervals. This interval describes support for
+the conditional mapping, not entry-order acceptance, grid membership, provider
+compliance, margin/capital feasibility, risk eligibility or execution authority.
+Both LONG and SHORT and evidenced NETTING/HEDGING modes are supported separately.
+A mode label, empty list or successful hash comparison alone proves none of the
+required mechanics, coverage or source relationships.
+
+### Constants and public APIs
+
+| Name | Exact value |
+| --- | --- |
+| Request/assessment contract | `trading.xauusd_current_entry_position_effect_basis.v1` |
+| Request/assessment rule | `xauusd_current_entry_position_effect_basis_v1` |
+| Inventory contract | `trading.xauusd_current_entry_position_effect_basis.inventory.v1` |
+| Inventory rule | `xauusd_current_entry_position_effect_basis_inventory_v1` |
+| Admission contract | `trading.xauusd_current_entry_position_effect_basis.admission.v1` |
+| Admission rule | `xauusd_current_entry_position_effect_basis_admission_v1` |
+| Purpose | `POSITION_EFFECT_FACT_ADMISSION_ONLY` |
+| Entry mechanism | `IMMEDIATE_MARKET_ENTRY_SCENARIO_V1` |
+| Supported model | `ONE_NEW_SEPARATE_POSITION` |
+| Supported aggregation | `ALL_ENTRY_FILLS_TO_ONE_POSITION` |
+| Position population | `ALL_ACCOUNT_POSITIONS` |
+| Commitment population | `ALL_ACCOUNT_POSITION_AFFECTING_COMMITMENTS` |
+| Complete actor coverage | `ALL_ACCOUNT_ACTORS` |
+| Source authentication | `NOT_VERIFIED_BY_THIS_CAPABILITY` |
+| Identity prefix | `current_entry_position_effect_basis_` |
+
+```python
+evaluate_current_entry_position_effect_basis(
+    request: dict, *, trusted_position_effect_context=None,
+) -> dict
+
+validate_current_entry_position_effect_basis(
+    assessment: dict, request: dict, *, trusted_position_effect_context=None,
+) -> dict
+```
+
+Neither function reads a clock, fetches evidence, authenticates its caller,
+reserves capacity or invokes Mission Control. The existing public
+`validate_causal_financial_account_state_snapshot` reconstructs the complete
+native account pair. No strategy, #29, risk-budget or quantity-grid dependency
+is introduced. Those owners remain separate responsibilities of later consumers.
+
+### Closed schemas and primitive types
+
+Every displayed object has exactly its listed required keys. Unknown keys and
+omitted keys reject; `?` below permits a null value without permitting omission.
+Arrays are serialized lists and may be empty unless a positive-proof condition
+requires content. Objects are serialized dictionaries. Integer types exclude
+booleans; booleans must be exact booleans. Reject cycles, non-string keys,
+nonfinite numbers, non-JSON values and strings that cannot encode as UTF-8.
+Finite native JSON numbers retain their native presentation; no local quantity
+is represented as a binary floating-point number.
+
+`Text` is a string with at least one non-whitespace character, retained exactly.
+No trimming, aliases or case/symbol normalization occur. `Hash` is 64 lowercase
+hexadecimal characters. `Completeness` is COMPLETE/LIMITED/UNKNOWN. Environment
+is DEMO/LIVE; currency is three uppercase ASCII letters. Mode is
+NETTING/HEDGING/UNKNOWN. Local timestamps and decimals are defined below. Native
+account structures keep their original owner's schema and representation.
+
+```text
+Namespace = {source_id: Text, source_contract: Text, source_contract_version: Text}
+Source = {source_id: Text, source_contract: Text, source_contract_version: Text,
+          source_snapshot_id: Text}
+EvidenceRef = {evidence_id: Text, content_sha256: Hash}
+RecordRef = {record_id: Text, content_sha256: Hash}
+Evidence = {evidence_id: Text, source: Source, media_type: Text,
+            content_base64: string, source_available_at: Timestamp?,
+            observed_at: Timestamp}
+
+Request = {contract, rule_version, assessment_economic_time: Timestamp,
+           knowledge_boundary: Timestamp, scope: Scope,
+           account_state: AccountPair?, effect_inventory: Inventory?}
+AccountPair = {snapshot: object, snapshot_input: object}
+
+Scope = {account: AccountIdentity, provider_namespace: Namespace,
+         provider_id: Text, venue_id: Text, instrument: InstrumentIdentity,
+         entry_direction: LONG|SHORT,
+         entry_mechanism: IMMEDIATE_MARKET_ENTRY_SCENARIO_V1,
+         quantity_unit: Text}
+AccountIdentity = {source_id: Text, source_contract: Text,
+                   source_contract_version: Text, account_id: Text,
+                   environment: DEMO|LIVE, currency: Currency}
+InstrumentIdentity = {source_id: Text, source_contract: Text,
+                      source_contract_version: Text, environment: DEMO|LIVE,
+                      instrument_id: Text}
+```
+
+Request contract/rule equal the constants above. Provider/venue IDs are qualified
+by provider_namespace. Original evidence must be nonempty bytes encoded in exact
+standard padded base64: decoding and re-encoding must produce the identical
+string. Whitespace and alternate encodings reject. Evidence source identity is
+provenance, not authentication; arbitrary provider documents are not parsed to
+invent fact interpretations.
+
+```text
+Inventory = {contract, rule_version, source: Source, scope: Scope,
+             source_available_at: Timestamp?, observed_at: Timestamp,
+             evidence: [Evidence], coverage: Coverage, records: [Record]}
+Coverage = {economic_from: Timestamp, economic_until: Timestamp?,
+            source_information_cutoff: Timestamp?,
+            declaration_completeness: Completeness,
+            revision_completeness: Completeness,
+            starting_basis: FROM_INCEPTION|INCOMPLETE_OR_UNKNOWN,
+            root_records: [RecordRef], missing_record_ids: [Text],
+            records_omitted: boolean?, history_truncated: boolean?,
+            source_available_at: Timestamp?, observed_at: Timestamp,
+            evidence_refs: [EvidenceRef]}
+
+Declare = {record_id: Text, kind: DECLARE, predecessor: Predecessor,
+           effective_from: Timestamp, effective_until: Timestamp?,
+           source_available_at: Timestamp?, observed_at: Timestamp,
+           evidence_refs: [EvidenceRef], body: DeclarationBody}
+Withdraw = {record_id: Text, kind: WITHDRAW, predecessor: Predecessor,
+            effective_from: Timestamp, source_available_at: Timestamp?,
+            observed_at: Timestamp, evidence_refs: [EvidenceRef]}
+Predecessor = {kind: ROOT}
+            | {kind: UNKNOWN}
+            | {kind: RECORD, record: RecordRef}
+```
+
+Inventory contract/rule equal their constants. Inventory scope equals request
+scope. Withdrawal has neither body nor effective_until; a root withdrawal
+rejects. Null interval ends explicitly mean open-ended; null source availability,
+cutoffs and omission flags mean unresolved. A declaration replaces the whole
+local basis declaration; it does not merge selected fields or resolve unrelated
+source precedence.
+
+```text
+DeclarationBody = {account_bundle_sha256: Hash, positions: PositionDeclaration,
+                   bindings: Bindings, mechanics: Mechanics,
+                   commitments: Commitments}
+PositionDeclaration = {state_at: Timestamp, source_information_cutoff: Timestamp?,
+                       inventory_completeness: Completeness,
+                       revision_completeness: Completeness,
+                       population_scope: ALL_ACCOUNT_POSITIONS,
+                       evidence_refs: [EvidenceRef]}
+Bindings = {account_provider_venue: BindingClaim,
+            instrument_namespace: BindingClaim,
+            quantity_denomination: BindingClaim,
+            direction_and_mechanism: BindingClaim}
+BindingClaim = {status: COMPATIBLE|INCOMPATIBLE|UNKNOWN,
+                evidence_refs: [EvidenceRef]}
+Mechanics = {position_mode: NETTING|HEDGING|UNKNOWN,
+             model: ONE_NEW_SEPARATE_POSITION|OTHER|UNKNOWN,
+             fill_aggregation: ALL_ENTRY_FILLS_TO_ONE_POSITION|OTHER|UNKNOWN,
+             quantity_range: QuantityRange?,
+             source_information_cutoff: Timestamp?,
+             revision_completeness: Completeness, evidence_refs: [EvidenceRef]}
+QuantityRange = {minimum: Decimal, maximum: Decimal}
+```
+
+The account bundle hash covers the entire original native pair. Historical
+hashes identify historical subjects, whose facts cannot substitute for current
+account facts. A supplied range must be finite, positive and ordered, or reject.
+A null range is unestablished. There is no unbounded-range representation.
+OTHER explicitly represents unsupported semantics, preserved in original bytes.
+Bindings address the full scoped relationships, without alternate identities
+or conversion instructions.
+
+```text
+Commitments = {state_at: Timestamp, source_information_cutoff: Timestamp?,
+               population_scope: ALL_ACCOUNT_POSITION_AFFECTING_COMMITMENTS,
+               source_universe_completeness: Completeness,
+               actor_coverage: ALL_ACCOUNT_ACTORS|UNKNOWN,
+               inventory_roster: [RosterMember], reports: [CommitmentReport],
+               evidence_refs: [EvidenceRef]}
+RosterMember = {inventory_id: Text, source_namespace: Namespace,
+                source_account_id: Text,
+                role: PROVIDER|SUBMISSION_CHANNEL|RESERVATION_OR_ALLOCATION
+                      |OTHER_POSITION_EFFECT_SOURCE,
+                binding_evidence_refs: [EvidenceRef]}
+CommitmentReport = {inventory_id: Text, source: Source, state_at: Timestamp,
+                    source_information_cutoff: Timestamp?,
+                    inventory_completeness: Completeness,
+                    revision_completeness: Completeness,
+                    source_available_at: Timestamp?, observed_at: Timestamp,
+                    categories: Categories, evidence_refs: [EvidenceRef]}
+CategoryFinding = {status: EMPTY|NONEMPTY|UNKNOWN, evidence_refs: [EvidenceRef]}
+```
+
+Categories has exactly seven keys, each a CategoryFinding:
+PENDING_SUBMISSIONS, ACCEPTED_UNFILLED_ORDERS, PARTIALLY_FILLED_ORDERS,
+CANCELLATIONS_AWAITING_CONFIRMATION, POSITION_RESERVATIONS,
+POSITION_ALLOCATIONS and OTHER_PROVIDER_OR_ACCOUNT_PENDING_EFFECTS.
+
+### Commitment population and identity joins
+
+The closure population includes outstanding effects at T that can change the
+exact account's positions or allocations, across all instruments and actors:
+manual, automated, local, remote and provider-originated activity as relevant.
+The hypothetical entry is not an already-submitted order. Positive closure
+requires all source-universe and actor coverage independently admitted, a
+nonempty roster with at least one PROVIDER member, exactly one current report per
+member, complete inventory/revision coverage and supported EMPTY findings for
+every category in every report. Source limitations can establish emptiness only
+through independently admitted evidence; absent fields are insufficient.
+
+Empty roster/no provider, missing listed reports, limited/unknown coverage,
+NONEMPTY or UNKNOWN categories and unsupported empty claims yield UNKNOWN.
+Duplicate roster/report identities, unlisted reports and report/roster namespace
+contradictions reject. Complete population coverage with unknown classification
+is valid unresolved input. A cancellation request remains outstanding until
+terminal confirmation. Empty provider orders cannot exclude unacknowledged
+local submissions. Roster completeness is independently proven, not inferred
+from checking all supplied reports. No quantity aggregation or cross-source
+deduplication is required to prove a union empty.
+
+Direct equalities reject on contradiction: request account namespace/ID/
+environment/currency versus reconstructed native account; instrument versus
+account environment; inventory versus request scope; native evaluation boundary
+versus K; uniquely identified current declaration account hash versus current
+native pair; declared position state_at versus native effective_at; report
+namespace versus roster namespace. A COMPLETE local position-inventory claim
+cannot accompany native PARTIAL/UNAVAILABLE positions. Known native and selected
+mechanics modes must agree. Missing native evidence yields UNKNOWN, not a
+fabricated equality failure. The syntactic current candidate for joins is the
+last effective record of one connected fully supplied chain; competing or
+incomplete chains do not permit choosing a record for these joins.
+
+Positive native state requires effective_at=T, complete empty positions, known
+mode and known source availability. Older native effective time is UNKNOWN;
+different native evaluation boundary rejects. No financial measure is derived or
+used as a risk gate in this capability.
+
+Independent bindings establish account-to-provider/venue association, instrument
+identity/applicability, identity quantity denomination, direction/mechanism
+semantics and each roster source-account relationship. There are no implicit
+account aliases, symbol mappings, currency or lot conversions. The schema has no
+alternate unit field or conversion expression; evidence bytes are not parsed to
+invent one. Later consumers must independently reconstruct their relevant owners
+and check this exact scope and quantity-range membership.
+
+### Causality and whole-declaration revisions
+
+Local timestamps require calendar-valid YYYY-MM-DDTHH:MM:SS[.fraction](Z|+/-HH:MM),
+one to six fractional digits if present, explicit timezone, offset hour 00-23 and
+minute 00-59. Leap seconds reject. Normalize to UTC with six fractional digits;
+never round excess precision. Require T=K. Every observation is <=K and known
+source availability is <=observation. Inventory observation contains coverage,
+records, evidence and nested reports; declaration observation contains its
+reports. State assertions cannot postdate their containing observation or known
+publication. Cited evidence observation cannot postdate its assertion. Body
+claims inherit declaration observation; categories inherit report observation.
+Known information cutoffs cannot exceed K, observation or known publication.
+Future effective information known by K is allowed; post-K observations are not.
+
+Positive current proof requires inventory economic coverage containing T; cutoff
+K for inventory coverage and selected positions, mechanics, commitment closure
+and reports; state_at=T for positions, commitments and reports; current
+declaration and admission intervals containing T. Intervals are half-open.
+Earlier/null cutoff is UNKNOWN; future cutoff rejects. The exact-T native timing
+constraints force account observation and its admission to fit the same boundary.
+No freshness tolerance, delayed-observation continuity model, lookahead or
+backdating is introduced. New K requires reconstruction with current evidence.
+
+Record IDs are unique; fingerprints cover complete normalized records, including
+predecessors and evidence references. Every supplied root appears in coverage;
+root references identify roots. Missing references must be explicitly listed as
+missing IDs. Missing-and-supplied IDs, wrong hashes, unexplained dangling
+references, self-reference, cycles and duplicate references reject. COMPLETE
+revision coverage requires FROM_INCEPTION, no missing IDs/UNKNOWN predecessors,
+and both omission flags false; contradictions reject. LIMITED/UNKNOWN coverage
+need not enumerate every missing fact and stays unresolved.
+
+Successor effective/observation times and known publication times must be
+nondecreasing; backward ordering is UNKNOWN with REVISION_ORDER_UNSUPPORTED.
+Usable history needs complete declaration/revision coverage, one supplied root,
+one connected chain covering all records, no gaps and supported ordering.
+Multiple roots/branches, disconnected/incomplete history and absence of a current
+declaration remain UNKNOWN. Otherwise select the last chain record effective by
+T. A withdrawal or expired successor remains UNKNOWN without predecessor revival.
+A future-effective successor does not replace the current declaration early;
+a later effective declaration can replace a withdrawal. Local history alone
+never proves complete underlying provider revisions without host admission.
+
+Inactive/historical body facts are structurally validated but are not evaluated
+for current flatness, emptiness or supported range. Their record envelopes and
+lineage support remain required. Each DECLARE remains a full replacement.
+
+### Independently supplied host admission
+
+```text
+TrustedContext = {contract, rule_version, admission_id: Text, authority_id: Text,
+                  mandate_id: Text, mandate_revision: positive integer,
+                  purpose: POSITION_EFFECT_FACT_ADMISSION_ONLY,
+                  request_content_sha256: Hash, knowledge_boundary: Timestamp,
+                  effective_from: Timestamp, effective_until: Timestamp?,
+                  admitted_at: Timestamp, available_at: Timestamp,
+                  assurances: Assurances}
+Assurance = {status: ADMITTED|UNRESOLVED, evidence_refs: [EvidenceRef]}
+```
+
+Contract/rule equal the admission constants. Assurances has exactly six keys:
+
+| Assurance | Independently admitted proposition |
+| --- | --- |
+| source_authority | Authority and scope of each relevant supplier |
+| original_positions_and_commitments | Original support for the bound account state and reports |
+| coverage_and_common_state | Complete source/actor universe and coherent common T/K state |
+| mechanics_and_revisions | Mechanics/interpretation and current underlying revision coverage |
+| identity_and_quantity_semantics | Full identity joins and identity quantity mapping |
+| causal_availability | Evidence and admission genuinely available by K |
+
+References resolve against inventory evidence. Context K equals request K;
+request pin hashes complete normalized request with native pair preserved.
+Require inventory observation <=admission<=context availability<=K, admission no
+earlier than supplied native observation, and nonempty support with known source
+availability for every ADMITTED assurance. All references, even UNRESOLVED ones,
+resolve with correct digests and observations no later than admission. Non-null
+context with null inventory rejects. Wrong contract/purpose/pin/timing rejects.
+Absent context, inactive context or any unresolved assurance yields UNKNOWN.
+Admission cannot override native incompleteness, missing reports, outstanding
+commitments or unsupported mechanics.
+
+The trusted host must actually control context supply and independently verify
+originals, authority, coverage, semantics, bindings and causality. Hashes/issuer
+strings cannot authenticate their own supplier. A caller controlling both request
+and trusted argument can fabricate both; this pure library does not detect that
+trust-boundary failure. Provider authentication, live ingestion and production
+admission integration remain external and unestablished.
+
+### Outcomes, reasons and precise diagnostics
+
+Outcomes are exactly ESTABLISHED and UNKNOWN. Structural violations raise
+ValueError before semantic results. Non-flat state, outstanding commitments and
+unsupported transitions never become NOT_SUITABLE or a trading prohibition.
+Validate every supplied object, including inactive records/context, reconstruct
+the native owner, check references/joins/causality, resolve history, then evaluate
+all independent current proof requirements. Collect independent findings without
+manufacturing descendants of absent parents or an unidentified current record.
+
+Findings are exactly `{reason_code, subject}`. Subject is an RFC 6901 JSON Pointer
+into `{request: normalized_request, trusted_position_effect_context:
+normalized_context_or_null}`, identifying an existing value. Missing reports point
+to their roster member; missing owner/context points to its null value. Deduplicate
+identical findings; retain all distinct reasons and subjects.
+
+| Closed reason | Trigger |
+| --- | --- |
+| MISSING_ACCOUNT_STATE | Null account pair |
+| MISSING_EFFECT_INVENTORY | Null inventory |
+| MISSING_HOST_ADMISSION | Null trusted context |
+| ADMISSION_NOT_CURRENT | Valid context interval excludes T |
+| ASSURANCE_UNRESOLVED | An assurance is UNRESOLVED |
+| SOURCE_AVAILABILITY_UNKNOWN | Required proof envelope/support has null source availability |
+| SUPPORTING_EVIDENCE_MISSING | Required support array is empty |
+| COVERAGE_INCOMPLETE | Inventory declaration completeness not COMPLETE |
+| COVERAGE_NOT_CURRENT | Inventory economic interval excludes T, applicable cutoff not K, or selected state time not T |
+| REVISION_HISTORY_INCOMPLETE | Inventory revision coverage/inception/gaps/connectivity unresolved, or selected position/mechanics revision coverage not COMPLETE |
+| REVISION_ORDER_UNSUPPORTED | Backward successor effective/observation/known publication ordering |
+| COMPETING_REVISION_CHAINS | Multiple roots or branching successor relationships |
+| NO_CURRENT_DECLARATION | Resolvable chain has no effective record, or complete empty history has none |
+| CURRENT_DECLARATION_WITHDRAWN | Selected current record is WITHDRAW |
+| CURRENT_DECLARATION_EXPIRED | Selected declaration end <=T |
+| ACCOUNT_STATE_NOT_CURRENT | Native effective_at<T |
+| POSITION_INVENTORY_INCOMPLETE | Native completeness or selected position-inventory completeness not COMPLETE |
+| ACCOUNT_NOT_FLAT | Native position rows present |
+| ACCOUNT_MODE_UNRESOLVED | Native or selected mechanics mode UNKNOWN |
+| BINDING_UNRESOLVED | Selected binding UNKNOWN |
+| BINDING_INCOMPATIBLE | Selected binding INCOMPATIBLE |
+| MECHANICS_UNSUPPORTED_OR_UNKNOWN | Selected model/aggregation differs from supported literals |
+| QUANTITY_RANGE_UNESTABLISHED | Selected range null |
+| COMMITMENT_REPORT_MISSING | Selected roster member lacks report |
+| COMMITMENT_COVERAGE_INCOMPLETE | Empty roster/no provider, incomplete source universe/actor coverage, or report inventory/revision coverage not COMPLETE |
+| COMMITMENT_PRESENT | Selected category NONEMPTY |
+| COMMITMENT_STATUS_UNKNOWN | Selected category UNKNOWN |
+| POSITION_EFFECT_BASIS_ESTABLISHED | Every positive requirement holds with no findings |
+
+Applicable cutoffs are inventory coverage and selected positions, mechanics,
+commitments and reports. Required support arrays are coverage, every record's
+own lineage support, and every reference array in the selected current body.
+Required availability includes inventory, coverage, record envelopes, selected
+reports, native account source and evidence cited by required arrays. Unreferenced
+catalog evidence is structurally checked and preserved but is not mandatory
+proof. Historical body support is not current proof; record support still is.
+Reason subjects identify the corresponding failing fields/nodes. UNKNOWN reasons
+are the unique sorted finding codes; ESTABLISHED has no findings and only its
+success reason. Any finding prevents the symbolic basis from being returned.
+
+### Exact output, authority and downstream obligations
+
+Output has exactly `contract`, `rule_version`, `assessment_economic_time`,
+`knowledge_boundary`, `scope`, `outcome`, `reason_codes`, `resolved_record`,
+`effect_basis`, `unresolved_findings`, `reconstruction_evidence`,
+`downstream_obligations`, `source_authentication`, `authority`, `execution` and
+`assessment_identity`. Times/scope are normalized request values. resolved_record
+is null or RecordRef, populated only with established history/coverage support
+and all current admission requirements; it may identify withdrawal/expiry without
+establishing a mapping and does not require flatness or empty commitments.
+
+effect_basis is null for UNKNOWN. For ESTABLISHED it is exactly:
+
+```text
+{model: ONE_NEW_SEPARATE_POSITION,
+ position_mode: NETTING|HEDGING,
+ quantity_unit: scoped unit,
+ quantity_range: {minimum: canonical positive decimal,
+                  maximum: canonical positive decimal},
+ resulting_direction: LONG|SHORT,
+ resulting_position_quantity: {kind: IDENTITY_OF_ENTRY_QUANTITY},
+ initial_position_count: 0, terminal_position_count: 1,
+ terminal_position_count_delta: 1,
+ conditions: [ACCEPTED_ENTRY_FULLY_FILLED,
+              ALL_ENTRY_FILLS_AGGREGATED_UNDER_ADMITTED_MECHANICS,
+              NO_UNRELATED_INTERVENING_STATE_CHANGE,
+              ADMITTED_MECHANICS_REMAIN_APPLICABLE]}
+```
+
+Conditions use exactly that order. They are explicit assumptions of the terminal
+mapping, not proven future events. No selected numeric q is returned. A consumer
+must enforce inclusive range membership; arbitrary caller misuse cannot be
+prevented by serialization. Admission is not order acceptance or fill feasibility.
+
+Authority has exactly quantity_selection, budget_approval,
+position_effect_compliance, margin_capital_approval, trade_decision,
+financial_risk and execution, all false. Top-level execution is false. Fixed,
+sorted downstream obligations are ATOMIC_COMMITMENT_AND_RESERVATION_CONTROL,
+CANDIDATE_VALIDITY, CURRENT_STATE_AND_MECHANICS_REVALIDATION,
+ENTRY_QUANTITY_DOMAIN_MEMBERSHIP, MARGIN_AND_AVAILABLE_CAPITAL_FEASIBILITY,
+MARKET_ORDER_AND_FILL_FEASIBILITY, MISSION_CONTROL_CURRENT_AUTHORIZATION,
+POSITION_EFFECT_AND_ACCOUNT_RULE_COMPLIANCE, POST_ENTRY_FLOOR_AND_PROVIDER_HEADROOM,
+QUANTITY_SELECTION_POLICY_AND_SELECTION and RISK_BUDGET_QUANTITY_FEASIBILITY.
+Mission Control retains final current authorization and atomic commitment
+responsibilities; no broker, registry, runtime or existing-owner behavior changes.
+
+### Canonical identity and detached reconstruction
+
+Canonical J is compact sorted-key JSON, ensure_ascii=False, allow_nan=False,
+encoded UTF-8. H is lowercase SHA-256 of J. Integers render exactly without an
+interpreter-wide digit-limit change. Local decimal grammar is
+`-?(0|[1-9][0-9]*)(\.[0-9]+)?`: reject exponents, plus, whitespace, commas,
+nonfinite values and invalid leading zeros. Strip trailing fractional zeros and
+an unnecessary point, map signed zero to "0", then enforce range positivity.
+Use arbitrary-precision exact coefficients/scales or rationals without floating
+point, Decimal context dependence or Python decimal-string digit-limit dependence.
+
+Evidence sorts by evidence_id; records/root references by record_id; evidence
+references by evidence_id then digest; missing IDs lexicographically; roster and
+reports by inventory_id; findings by complete canonical JSON; reasons/obligations
+lexicographically. Record chronology comes solely from lineage. Input identity
+and reference arrays reject duplicates including exact duplicates. Derived
+findings/reasons deduplicate. Native pair arrays and spellings remain untouched,
+so equivalent local presentations share identity while valid different native
+presentations may retain different provenance identities.
+
+Evidence references hash complete normalized Evidence, not only raw bytes.
+Record references hash complete normalized Record. Account hash covers the
+original preserved AccountPair. Admission pins complete normalized Request.
+Reconstruction is exactly `{request: normalized_request,
+trusted_position_effect_context_sha256: H(normalized_context) or null}`.
+Assessment identity is the fixed prefix plus H(complete output excluding only
+assessment_identity). The validator accepts a serialized object, independently
+re-evaluates originals/context, compares every serialized output field without
+normalizing the supplied assessment into acceptance, and returns a detached copy.
+Caller-recomputed identities cannot bypass replay. No returned object shares
+mutable state with inputs, contexts or other returned assessments.
+
+Acceptance tests use genuine account-owner construction/validation, mirrored
+directions and modes, exact/singleton/extreme ranges, all seven commitment
+categories, source/actor closure, missing/partial/stale states, unsupported
+mechanics, direct identity contradictions, explicit missing/competing revision
+histories, withdrawal/expiry/future successors, temporal violations, forged pins,
+original-byte and complete output tampering, canonical ordering, mutation
+isolation and fixed false authority. Synthetic external evidence and admissions
+test contract semantics only; no production provider truth/authentication is
+claimed. Correctly shaped attacker-controlled trusted arguments require external
+host-boundary controls rather than an invented unit-test authentication guarantee.
