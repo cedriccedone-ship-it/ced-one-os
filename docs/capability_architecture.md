@@ -1759,6 +1759,248 @@ All authority flags are false: `quantity_selection`, `budget_approval`,
 quantity, risk-budget calculation, position-effect proof, margin/capital
 approval, trade authorization, broker mutation or execution.
 
+## Current risk-budget quantity feasibility v1
+
+`xauusd_current_risk_budget_quantity_feasibility.py` exposes
+`evaluate_current_risk_budget_quantity_feasibility(request, *,
+trusted_planning_context=None, trusted_quantity_context=None,
+trusted_feasibility_context=None)` and
+`validate_current_risk_budget_quantity_feasibility(assessment, request, *,
+trusted_planning_context=None, trusted_quantity_context=None,
+trusted_feasibility_context=None)`. Contract:
+`trading.xauusd_current_risk_budget_quantity_feasibility.v1`; rule:
+`xauusd_current_risk_budget_quantity_feasibility_v1`.
+
+The sole calculation is the complete supported set
+`F = {q in D: 0 < q <= Q and R(q) <= B}`. D is the independently admitted
+entry-order domain, Q the established risk scenario's finite support, R its
+charge-bearing conditional loss and B the eligible own-policy maximum budget.
+No quantity is selected. No connector, registry, route, policy engine, Mission
+Control change or execution integration is introduced.
+
+### Request, reconstruction and source joins
+
+All specified fields are required and extra fields reject. The request fields
+are `contract`, `rule_version`, `assessment_economic_time`, `knowledge_boundary`,
+`risk_policy`, `risk_basis`, `quantity_domain`, `binding_evidence`. Each owner
+field is null or exactly `{assessment, request}` containing the complete native
+serialized output and original input. Null declares unavailable evidence.
+The three public native validators reconstruct every supplied artifact;
+planning and quantity contexts are supplied independently to their owners.
+An orphaned native context rejects. Native structures and identifiers remain
+unchanged. Finite native JSON numbers remain in provenance, never in the new
+quantity arithmetic. Non-JSON containers, nonfinite values and surrogate text
+reject.
+
+Current outer assessment times must all equal T=K. Compare parsed UTC instants,
+not native timestamp spellings. Candidate formulation and original input must
+match across policy and risk. Risk validity must bind that candidate at K.
+Supplied risk/policy account input/artifact pairs must match completely.
+Quantity direction and established risk mechanism must match the common entry.
+These are structural co-references; violations reject before any outcome.
+Historical measurement inside the policy retains its historical economic time
+and specification revision.
+Equivalent active scenario declarations retain the native risk owner's
+established semantics: its validator already proves identical status, terms
+and subjects, so distinct declaration IDs create no additional selection gate.
+
+A positive composition requires the risk owner's account-bound path: account
+pair, active scenario account scope and independent planning account scope must
+all exist and match environment, account ID and currency. A valid account-free
+risk result remains usable in its own contract but is unresolved here.
+Relevant active #29 instrument bindings must match the current financial
+source-qualified namespace on common fields; no namespace alias is inferred.
+
+The binding contract is
+`trading.xauusd_current_risk_budget_quantity_feasibility.binding.v1`, rule
+`xauusd_current_risk_budget_quantity_feasibility_binding_v1`. Its exact fields:
+`contract`, `rule_version`, `binding_id`, `source`, `assessment_economic_time`,
+`knowledge_boundary`, `effective_from`, `effective_until`,
+`source_available_at`, `observed_at`, `subjects`, `claims`, `evidence`.
+Source is exactly `{source_id, source_contract, source_contract_version,
+source_snapshot_id}`. Subjects has exactly `risk_policy_bundle_sha256`,
+`risk_basis_bundle_sha256`, `quantity_domain_bundle_sha256`; each is the hash
+of its complete owner envelope, or null exactly for an absent envelope.
+
+Claims has exactly four keys, each `{status, evidence_refs}` with status
+COMPATIBLE/INCOMPATIBLE/UNKNOWN:
+
+| Claim | Literal conditions and independent semantic obligation |
+| --- | --- |
+| account_provider_venue | Risk account ID/environment equal quantity scope, planning venue equals quantity venue; independently admit the source-qualified account, provider and financial/quote venue relationship. |
+| instrument_namespace | Candidate, current selected specification and quantity instrument/environment agree; independently admit actual provider instrument identity. |
+| quantity_denomination | Financial, entry-grid and active charge units agree literally; independently admit equal economic meaning without scaling. |
+| monetary_denomination | Policy/account, current payoff and active charge currencies agree; independently admit equal monetary denomination without FX. |
+
+The first three claims address risk/domain envelopes; monetary denomination
+addresses risk/policy. A non-UNKNOWN assertion with absent addressed envelopes
+rejects. A COMPATIBLE assertion contradicting known literal subjects rejects.
+Missing comparands remain unresolved. Matching provider/source labels do not
+establish trust or source equivalence.
+
+### Original evidence, time and independent admission
+
+Binding and feasibility context have separate evidence catalogs. Evidence has
+exactly `evidence_id`, `source`, `media_type`, `content_base64`,
+`source_available_at`, `observed_at`. Original bytes must be nonempty canonical
+padded base64. References are exactly `{evidence_id, content_sha256}`, hashing
+the whole normalized evidence item. References resolve within their catalog;
+duplicate IDs/references and mismatched or missing references reject. Empty
+source support lists and null source availability are explicit unresolved
+facts, not incompatibility. No document parser or provider authentication is
+implemented.
+
+The feasibility admission contract is
+`trading.xauusd_current_risk_budget_quantity_feasibility.admission.v1`, rule
+`xauusd_current_risk_budget_quantity_feasibility_admission_v1`. Exact fields:
+`contract`, `rule_version`, `admission_id`, `authority_id`, `mandate_id`,
+`mandate_revision` (positive integer, excluding booleans), `purpose`
+(`FEASIBILITY_FACT_AND_BINDING_ADMISSION_ONLY`), `knowledge_boundary`,
+`effective_from`, `effective_until`, `admitted_at`, `available_at`, `evidence`,
+`admissions`.
+
+Each admission is exactly `{target, subject_content_sha256, assurances}`.
+Assurances has exactly `source_authority`, `fact_and_policy_semantics`,
+`coverage_for_proposition`, `causal_availability`, each exactly
+`{status, evidence_refs}` with ADMITTED/UNRESOLVED status. ADMITTED requires
+nonempty original evidence references with known source availability and
+observation no later than admission. A target is trusted only when all four
+assurances are admitted and the context is current.
+
+Permissible targets and projections are frozen:
+
+| Target | Exact hashed projection |
+| --- | --- |
+| `{kind: POLICY_GATE, gate: EQUITY/DAILY_LOSS/FINANCIAL_COMPATIBILITY/REGIME}` | `{target, owner_bundle: risk_policy}` |
+| `{kind: PROVIDER_RULE, rule_reference: {rule_id, full_content_sha256}}` | `{target, owner_bundle: risk_policy}` |
+| `{kind: RISK_FUNCTION_INPUTS}` | `{target, owner_bundle: risk_basis, trusted_planning_context_sha256}` |
+| `{kind: RISK_NEGATIVE, reason_code}` | `{target, owner_bundle: risk_basis, trusted_planning_context_sha256}` |
+| `{kind: BINDING, claim}` | `{target, binding_evidence}` |
+
+Policy targets identify `own_policy.equity_gate`, `own_policy.daily_loss_gate`,
+`financial_compatibility`, `provider_policy.regime_gate`, or the unique native
+rule result with that exact reference. Risk-negative selectors must belong to
+the module's frozen `NATIVE_RISK_NEGATIVES` set and occur in the reconstructed
+NOT_SUITABLE result's reasons excluding uncertainties. Nonexistent targets,
+duplicate targets, forged pins and arbitrary/wildcard targets reject.
+
+Policy gate admission independently establishes its necessary source facts,
+governing policy, semantics and coverage. The daily block can be admitted from
+two definite qualifying losses without complete population coverage; a passing
+daily gate still requires the native sufficient coverage. Risk-function input
+admission covers underlying candidate/history, current specification, quotes,
+source terms, charges and finite support, without granting planning permission.
+Risk-negative admission covers the particular native predicate's necessary
+facts and applicability. Binding admission establishes the exact asserted
+relationship for its pinned subjects. One receipt never admits another target.
+Native UNKNOWN cannot become SATISFIED through a receipt.
+
+Planning-dependent negative selectors (`PLANNING_*`, `APPROVED_*`, `TRUSTED_*`
+and QUOTE_VENUE_MISMATCH) also need the separate native-valid planning context;
+except mandate expiry itself, it must contain K. This deliberately fails
+closed when the context is absent/inactive. A scoped risk negative establishes
+unusability of the submitted basis; stale quotes do not establish a current
+market stop trigger.
+
+Local time requires seconds, timezone and at most microseconds, normalized to
+UTC with six fractional digits. Intervals include their start and exclude their
+end; null end means open-ended. Require observed_at <= K and known source
+availability <= observation; context admitted_at <= available_at <= K and exact
+K. An expired/future-effective context or binding remains unresolved. Supplied
+post-K material, contradictory timing or admission before its supporting
+evidence rejects. Native revision selection, withdrawals, histories and
+availability retain their owners' semantics; a future known revision cannot
+govern early and a predecessor is never silently revived.
+
+Trusted hosts must independently supply contexts and actually verify facts,
+authority, semantics, coverage and causal availability. Hashes, issuer strings
+and caller approval flags cannot authenticate their supplier. Native planning
+permission, quantity-fact admission and feasibility admission remain separate.
+No live provider connector or production admission integration is established.
+
+### Exact domains and deterministic outcomes
+
+Canonical D is `q = r + k*increment`, with 0 <= r < increment, positive
+represented q, integer first/last indices and an optional unbounded last index.
+Index zero is valid for positive residue. For Q, compute
+`N = floor((Q-r)/increment)`, supported last `min(U,N)` (N when U unbounded),
+and tail first `max(L,N+1)`. Empty intervals are `{kind: EMPTY}`. Otherwise
+the native descriptor shape is retained with canonical integer strings.
+
+Positive risk is `c*q + sum(max(minimum_i, fixed_i + per_unit_i*q))` with c>0
+and nonnegative charges, so it is strictly increasing. R(0)=0 is the no-position
+alternative; positive fixed/minimum charges may create a jump at zero. Evaluate
+the full first-point risk exactly. If it exceeds B, the supported feasible set
+is empty. Otherwise integer upper-midpoint binary search derives the last
+feasible index, including equality. It is a set boundary, never a selection.
+Arithmetic uses arbitrary-precision rationals/integers, including chunked
+decimal integer conversion; no floats, rounding or provider-grid enumeration.
+
+Entry domain is available independently from native quantity admission. Risk
+support requires established native risk and admitted inputs. Budget requires
+all native policy gates SATISFIED and their independent admission, consuming
+`maximum_monetary_risk`, never target-risk optimization. Supported domain/tail
+need admitted risk support, account-bound evidence and the first three binding
+claims; no budget is needed. Feasible domain additionally needs eligible B,
+monetary compatibility and remaining joins. Null means unestablished; EMPTY
+means proven empty. Provider quantities above Q remain explicitly unassessed.
+
+Structural rejection always precedes outcomes. Independently admitted scoped
+negatives yield NOT_SUITABLE; otherwise unresolved mandatory proof yields
+UNKNOWN; otherwise a complete nonempty feasible set yields ESTABLISHED.
+Candidate/policy failure never manufactures an empty mathematical set. Native
+negative and unknown findings remain intact in reconstruction. Independent
+unresolved diagnostics survive a decisive negative.
+
+Output fields are `contract`, `rule_version`, `assessment_economic_time`,
+`knowledge_boundary`, `outcome`, `reason_codes`, `negative_proofs`,
+`unresolved_findings`, `budget`, `risk_support`, `entry_domain`,
+`supported_entry_domain`, `feasible_domain`, `outside_risk_support`,
+`reconstruction_evidence`, `downstream_obligations`, `source_authentication`,
+`authority`, `execution`, `assessment_identity`. Budget is null or
+`{amount, currency}`; support null or `{maximum_quantity, quantity_unit}`;
+domain fields null or `{quantity_unit, domain}`. Proofs are exactly
+`{reason_code, target, scope}`; unresolved findings `{reason_code, target}`.
+Proof scopes are CANDIDATE_AT_K, POLICY_GATE_AT_K, RISK_INPUT_BUNDLE,
+BINDING_RELATION, ENTRY_DOMAIN or SUPPORTED_DOMAIN. Diagnostic targets also
+allow OWNER with RISK_POLICY/RISK_BASIS/QUANTITY_DOMAIN, COMPOSITION,
+ENTRY_DOMAIN, SUPPORTED_DOMAIN and FEASIBLE_DOMAIN; these cannot be receipts.
+
+The closed local reason vocabulary is `SUPPORTED_FEASIBLE_DOMAIN_ESTABLISHED`,
+`CANDIDATE_NOT_CURRENTLY_VALID`, `PRE_QUANTITY_POLICY_BLOCKED`,
+`RISK_BASIS_UNUSABLE`, `BINDING_INCOMPATIBLE`, `ENTRY_DOMAIN_EMPTY`,
+`NO_SUPPORTED_POSITIVE_QUANTITY`, `BUDGET_BELOW_FIRST_SUPPORTED_QUANTITY_RISK`,
+`OWNER_MISSING`, `OWNER_UNKNOWN`, `ADMISSION_MISSING`, `ADMISSION_UNRESOLVED`,
+`ADMISSION_NOT_CURRENT`, `NEGATIVE_NOT_ADMITTED`, `BINDING_MISSING`,
+`BINDING_SUPPORT_MISSING`, `BINDING_NOT_CURRENT`, `BINDING_UNRESOLVED`,
+`ACCOUNT_APPLICABILITY_UNRESOLVED`, `POLICY_INSTRUMENT_NAMESPACE_UNRESOLVED`.
+Native reasons stay native. Reasons/obligations are unique sorted strings;
+proofs/findings sort by canonical content. OWNER_UNKNOWN also records native
+risk uncertainties accompanying NOT_SUITABLE; it does not relabel that outcome.
+
+Reconstruction is exactly `{request, trusted_planning_context_sha256,
+trusted_quantity_context_sha256, trusted_feasibility_context_sha256}`. Missing
+contexts have null hashes. Canonical encoding is compact sorted-key JSON with
+ensure_ascii=False, allow_nan=False, encoded UTF-8. Normalize local records and
+collections; preserve native owner requests and native context representations.
+Local evidence sorts by ID, references by ID/hash, admissions by canonical
+target. Composition assessment identity is
+`current_risk_budget_quantity_feasibility_` plus the complete output hash before
+adding its identity. Equivalent native presentations may retain different
+composition provenance identities. The validator independently rebuilds every
+field and context dependency, not merely a supplied ID. All returns detach.
+
+All authority flags are false: quantity_selection, budget_approval,
+position_effect_compliance, margin_capital_approval, trade_decision,
+financial_risk, execution. Top-level execution is false and source authentication
+is NOT_VERIFIED_BY_THIS_CAPABILITY. Fixed downstream obligations are
+MARGIN_AND_AVAILABLE_CAPITAL_FEASIBILITY, MARKET_ORDER_AND_FILL_FEASIBILITY,
+MISSION_CONTROL_CURRENT_AUTHORIZATION, POSITION_EFFECT_AND_ACCOUNT_RULE_COMPLIANCE,
+POST_ENTRY_FLOOR_AND_PROVIDER_HEADROOM, QUANTITY_SELECTION_POLICY_AND_SELECTION.
+Native detailed obligations remain in provenance. Equity budget is not
+provider-safe headroom; entry volume is not resulting-position compliance;
+conditional loss is not a guaranteed realized-loss ceiling.
+
 ## RESEARCH-ONLY — XAUUSD reference trade management experiment v0.1
 
 `xauusd_reference_trade_management_experiment.py` is an additive, deterministic
