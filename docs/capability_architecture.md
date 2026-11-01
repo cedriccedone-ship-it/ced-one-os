@@ -3342,3 +3342,477 @@ It must eventually use actual prop-firm terms, reliable net realized performance
 payout-cycle definitions and current account-state authorization. This terminal
 slice introduces no performance target, profit trigger, payout eligibility or
 provider-rule reinterpretation.
+
+## Current Entry Quantity Constraint Composition v1
+
+`xauusd_current_entry_quantity_constraint_composition.py` reconstructs the
+financial-feasibility and terminal-position-limit owners, establishes one exact
+qualified current scenario, and derives conditional supported quantity grids.
+It does not recalculate risk, fees, policy, position effects or provider limits.
+It selects no quantity, constructs no order, and grants no downstream authority.
+This section records the frozen final normative contract.
+
+### Constants, public APIs and trust boundary
+
+```text
+CONTRACT = trading.xauusd_current_entry_quantity_constraint_composition.v1
+RULE_VERSION = xauusd_current_entry_quantity_constraint_composition_v1
+IDENTITY_PREFIX = current_entry_quantity_constraint_composition_
+MECHANISM = IMMEDIATE_MARKET_ENTRY_SCENARIO_V1
+SOURCE_AUTHENTICATION = NOT_VERIFIED_BY_THIS_CAPABILITY
+Outcome = ESTABLISHED | NOT_SUITABLE | UNKNOWN
+Owner = FINANCIAL | TERMINAL
+JoinStatus = PROVEN | UNKNOWN
+```
+
+```python
+evaluate_current_entry_quantity_constraint_composition(
+    request: dict, *, trusted_planning_context=None,
+    trusted_quantity_context=None, trusted_feasibility_context=None,
+    trusted_position_effect_context=None, trusted_position_limit_context=None,
+) -> dict
+validate_current_entry_quantity_constraint_composition(
+    assessment: dict, request: dict, *, trusted_planning_context=None,
+    trusted_quantity_context=None, trusted_feasibility_context=None,
+    trusted_position_effect_context=None, trusted_position_limit_context=None,
+) -> dict
+```
+
+For each nonnull original pair invoke the genuine public validator:
+
+```python
+validate_current_risk_budget_quantity_feasibility(
+    pair["assessment"], pair["request"],
+    trusted_planning_context=trusted_planning_context,
+    trusted_quantity_context=trusted_quantity_context,
+    trusted_feasibility_context=trusted_feasibility_context,
+)
+validate_current_terminal_position_limits(
+    pair["assessment"], pair["request"],
+    trusted_position_effect_context=trusted_position_effect_context,
+    trusted_position_limit_context=trusted_position_limit_context,
+)
+```
+
+Consume the full reconstructed results. Their transitive reconstruction includes
+candidate/validity, current risk basis, policy, grid, account state, position
+mechanics, commitments and rule regime. No supplied summary or identity replaces
+replay. No new admission service, blanket approval or provider integration exists.
+Trusted contexts must come from an independently controlled host boundary; the
+pure function cannot authenticate a caller-created dictionary. Hashes bind
+content, never provider authenticity. Existing scope-specific admissions remain
+native-owned. No aliases, currency conversion or quantity conversion are inferred.
+
+All supplied serialized material and contexts are checked before any semantic
+return. A malformed owner or context, contradictory known co-reference or failed
+replay raises ValueError even alongside a missing prerequisite or decisive
+negative. An absent financial pair requires all three financial contexts null;
+an absent terminal pair requires both terminal contexts null. Nested orphan
+context rules remain native-owned.
+
+### Closed primitives and request
+
+Every object has exactly the listed required keys; extra keys reject. Null is
+allowed only where explicit. Text is a built-in UTF-8-encodable string nonempty
+after a whitespace check, with actual spelling preserved. Currency matches
+`[A-Z]{3}`. Hash is 64 lowercase hexadecimal characters. Nat is a built-in
+nonnegative integer excluding bool. Index is a canonical nonnegative integer
+string `0|[1-9][0-9]*` with no imposed digit-count limit. Decimal is a canonical
+finite plain-decimal string, without exponent, plus, unnecessary leading zeros,
+trailing fractional zeros or signed zero. PositiveDecimal is strictly positive.
+NativeJSONObject is an ordinary dictionary with string keys and recursively
+serialized finite JSON values, additionally governed by its native schema.
+Native finite floats remain provenance only. Cycles, non-JSON containers,
+nonfinite numbers and invalid Unicode reject.
+
+Local input Timestamp requires calendar-valid
+`YYYY-MM-DDTHH:MM:SS[.fraction](Z|+/-HH:MM)`, at most six fractional digits, valid
+explicit offset and representable UTC instant. Output is UTC with six fractional
+digits and Z. Current outer economic time must equal knowledge boundary T=K.
+
+```text
+Request = {contract, rule_version, assessment_economic_time: Timestamp,
+ knowledge_boundary: Timestamp, scope: Scope,
+ risk_budget_feasibility: OwnerPair|null,
+ terminal_position_limits: OwnerPair|null}
+OwnerPair = {assessment: NativeJSONObject, request: NativeJSONObject}
+Namespace = {source_id: Text, source_contract: Text,
+ source_contract_version: Text}
+Account = {source_id: Text, source_contract: Text,
+ source_contract_version: Text, account_id: Text,
+ environment: DEMO|LIVE, currency: Currency}
+Instrument = {source_id: Text, source_contract: Text,
+ source_contract_version: Text, environment: DEMO|LIVE, instrument_id: Text}
+Scope = {account: Account, provider_namespace: Namespace, provider_id: Text,
+ venue_id: Text, instrument: Instrument, entry_direction: LONG|SHORT,
+ entry_mechanism: IMMEDIATE_MARKET_ENTRY_SCENARIO_V1, quantity_unit: Text}
+```
+
+Account/instrument environments agree. Scope declares the subject, not admitted
+applicability. An explicit null top-level pair is a missing prerequisite;
+omitted keys, partial pairs and null pair members reject. No standalone grid,
+approval, selected quantity, order or decision is accepted.
+
+### Original paths and exact shared scenario
+
+FR denotes the original financial pair's request; TR denotes the original
+terminal pair's request. FA and TA are their returned reconstructed assessments.
+RP=FR.risk_policy, RB=FR.risk_basis, QD=FR.quantity_domain,
+PE=TR.position_effect. Nested assessment facts are used only after top-level
+native replay. Nullable ancestors make an operand unavailable; present malformed
+native structures remain errors.
+
+| Subject | Exact original/replayed paths |
+| --- | --- |
+| Account pairs | RP.request.account_state; RB.request.account_state; PE.request.account_state |
+| Regime pairs | RP.request.account_rule_regime; TR.account_rule_regime |
+| Candidate pairs | RP.request.candidate; RB.request.candidate |
+| Current validity | RB.request.validity |
+| Historical measurement | RP.request.financial_measurement |
+| Current qualified financial namespace | RB.assessment.reconstruction_evidence.selected_specification.specification.position_namespace |
+| Financial semantic assertions | FR.binding_evidence.claims |
+| Grid scope | QD.assessment.scope |
+| Position and terminal scope | PE.assessment.scope; TA.scope |
+| P | PE.assessment.effect_basis.quantity_range; TA.position_effect_support.interval |
+| D intersect R | FA.supported_entry_domain |
+| F | FA.feasible_domain |
+| H | TA.terminal_satisfying_domain |
+| Terminal exclusions | TA.negative_proofs |
+
+Compare all available required operands even when another is absent. A known
+contradiction raises ValueError. Unavailable material is not a fabricated
+inequality. Complete original-pair equality preserves native strings, arrays,
+nulls and numeric representations; object-key order alone is immaterial. No
+alternative account or regime original reconciliation is supported.
+
+Exactly eleven join rows occur, sorted lexicographically by requirement:
+
+| JoinRequirement | PROVEN iff |
+| --- | --- |
+| ACCOUNT_ORIGINALS | All three account original pairs exist and are identical. |
+| REGIME_ORIGINALS | Both regime original pairs exist and are identical. |
+| ACCOUNT_IDENTITY | All account/regime pairs exist; account namespace, ID, environment and currency equal outer account; native regime accounts equal its projection excluding currency. |
+| PROVIDER_AND_VENUE | Financial and position owners are established; both selected regimes exist and originals match; assignment/package and grid provider IDs agree with outer provider; grid/planning/position venues agree; position/terminal provider namespaces equal outer. |
+| INSTRUMENT_IDENTITY | Financial and position owners are established; current financial namespace projected to Instrument equals outer instrument; grid instrument/environment and qualified position/terminal instruments agree. |
+| DIRECTION_AND_MECHANISM | Financial and position owners are established; candidate, risk scenario, grid, position basis/scope and terminal scope agree with outer direction/mechanism. |
+| QUANTITY_DENOMINATION | Financial and position owners are established; current namespace/risk function, financial set fields, grid, position basis/scope and terminal scope use the exact outer unit, with native independently admitted economic meaning. |
+| MONETARY_DENOMINATION | Financial and position owners are established; shared account, budget, current risk function and payoff currency equal outer currency, preserving native monetary admission. |
+| CURRENT_BOUNDARY | Both top-level owners and nested position owner exist and current boundaries equal outer T=K; descendant native current checks replay. |
+| CANDIDATE_AND_HISTORY | Both candidate originals, validity and historical measurement pairs exist; candidate originals agree and native replay binds validity and historical measurement. This does not itself assert current validity. |
+| INDEPENDENT_SCOPE_ADMISSION | Financial and nested position-effect owners replay as ESTABLISHED with separately supplied native contexts. |
+
+Every available position/terminal scope equals the complete outer scope; every
+available grid scope field equals its corresponding outer field. Account
+identities project native observation source/account fields. Check all available
+current financial instrument, direction, mechanism, unit, currency, provider and
+planning-venue comparands before assigning semantic join outcomes.
+
+Equal labels alone never establish meaning. Financial establishment includes
+admitted account/provider/venue, instrument, quantity and monetary bindings;
+position establishment includes admitted account/provider/venue, instrument,
+quantity and direction/mechanism bindings. There is no invented financial
+provider_namespace field. Connect the branches through shared account/regime
+originals and qualified instrument/provider/venue facts; never substitute an
+evidence publisher's namespace. Missing semantic admission leaves UNKNOWN.
+
+### Conservative gate and exact sets
+
+Gate J holds exactly when financial outcome is ESTABLISHED, nested position
+outcome is ESTABLISHED and all eleven join checks are PROVEN. Terminal
+ESTABLISHED is not required. If J is false, both main domains and both limitation
+fields are null. Retain native negatives/findings. Do not consume intermediate
+grids of financial UNKNOWN or NOT_SUITABLE as positive joint operands.
+
+Let D be the admitted positive entry grid, R=(0,Q] the finite risk support,
+F the established financial feasible grid, P=[a,b] finite position support,
+and H the established terminal satisfying interval or EMPTY:
+
+```text
+S = D intersect R intersect P
+B = F intersect P
+C = F intersect H
+```
+
+Obtain D intersect R and F directly from the native financial fields. Obtain P
+from replayed position mechanics and compare terminal support. No monetary risk,
+fees, position effects or provider limits are recalculated.
+
+For q(n)=r+n*d with d>0, 0<=r<d and inclusive native indices i..j, clipping to
+closed [l,u] yields:
+
+```text
+first = max(i, ceil((l-r)/d))
+last  = min(j, floor((u-r)/d))
+EMPTY iff first > last
+floor(A/B) = A // B                 (integer B > 0)
+ceil(A/B)  = -((-A) // B)
+```
+
+Use exact integer coefficient/scale or rational arithmetic, sign-aware chunked
+large-integer conversion and serialization, no enumeration, float rounding,
+ambient Decimal precision or interpreter-wide settings. Index zero is valid
+with positive residue. Signed intermediate bounds are supported; owner-valid
+nonempty canonical grids have nonnegative member indices. Negative declared
+origins are accepted only through native canonicalization. Main grids are finite.
+
+When J holds, copy the native financial outside-risk-support set. Represent
+F outside P by the nonempty segments:
+
+```text
+[i_F, min(j_F, ceil((a-r)/d)-1)]
+[max(i_F, floor((b-r)/d)+1), j_F]
+```
+
+Order segments by numeric first index; there are at most two. An empty list
+means none; null means unestablished. Outside R/P quantities remain unassessed,
+not prohibited. Only the native outside-risk-support limitation may be unbounded.
+
+### Outcome matrix, emptiness and partial exclusions
+
+After structural validation, N below means native prerequisite NOT_SUITABLE
+without automatically manufacturing an EMPTY grid; U means UNKNOWN:
+
+| Financial / Terminal | ESTABLISHED | NOT_SUITABLE | UNKNOWN | null |
+| --- | --- | --- | --- | --- |
+| ESTABLISHED | Evaluate J/sets | N; bounded EMPTY only with J | Evaluate J/sets | U |
+| NOT_SUITABLE | N | N | N | N |
+| UNKNOWN | U | N | U | U |
+| null | U | N | U | U |
+
+Always preserve missing/unknown owner and native unresolved findings. Known
+co-reference contradictions and failed replay override every cell. A native
+negative without J preserves only its original scope; both main domains stay
+null. No scoped negative is a final NO TRADE.
+
+When J holds, choose at most one derived mathematical-negative classification:
+
+1. S empty: both main domains EMPTY; EMPTY_COMMON_SUPPORT.
+2. S nonempty, B empty: common=S, composed EMPTY;
+   NO_COMMON_FINANCIALLY_FEASIBLE_QUANTITY.
+3. S/B nonempty, terminal ESTABLISHED: compute C from F and H. Empty yields
+   EMPTY_TERMINAL_INTERSECTION; nonempty is the exact finite composition.
+4. S/B nonempty, terminal UNKNOWN or NOT_SUITABLE: composed EMPTY only if native
+   terminal exclusions cover all B; otherwise composed null.
+
+Native terminal EMPTY accompanies NOT_SUITABLE and independently established
+ALL_SUPPORT; forged ESTABLISHED/EMPTY fails native replay. For terminal UNKNOWN
+retaining an admitted upper tail (U,b] on the same P, all nonempty B is excluded
+iff r+first_index(B)*d > U. Equality does not exclude. ALL_SUPPORT covers P.
+Consume only replayed native proofs; an upper tail's upper endpoint must equal
+P.maximum. Same-P upper-tail unions reduce to the smallest lower endpoint.
+Reference all individually sufficient native witnesses, sorted by reference key.
+If only some B is excluded, retain the negative reference but never promote the
+uncovered remainder to a positive set. B emptiness is classified before terminal
+attribution. Native rule evidence, scopes, admission targets and assumptions stay
+fully preserved in the replayable original owners.
+
+Aggregate precedence is ValueError, then any native prerequisite or derived
+negative => NOT_SUITABLE, then any unresolved finding => UNKNOWN, then a complete
+nonempty composed grid => ESTABLISHED. Any other combination is an invariant
+failure. Unknowns survive decisive negatives and never become positive proofs.
+
+### Closed output and diagnostic types
+
+```text
+Assessment = {contract, rule_version, assessment_economic_time,
+ knowledge_boundary, scope: Scope, outcome: Outcome, reason_codes: ReasonCode[],
+ owner_references: OwnerReferences, join_checks: JoinCheck[],
+ common_supported_domain: QuantitySet|null, composed_domain: QuantitySet|null,
+ support_limitations: SupportLimitations,
+ native_negative_proof_references: NativeItemReference[],
+ negative_proofs: NegativeProof[], unresolved_findings: UnresolvedFinding[],
+ conditions: Text[], reconstruction_evidence: ReconstructionEvidence,
+ downstream_obligations: Text[], source_authentication, authority: Authority,
+ execution: false, assessment_identity: Text}
+OwnerReferences = {financial: OwnerReference|null, terminal: OwnerReference|null}
+OwnerReference = {assessment_identity: Text, owner_bundle_sha256: Hash}
+NativeItemReference = {owner: FINANCIAL|TERMINAL,
+ collection: negative_proofs|unresolved_findings, index: Nat,
+ content_sha256: Hash}
+JoinCheck = {requirement: JoinRequirement, status: PROVEN|UNKNOWN}
+Empty = {kind: EMPTY}
+FiniteGrid = {kind: REGULAR_GRID, origin: Decimal, increment: PositiveDecimal,
+ first_index: Index, last_index: Index}
+QuantitySet = {quantity_unit: Text, domain: Empty|FiniteGrid}
+NativeGrid = {kind: REGULAR_GRID, origin: Decimal, increment: PositiveDecimal,
+ first_index: Index, last_index: Index|null}
+NativeQuantitySet = {quantity_unit: Text, domain: Empty|NativeGrid}
+SupportLimitations = {outside_risk_support: NativeQuantitySet|null,
+ financially_feasible_outside_position_support: FiniteGrid[]|null}
+```
+
+OwnerReference is null exactly for an absent top-level owner. Its identity comes
+from returned replay; bundle hash covers the complete original pair. Every
+NativeItemReference resolves against the replayed owner's actual collection and
+hashes the complete item. References are unique by owner/collection/index and
+sort by owner, collection, then numeric index. The native-negative-reference
+array includes every native negative, even when only partial or nondecisive.
+There are no arbitrary pointers or diagnostic extension dictionaries.
+
+Common supported domain is null iff J is false, otherwise exactly S. Composed
+domain is null without J or sufficient terminal proof, EMPTY only by the
+classification above, or a finite nonempty conditional grid. Nonempty grids
+have 0<=origin<increment, positive first quantity, ordered inclusive indices and
+canonical strings. Limitation segments inherit the established outer unit.
+
+```text
+NegativeProof =
+ {kind: NATIVE_PREREQUISITE_NOT_SUITABLE, native_proof: NativeItemReference}
+ | {kind: EMPTY_COMMON_SUPPORT}
+ | {kind: NO_COMMON_FINANCIALLY_FEASIBLE_QUANTITY}
+ | {kind: EMPTY_TERMINAL_INTERSECTION}
+ | {kind: TERMINAL_EXCLUSION_COVERS_COMMON_FEASIBLE,
+    covered_domain: QuantitySet, native_proofs: NativeItemReference[]}
+UnresolvedFinding = {reason_code: OWNER_MISSING|OWNER_UNKNOWN|
+ JOIN_UNRESOLVED|NATIVE_UNRESOLVED, subject: Owner|JoinRequirement,
+ native_reference: NativeItemReference|null}
+```
+
+For financial NOT_SUITABLE emit a native-prerequisite proof per native negative.
+For terminal NOT_SUITABLE do so only per ALL_SUPPORT negative, never per partial
+tail alone. Derived negatives are common-support scoped; native prerequisites
+retain native scope. Coverage's covered_domain is nonempty B and its witnesses
+are the nonempty list of all individually sufficient terminal native negatives.
+
+Generate OWNER_MISSING per null owner and OWNER_UNKNOWN per unknown top-level
+owner, with subject that owner and null reference. Generate JOIN_UNRESOLVED per
+unknown join with subject that requirement and null reference. Generate
+NATIVE_UNRESOLVED per native unresolved item with subject that owner and a
+matching collection/index/hash reference. The reference is required only for
+NATIVE_UNRESOLVED. Preserve nested uncertainty through native reconstruction.
+
+ReasonCode is exactly:
+
+```text
+CONDITIONAL_QUANTITY_DOMAIN_ESTABLISHED
+NATIVE_PREREQUISITE_NOT_SUITABLE
+EMPTY_COMMON_SUPPORT
+NO_COMMON_FINANCIALLY_FEASIBLE_QUANTITY
+EMPTY_TERMINAL_INTERSECTION
+TERMINAL_EXCLUSION_COVERS_COMMON_FEASIBLE
+OWNER_MISSING
+OWNER_UNKNOWN
+JOIN_UNRESOLVED
+NATIVE_UNRESOLVED
+```
+
+reason_codes is the sorted unique union of local negative kinds and unresolved
+codes, plus CONDITIONAL_QUANTITY_DOMAIN_ESTABLISHED exactly for ESTABLISHED.
+Native detailed reasons remain native. Proofs/findings deduplicate only identical
+derived content and sort by canonical JSON. Never reorder native collections.
+
+### Reconstruction, identity, causality and detached validation
+
+```text
+ReconstructionEvidence = {request: Request,
+ trusted_planning_context_sha256: Hash|null,
+ trusted_quantity_context_sha256: Hash|null,
+ trusted_feasibility_context_sha256: Hash|null,
+ trusted_position_effect_context_sha256: Hash|null,
+ trusted_position_limit_context_sha256: Hash|null}
+```
+
+Copy the first three fingerprints from returned financial reconstruction and
+the last two from returned terminal reconstruction. Preserve native fingerprint
+conventions; absent corresponding owners yield null fingerprints. Normalize only
+local outer timestamps, derived decimal/index strings and local collections.
+Preserve every native original string, numeric representation, array and null.
+
+Canonical JSON is compact sorted-key UTF-8, ensure_ascii=False and separators
+(',', ':'), with nonfinite values rejected and array order preserved. Preserve
+finite native float JSON representation, distinguish bool from numbers, and emit
+arbitrary integers as ordinary decimal JSON without global digit-limit changes.
+For ordinary values match Python standard JSON bytes. H(x) is SHA-256 of these
+bytes. Identity is IDENTITY_PREFIX+H(complete result before adding identity),
+including reconstruction, diagnostics, flags and context fingerprints.
+
+Current boundaries compare parsed UTC instants. Preserve historical candidate
+and measurement times and native no-lookahead checks. Post-K observations or
+admissions cannot support a result; known future-effective data remains future.
+Expired/future-effective native context outcomes remain native. No wall clock
+substitutes for explicit K. Equivalent outer times normalize identically with
+otherwise identical originals; changed native presentation may change identity.
+
+The detached validator requires a serialized dictionary, reevaluates the entire
+request with all five contexts, compares every supplied field against exact
+canonical expected output and returns a detached copy. It never normalizes a
+forged output into acceptance. Rehashed tampering, extra/missing fields, altered
+ordering and 0 substituted for false reject. No caller input/context or previous
+return shares mutable state with new output.
+
+### Fixed assumptions, authority and downstream obligations
+
+Conditions are exactly this ordered list:
+
+```text
+ACCEPTED_ENTRY_FULLY_FILLED
+ALL_ENTRY_FILLS_AGGREGATED_UNDER_ADMITTED_MECHANICS
+NO_UNRELATED_INTERVENING_STATE_CHANGE
+ADMITTED_MECHANICS_REMAIN_APPLICABLE
+ADMITTED_RULES_REMAIN_APPLICABLE_AT_TERMINAL_STATE
+CONDITIONAL_ON_RECONSTRUCTED_RISK_BASIS
+```
+
+Authority has exactly quantity_selection, budget_approval,
+position_effect_compliance, margin_capital_approval, trade_decision,
+financial_risk and execution, all built-in false booleans. Top-level execution
+is false; source_authentication is NOT_VERIFIED_BY_THIS_CAPABILITY.
+
+Downstream obligations are exactly the sorted native union:
+
+```text
+ATOMIC_COMMITMENT_AND_RESERVATION_CONTROL
+CANDIDATE_VALIDITY
+CURRENT_STATE_MECHANICS_AND_RULE_REVALIDATION
+ENTRY_QUANTITY_DOMAIN_MEMBERSHIP
+EXECUTION_PATH_AND_PEAK_POSITION_LIMIT_COMPLIANCE
+MARGIN_AND_AVAILABLE_CAPITAL_FEASIBILITY
+MARKET_ORDER_AND_FILL_FEASIBILITY
+MISSION_CONTROL_CURRENT_AUTHORIZATION
+ORDER_ACCEPTANCE_AND_PENDING_COMMITMENT_RULES
+OTHER_PROVIDER_AND_ACCOUNT_RULE_COMPLIANCE
+POSITION_EFFECT_AND_ACCOUNT_RULE_COMPLIANCE
+POST_ENTRY_FLOOR_AND_PROVIDER_HEADROOM
+QUANTITY_SELECTION_POLICY_AND_SELECTION
+RISK_BUDGET_QUANTITY_FEASIBILITY
+```
+
+No obligation is marked discharged. A nonempty conditional grid establishes no
+order acceptance, fills/stops, continuous/peak position compliance, full provider
+compliance, floor headroom, margin, capital reservation, final trading decision,
+financial approval or execution authority.
+
+### Normative acceptance and file boundary
+
+Tests must build shared original account/regime evidence before deriving both
+native branches, using genuine public replay and synthetic independent admissions.
+Cover LONG/SHORT and NETTING/HEDGING; 0.9 financial endpoint versus 0.2 terminal
+cap; inclusive singleton; nonempty H without grid points; distinct S-empty,
+B-empty and terminal-intersection-empty cases; all-P count/quantity negatives;
+terminal UNKNOWN with full versus partial B exclusion and open-tail equality;
+multiple sufficient witnesses; all sixteen owner combinations and financial
+rejection without F. Partial-negative fixtures keep the shared native package
+complete and make supplemental terminal coverage incomplete, so financial
+establishment remains possible.
+
+Also cover original account/input/regime contradictions, qualified namespaces,
+missing semantic denomination, explicit null versus malformed/missing keys,
+orphaned contexts, malformed material beside missing owners, current/historical
+timing, expired/future-effective admissions, known future revisions, post-K
+material, pending commitments, positive index zero, negative-origin
+canonicalization, 5,001-place increments/huge indices, unbounded limitation tails,
+rehashed owner and every new output-leaf tampering, canonical identity, local
+presentation equivalence, detached/mutation isolation, exact false authority and
+absence of quantity/order/final decision. Synthetic evidence authenticates no
+real provider. Existing owners and tests are never weakened for fixture success.
+
+Implementation scope is exactly this new standalone module,
+`tests/test_xauusd_current_entry_quantity_constraint_composition.py`, and this
+documentation addition. No existing owner, registry, Mission Control, connector,
+dependency, execution or export change is part of this capability.
+
+The separate funded-account objective remains controlled approximately 4–5%
+monthly performance, not a guarantee, with an account-specific halt after the
+defined realized-profit threshold, no new trades during payout waiting, explicit
+reset/reactivation, and actual provider/account/cross-account restrictions.
+Composition implements no profit-lock, payout or monthly-performance policy.
