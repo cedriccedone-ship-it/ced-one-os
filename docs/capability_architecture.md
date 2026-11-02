@@ -3816,3 +3816,881 @@ monthly performance, not a guarantee, with an account-specific halt after the
 defined realized-profit threshold, no new trades during payout waiting, explicit
 reset/reactivation, and actual provider/account/cross-account restrictions.
 Composition implements no profit-lock, payout or monthly-performance policy.
+
+## Current Entry Provider-Measure Projection Basis v1
+
+This standalone owner establishes only the conditional accounting equality
+`B_scenario(q) = B_current - R(q)` for every quantity in the complete independently
+established finite Capability 5 composed grid C. It preserves the native risk
+expression and selects no quantity. The approved implementation baseline was
+`d95eb73` on main; local origin/main equality is distinct from fresh remote
+verification. The following is the frozen normative implementation contract.
+
+### Constants and public interfaces
+
+```text
+CONTRACT = trading.xauusd_current_entry_provider_measure_projection_basis.v1
+RULE_VERSION = xauusd_current_entry_provider_measure_projection_basis_v1
+ADMISSION_CONTRACT = trading.xauusd_current_entry_provider_measure_projection_basis.admission.v1
+ADMISSION_RULE_VERSION = xauusd_current_entry_provider_measure_projection_basis_admission_v1
+ADMISSION_PURPOSE = PROVIDER_MEASURE_PROJECTION_FACT_ADMISSION_ONLY
+IDENTITY_PREFIX = current_entry_provider_measure_projection_basis_
+DESCRIPTOR_KIND = EXACT_MODELED_SETTLED_BALANCE_V1
+ENDPOINT = FULLY_SETTLED_MODELED_STOP
+ENTRY_MECHANISM = IMMEDIATE_MARKET_ENTRY_SCENARIO_V1
+SOURCE_AUTHENTICATION = NOT_VERIFIED_BY_THIS_CAPABILITY
+```
+
+```python
+evaluate_current_entry_provider_measure_projection_basis(
+    request: dict, *, trusted_planning_context=None,
+    trusted_quantity_context=None, trusted_feasibility_context=None,
+    trusted_position_effect_context=None, trusted_position_limit_context=None,
+    trusted_financial_projection_context=None,
+) -> dict
+
+validate_current_entry_provider_measure_projection_basis(
+    assessment: dict, request: dict, *, trusted_planning_context=None,
+    trusted_quantity_context=None, trusted_feasibility_context=None,
+    trusted_position_effect_context=None, trusted_position_limit_context=None,
+    trusted_financial_projection_context=None,
+) -> dict
+```
+
+The sole direct upstream reconstruction call is the genuine public
+`validate_current_entry_quantity_constraint_composition`, receiving the first
+five contexts unchanged. Every present native owner is fully replayed before
+consumption. Identity hashes, cached results, labels and private owner helpers
+cannot replace public replay. Upstream contracts remain unchanged.
+
+### Primitive, request and qualified scope schemas
+
+Every object is closed, with exactly the declared required fields. Null is
+permitted only where explicitly stated. Text is a valid Unicode nonempty string
+containing a non-whitespace character; case and padding remain significant.
+Hash is 64 lowercase hexadecimal characters. Timestamp requires a real date,
+explicit timezone, seconds and at most six fractional digits; local fields
+normalize to UTC with six fractional digits and Z. Nat is a built-in integer
+at least zero; PositiveInt is a built-in integer at least one; neither accepts
+booleans. Completeness is exactly COMPLETE, LIMITED or UNKNOWN. Identity-bearing
+duplicates reject even when identical.
+
+```text
+Namespace = {source_id: Text, source_contract: Text, source_contract_version: Text}
+Source = {source_id: Text, source_contract: Text, source_contract_version: Text,
+          source_snapshot_id: Text}
+
+Request = {
+  contract: CONTRACT,
+  rule_version: RULE_VERSION,
+  assessment_economic_time: Timestamp,
+  knowledge_boundary: Timestamp,
+  scope: Scope,
+  quantity_composition: null | {assessment: native object, request: native object},
+  measure_target: null | MeasureTarget,
+  scenario: Scenario,
+  projection_evidence: null | ProjectionEvidence
+}
+
+Scope = {
+  account: {source_id: Text, source_contract: Text, source_contract_version: Text,
+            account_id: Text, environment: DEMO|LIVE, currency: Currency},
+  provider_namespace: Namespace,
+  provider_id: Text,
+  venue_id: Text,
+  instrument: {source_id: Text, source_contract: Text, source_contract_version: Text,
+               environment: DEMO|LIVE, instrument_id: Text},
+  entry_direction: LONG|SHORT,
+  entry_mechanism: IMMEDIATE_MARKET_ENTRY_SCENARIO_V1,
+  quantity_unit: Text
+}
+
+Currency = three uppercase ASCII letters
+Scenario = {endpoint: FULLY_SETTLED_MODELED_STOP, settlement_before: Timestamp}
+```
+
+Account/instrument environments match. The complete scope equals the genuine
+Capability 5 scope. Source identity relationships are admitted; matching labels
+alone do not establish them. T equals K by parsed instants. The finite deadline
+H = settlement_before is strictly later than T. No duplicate top-level account,
+regime or risk originals are accepted.
+
+### Native owners and bounded reference catalogue
+
+Let CB be the complete original quantity_composition pair. Fixed recovery paths:
+
+```text
+FQ = CB.request.risk_budget_feasibility.request
+TQ = CB.request.terminal_position_limits.request
+PB = FQ.risk_policy
+RB = FQ.risk_basis
+AB = PB.request.account_state
+GB = PB.request.account_rule_regime
+
+PB, RB = {assessment, request}
+AB = {snapshot, snapshot_input}
+GB = {assessment, assessment_input}
+```
+
+Absent owner paths remain absent; no partial original is manufactured. Capability
+5 already compares shared account originals across policy/risk/position-effect
+branches and shared regime originals across policy/terminal branches.
+
+```text
+NativeRef = {
+  kind: catalogue kind,
+  owner_bundle_sha256: Hash,
+  selector: exact selector below,
+  content_sha256: Hash
+}
+```
+
+Bundle owner hashes identify the complete preserved original pair. Bundle target
+hashes identify that same complete pair. Other content hashes identify the exact
+original node below, except RISK_FUNCTION and RISK_CHARGE, which identify genuine
+reconstructed risk output. Native normalization must not replace original array
+order or spelling for these hashes/selectors.
+
+| Kind | Owner | Selector | Target |
+| --- | --- | --- | --- |
+| COMPOSITION_BUNDLE | CB | null | Complete CB |
+| ACCOUNT_BUNDLE | AB | null | Complete AB |
+| POLICY_BUNDLE | PB | null | Complete PB |
+| REGIME_BUNDLE | GB | null | Complete GB |
+| RISK_BASIS_BUNDLE | RB | null | Complete RB |
+| RISK_FUNCTION | RB | null | Replayed assessment.risk_function |
+| RISK_CHARGE | RB | {charge_id: Text} | Unique replayed risk charge |
+| REGIME_ASSIGNMENT | GB | {assignment_id: Text} | Original manifest.assignments member |
+| REGIME_PACKAGE | GB | {package_id: Text, package_revision: Text} | Original manifest.packages member |
+| REGIME_BINDING | GB | {assignment_id: Text, binding_index: Nat} | Original assignment.package_bindings[index] |
+| REGIME_RULE | GB | {package_id: Text, package_revision: Text, rule_id: Text} | Original package.rules member |
+| REGIME_MEASURE | GB | Same as REGIME_RULE | Original rule.body.measure |
+| REGIME_DOCUMENT | GB | {evidence_id: Text} | Original manifest.evidence member |
+| REGIME_APPROVAL | GB | {approval_index: Nat} | Original assessment_input.approvals[index] |
+| REGIME_CLAUSE | GB | Bounded clause selector below | Original clause-reference object |
+
+All manifest paths are within GB.assessment_input. Array indices refer to raw
+original arrays. Measure exists only on STATIC_FLOOR and DAILY_RESET_FLOOR.
+
+```text
+MeasureTarget = {
+  assignment: REGIME_ASSIGNMENT NativeRef,
+  package: REGIME_PACKAGE NativeRef,
+  rule: REGIME_RULE NativeRef,
+  measure: REGIME_MEASURE NativeRef
+}
+
+REGIME_CLAUSE.selector = {
+  container: non-clause NativeRef from the table below,
+  field: EVIDENCE_REFS|COVERAGE_EVIDENCE_REFS|DEFINITION_REFS,
+  clause_index: Nat
+}
+```
+
+| Container | Field | Relative original path |
+| --- | --- | --- |
+| REGIME_ASSIGNMENT | EVIDENCE_REFS | evidence_refs[index] |
+| REGIME_BINDING | EVIDENCE_REFS | evidence_refs[index] |
+| REGIME_PACKAGE | EVIDENCE_REFS | evidence_refs[index] |
+| REGIME_PACKAGE | COVERAGE_EVIDENCE_REFS | coverage.evidence_refs[index] |
+| REGIME_RULE | EVIDENCE_REFS | evidence_refs[index] |
+| REGIME_MEASURE | DEFINITION_REFS | definition_refs[index] |
+
+No other combination, recursive clause container, reset-threshold/action-window
+clause or arbitrary JSON path is supported. A native clause is exactly
+{evidence_id, clause_locator}. All four measure target references describe one
+actual selected assignment/package and its actual rule/measure. No label-based
+substitution is allowed. A valid EQUITY target resolves but is semantically
+unsupported. A fabricated measure on a non-measure rule rejects.
+
+Wrong selector/kind, missing referenced target/owner, wrong owner/content hash,
+duplicate/conflicting native identities and ambiguous lookups raise ValueError.
+Omitted prerequisites or missing mappings yield UNKNOWN.
+
+### Original envelopes and mandatory support closure
+
+```text
+Original = {
+  evidence_id: Text, source: Source, media_type: Text,
+  content_base64: Text, content_sha256: Hash,
+  source_available_at: Timestamp|null, observed_at: Timestamp
+}
+OriginalRef = {evidence_id: Text, envelope_sha256: Hash}
+NativeMapping = {
+  native_reference: NativeRef, original_reference: OriginalRef,
+  original_locator: Text,
+  relationship: EXACT_DOCUMENT|CLAUSE_SUPPORT|ASSERTION_SUPPORT
+}
+```
+
+Bytes must be nonempty canonical padded base64, round-tripping identically.
+content_sha256 hashes raw decoded bytes. envelope_sha256 hashes the complete
+normalized original envelope, including source and chronology. Native document
+mappings use EXACT_DOCUMENT, clause mappings CLAUSE_SUPPORT, all others
+ASSERTION_SUPPORT. Locators are opaque document locations, never executable paths.
+
+An EXACT_DOCUMENT mapping matches the native complete Source and its known byte
+hash/publication time. A clause maps to an original also mapped to its native
+document, with independently supported locator meaning. Unknown native metadata
+is not invented. Missing mappings yield UNKNOWN; contradictory identities,
+hashes or supplied clause/document relationships reject. Multiple originals may
+support a node; exact duplicate mappings reject.
+
+Establishment requires original support for:
+
+1. Selected assignment and every active original binding contributing to the
+   selected immutable package, including all their clauses.
+2. Selected package, direct clauses and coverage clauses.
+3. Target rule/direct clauses and target measure/every definition clause.
+4. Every native document referenced by those clauses.
+5. Every approval in the returned selected approval component, including
+   connected approved intervals contributing to that component.
+6. Original account bundle and direct balance meaning.
+7. Native risk basis, reconstructed function and every native charge.
+8. All consumed local lifecycle, coverage, accounting, financial-report and
+   settlement assertions.
+
+Composition/policy/regime bundle provenance links cannot replace that closure.
+An assertion mapping supports an object's meaning; it does not claim that a
+provider document literally contains the generated assessment.
+
+### Interpretation inventory and immutable revision lifecycle
+
+```text
+ProjectionEvidence = {
+  source: Source, scope: Scope,
+  source_available_at: Timestamp|null, observed_at: Timestamp,
+  originals: Original[], native_mappings: NativeMapping[],
+  coverage: InterpretationCoverage, records: InterpretationRecord[]
+}
+RecordRef = {record_id: Text, content_sha256: Hash}
+InterpretationCoverage = {
+  economic_from: Timestamp, economic_until: Timestamp,
+  source_information_cutoff: Timestamp|null,
+  declaration_completeness: Completeness, revision_completeness: Completeness,
+  starting_basis: FROM_INCEPTION|INCOMPLETE_OR_UNKNOWN,
+  root_records: RecordRef[], missing_record_ids: Text[],
+  records_omitted: bool|null, history_truncated: bool|null,
+  source_available_at: Timestamp|null, observed_at: Timestamp,
+  evidence_refs: OriginalRef[]
+}
+Predecessor = {kind: ROOT} | {kind: UNKNOWN} |
+              {kind: RECORD, record: RecordRef}
+DECLARE = {
+  record_id: Text, kind: DECLARE, predecessor: Predecessor,
+  effective_from: Timestamp, effective_until: Timestamp|null,
+  source_available_at: Timestamp|null, observed_at: Timestamp,
+  evidence_refs: OriginalRef[], body: DeclarationBody
+}
+WITHDRAW = {
+  record_id: Text, kind: WITHDRAW, predecessor: Predecessor,
+  effective_from: Timestamp,
+  source_available_at: Timestamp|null, observed_at: Timestamp,
+  evidence_refs: OriginalRef[]
+}
+```
+
+Economic intervals are finite and nonempty. Declaration nonnull ends exceed
+starts; null is explicitly open-ended. A withdrawal cannot be a root. Each
+successor replaces the entire declaration with no inherited fields.
+
+Potential establishment requires both completeness fields COMPLETE, coverage of
+all [T,H), cutoff K, FROM_INCEPTION, no missing IDs, false omission/truncation,
+one complete supported linear chain containing every record, original support
+and independent revision admission. Select the last lineage record effective
+at T, not the greatest label, timestamp or array position. A selected withdrawal
+or expired declaration yields UNKNOWN, without predecessor revival. Explicit
+subsequent DECLARE can reestablish the complete body.
+
+Duplicate IDs, forged content references, cycles/self references, unexplained
+dangling references, a supplied record also declared missing, a supplied ROOT
+omitted from roots, a non-root declared as root, and COMPLETE revision claims
+contradicting disclosed gaps raise ValueError. Honestly disclosed unavailable
+roots/predecessors, incomplete inception/revisions, competing roots/branches and
+unsupported backward effective/observed/known-publication lineage order yield
+UNKNOWN. A complete history with no record effective at T yields UNKNOWN.
+
+Every historical body remains structurally validated and retained. Historical
+subject pins, old charge IDs and financial timestamps are not compared with
+today's owners. Only the governing declaration supplies today's accounting
+facts. An expired latest declaration retains its historical pins even when it
+is resolved as expired; it cannot supply current accounting facts.
+Future-effective declarations are retained and checked without premature
+activation. Scalar historical hashes do not admit alternative owner bundles.
+
+### Accounting declaration and exact direct-balance bridge
+
+```text
+DeclarationBody = {
+  subjects: Subjects,
+  baseline_binding: BaselineBinding,
+  price_loss_recognition: PriceRecognition,
+  charge_recognition: ChargeRecognition[],
+  cost_coverage_and_rounding: CostCoverage,
+  financial_coverage: FinancialCoverage,
+  scenario_compatibility: ScenarioCompatibility
+}
+Subjects = {
+  quantity_composition_bundle_sha256: Hash|null,
+  account_bundle_sha256: Hash|null,
+  regime_bundle_sha256: Hash|null,
+  risk_basis_bundle_sha256: Hash|null,
+  measure_target_sha256: Hash|null
+}
+BaselineBinding = {
+  state_at: Timestamp, source_information_cutoff: Timestamp|null,
+  relationship: DIRECT_NATIVE_BALANCE|OTHER|UNKNOWN,
+  evidence_refs: OriginalRef[]
+}
+PriceRecognition = {
+  recognition: EXACT_ONCE_AFTER_BASELINE|OTHER|UNKNOWN,
+  evidence_refs: OriginalRef[]
+}
+ChargeRecognition = {
+  charge_id: Text, charge_content_sha256: Hash,
+  recognition: EXACT_ONCE_AFTER_BASELINE|ALREADY_REFLECTED|OTHER|UNKNOWN,
+  aggregation: EXACT_NATIVE_AGGREGATE|OTHER|UNKNOWN,
+  evidence_refs: OriginalRef[]
+}
+CostCoverage = {
+  completeness: Completeness,
+  rounding: EXACT_NATIVE_EXPRESSION_ON_C|OTHER|UNKNOWN,
+  financing: EXACT_NATIVE_SCENARIO_THROUGH_DEADLINE|NOT_APPLICABLE|OTHER|UNKNOWN,
+  evidence_refs: OriginalRef[]
+}
+ScenarioCompatibility = {
+  endpoint: FULLY_SETTLED_MODELED_STOP, settlement_before: Timestamp,
+  economic_from: Timestamp, economic_until: Timestamp,
+  source_information_cutoff: Timestamp|null,
+  accounting_continuity: SUPPORTED|OTHER|UNKNOWN,
+  settlement_meaning: SUPPORTED|OTHER|UNKNOWN,
+  evidence_refs: OriginalRef[]
+}
+```
+
+All five governing subject pins must be nonnull and correct for establishment.
+Baseline is the original current snapshot balance, with effective state T,
+known causal availability and admitted direct BALANCE mapping at cutoff K.
+Snapshot, measure and risk denomination must match literally and semantically.
+Balance need not equal equity; no reconciliation equation is assumed.
+
+Price loss and every charge must be recognized exactly once after baseline.
+Charge rows are an exact bijection by native ID/hash. A wrong governing pin,
+extra nonexistent charge or wrong charge hash rejects; missing pins/rows remain
+unresolved. Historical bodies retain the separation above.
+
+Every charge must use native SOURCE_SCHEDULE. Native
+SUPPORTED_SCENARIO_ENVELOPE is valid upstream but cannot prove exact debit.
+SOURCE_SCHEDULE alone does not prove recognition, baseline inclusion, aggregate
+fill semantics, posting precision or financing horizon. Fixed/minimum branches
+must remain intact. An already-reflected debit cannot be counted again.
+
+Native measure costs are compatible only as supported IN_MEASURE or documented
+NOT_APPLICABLE. SUBTRACT_SEPARATELY and EQUITY yield UNKNOWN. Opening/closing
+commission categories use commissions treatment; financing/other charges use
+their corresponding treatment. NOT_APPLICABLE must agree with native category
+coverage and have originals/admission; zero-valued cost does not imply it.
+
+Cost completeness must be COMPLETE. Provider aggregate posting/rounding must
+preserve the native expression for every q in C, including breakpoints. This is
+a universally admitted proposition; sample checks cannot prove it. Financing
+must cover the entire deadline or be independently supported as not applicable.
+No caller monetary adjustment, fee replacement, FX or bound variant is allowed.
+
+### Complete financial source, actor and report coverage
+
+```text
+FinancialCoverage = {
+  state_at: Timestamp, source_information_cutoff: Timestamp|null,
+  economic_from: Timestamp, economic_until: Timestamp,
+  source_universe_completeness: Completeness,
+  actor_completeness: Completeness,
+  actors: Actor[], source_roster: FinancialSource[], reports: FinancialReport[],
+  evidence_refs: OriginalRef[]
+}
+Actor = {
+  actor_id: Text, namespace: Namespace,
+  role: PROVIDER|ACCOUNT_OWNER|AUTOMATION|OTHER,
+  evidence_refs: OriginalRef[]
+}
+FinancialSource = {
+  inventory_id: Text, source_namespace: Namespace,
+  role: PROVIDER|ACCOUNT_LEDGER|RESERVATION_LEDGER|OTHER,
+  actor_ids: Text[], evidence_refs: OriginalRef[]
+}
+FinancialReport = {
+  inventory_id: Text, source: Source,
+  state_at: Timestamp, source_information_cutoff: Timestamp|null,
+  economic_from: Timestamp, economic_until: Timestamp,
+  source_available_at: Timestamp|null, observed_at: Timestamp,
+  inventory_completeness: Completeness, revision_completeness: Completeness,
+  categories: FinancialCategories, evidence_refs: OriginalRef[]
+}
+Category = {status: ABSENT|PRESENT|UNKNOWN, effects: FinancialEffect[],
+            evidence_refs: OriginalRef[]}
+FinancialEffect = {effect_id: Text, actor_id: Text,
+                   known_effective_at: Timestamp|null, evidence_refs: OriginalRef[]}
+```
+
+FinancialCategories has exactly seven Category keys:
+
+```text
+UNPOSTED_CHARGES
+CASH_TRANSFERS_AND_WITHDRAWALS
+PAYOUT_ADJUSTMENTS
+PHASE_OR_CAPITAL_ADJUSTMENTS
+MONETARY_RESERVATIONS
+KNOWN_SCHEDULED_FINANCIAL_EVENTS
+OTHER_MEASURE_AFFECTING_OBLIGATIONS
+```
+
+Positive closure requires state T, cutoff K, exact window [T,H), both universe
+completenesses COMPLETE, nonempty supported actor/source rosters, explicit
+provider actor/source inclusion, every actor covered by an applicable source
+and a provider source covering a provider actor. Labels do not prove authority
+or responsibility; namespace/account/provider relationships need admission.
+
+There is exactly one report per roster inventory, with matching namespace,
+current state/cutoff/window and COMPLETE inventory/revision coverage. Every
+report addresses all seven categories for all its assigned actors. All seven
+must be explicitly ABSENT with original support and topic-specific admission.
+Coverage includes unsettled effects at T and relevant known scheduled effects.
+Candidate debits may be excluded from additional effects only with evidence
+they are exactly represented in R.
+
+ABSENT and UNKNOWN have empty effects arrays; PRESENT has at least one effect.
+Known presence with incomplete reporting is PRESENT plus separate incomplete
+coverage. Actor/inventory/report IDs are unique; effect IDs are unique across
+categories within a report. Effects reference actors assigned to that report's
+source. Unknown actors, extra/duplicate reports, source mismatches and contradictory
+status/effect arrays reject. Missing reports yield UNKNOWN. Empty arrays alone
+never prove completeness. PRESENT prevents this zero-additional-effect model;
+it produces UNKNOWN, no monetary adjustment and no floor violation. Dates alone
+do not prove settlement/relevance. Excluding a known event outside the horizon
+requires supported semantics establishing no effect within it.
+
+### Independent sixth context and receipt closure
+
+```text
+ProjectionAdmission = {
+  contract: ADMISSION_CONTRACT, rule_version: ADMISSION_RULE_VERSION,
+  admission_id: Text, authority_namespace: Namespace, authority_id: Text,
+  mandate_id: Text, mandate_revision: PositiveInt, purpose: ADMISSION_PURPOSE,
+  request_content_sha256: Hash, knowledge_boundary: Timestamp,
+  effective_from: Timestamp, effective_until: Timestamp|null,
+  admitted_at: Timestamp, available_at: Timestamp, admissions: Receipt[]
+}
+Receipt = {
+  target: ReceiptTarget, subject_content_sha256: Hash,
+  status: ADMITTED|UNRESOLVED, evidence_refs: OriginalRef[]
+}
+```
+
+Fixed ReceiptTarget objects have exactly {kind}, with kind one of:
+
+```text
+SCOPE_AND_NATIVE_BINDINGS
+MEASURE_DEFINITION_AND_BASELINE
+PRICE_LOSS_RECOGNITION
+COST_COVERAGE_AND_ROUNDING
+FINANCIAL_SOURCE_COVERAGE
+INTERPRETATION_REVISION_COVERAGE
+SCENARIO_AND_SETTLEMENT_SEMANTICS
+```
+
+Each native risk charge additionally requires exactly:
+
+```text
+{kind: CHARGE_RECOGNITION, charge_id: Text, charge_content_sha256: Hash}
+```
+
+Let HJSON mean the canonical SHA-256 below and Q the normalized local request
+preserving the complete original native pair. The context request pin is HJSON(Q).
+Each receipt subject hash is:
+
+```text
+HJSON({
+  request_content_sha256: HJSON(Q),
+  native_context_fingerprints: {
+    trusted_planning_context_sha256: Hash|null,
+    trusted_quantity_context_sha256: Hash|null,
+    trusted_feasibility_context_sha256: Hash|null,
+    trusted_position_effect_context_sha256: Hash|null,
+    trusted_position_limit_context_sha256: Hash|null
+  },
+  target: exact ReceiptTarget
+})
+```
+
+All five fingerprints come unchanged from genuine Capability 5 output. They
+must not be recomputed using a new native normalization.
+
+Each receipt includes the entire required original support for its topic:
+
+| Topic | Required originals |
+| --- | --- |
+| Scope/native bindings | Qualified identity joins; assignment, all contributing bindings, package and selected approval mappings |
+| Measure/baseline | Target rule/measure/document clauses; account, direct balance and denomination |
+| Price recognition | Native risk/scenario support and current price-recognition assertion |
+| Each charge | Exact native charge and its recognition/aggregation assertion |
+| Cost/rounding | Category completeness, fee aggregation, universal rounding and financing horizon |
+| Financial coverage | Universe, actors, responsibilities, reports, revisions and all seven categories |
+| Interpretation revisions | Inventory coverage and complete required lineage/record support |
+| Scenario/settlement | Native coordinates, endpoint, horizon, continuity and full settlement meaning |
+
+Topic references must be in that receipt, not merely elsewhere in the inventory.
+Extra valid references are allowed. A well-formed receipt without full topic
+support yields UNKNOWN and cannot replace an empty assertion support list or
+missing mapping. Generic approval cannot replace per-charge receipts.
+
+The mandate interval contains T for establishment; null end is explicitly open.
+Context knowledge boundary is K. Require admitted_at <= available_at <= K and
+all supplied/consumed original/native observations no later than admission.
+Wrong pins, invalid chronology, duplicate targets, nonexistent charge targets,
+ADMITTED with empty/dangling/wrong-hash/unavailable references reject. Unknown
+required publication availability remains unresolved. Missing/UNRESOLVED
+admission yields UNKNOWN. An expired/future mandate yields UNKNOWN.
+
+With no composition owner all six contexts must be null. With no projection
+evidence the sixth context must be null. Orphaned contexts reject.
+
+The host supplies admission independently of request production. A dictionary
+named trusted does not establish independence. This function checks structure,
+binding and chronology; it cannot authenticate its caller, host or provider.
+
+### Causality, applicability and modeled settlement horizon
+
+The endpoint assumes native modeled entry/stop coordinates, complete entry and
+stop-close settlement, all modeled debits recognized exactly once, and no
+remaining related position/unsettled amount. Completion is strictly before H.
+It is hypothetical, not a future observation or predicted fill time.
+
+All supplied observations, known publications, cutoffs and admissions must be
+causally available by K, including unused originals and historical/future
+records. Post-K material rejects. Require known publication <= observation,
+known cutoff <= containing observation, supporting original observation <=
+assertion/record observation, and nested observation <= inventory observation <= K.
+
+Native original mapping deadlines remain historical: document observation;
+manifest observation for assignment/binding; interpreted_at for package/rule/
+measure; approval observation; original account observation. New recognition of
+native risk facts can be supported at current declaration observation without
+altering risk-owner chronology. Do not backdate newly acquired documents.
+
+At T a successor participates in lineage selection. A known future successor
+strictly before H or governing declaration expiry before H yields UNKNOWN.
+Changes/expiry exactly at H cover the half-open horizon; later changes do not
+block it. Expiry at or before T yields UNKNOWN without revival. Known accounting
+or charge applicability ending/changing before H prevents establishment.
+Threshold-only daily resets do not themselves change balance. Candidate expiry
+is not the settlement deadline; terminal-entry assumptions do not prove stop
+settlement. Governance approval intervals do not become authorization leases.
+
+Future-effective information already observed by K is allowed without early
+activation. Future observations are forbidden. No unforeseen future event is
+claimed absent as observed truth: no unrelated event is a conditional assumption.
+
+### Exact mathematical descriptor and support
+
+```text
+ProjectionBasis = {
+  kind: EXACT_MODELED_SETTLED_BALANCE_V1,
+  baseline_amount: canonical signed decimal string,
+  currency: Currency,
+  risk_function: complete unchanged NativeRiskFunction,
+  support: complete unchanged NativeGrid,
+  measure_target: MeasureTarget,
+  scenario: Scenario
+}
+NativeGrid = {
+  quantity_unit: Text,
+  domain: {kind: REGULAR_GRID, origin: native decimal string,
+           increment: native positive decimal string,
+           first_index: canonical nonnegative integer string,
+           last_index: canonical nonnegative integer string}
+}
+NativeRiskFunction = {
+  model: POSITIVE_QUANTITY_LINEAR_PLUS_MINIMUM_AFFINE_CHARGES_V1,
+  quantity_unit: Text, pnl_currency: Currency,
+  maximum_supported_quantity: native positive decimal string,
+  zero_quantity_loss: "0", price_loss_per_quantity_unit: native decimal string,
+  charges: NativeCharge[]
+}
+NativeCharge = {
+  charge_id: Text,
+  category: opening_commission|closing_commission|other_charges|financing,
+  basis: SOURCE_SCHEDULE|SUPPORTED_SCENARIO_ENVELOPE,
+  currency: Currency, quantity_unit: Text,
+  fixed: native nonnegative decimal string,
+  per_unit: native nonnegative decimal string,
+  minimum: native nonnegative decimal string
+}
+```
+
+The copied native type permits envelopes; established local descriptors do not.
+Support is exactly Capability 5 composed_domain, finite with inclusive native
+indices. First index zero is valid if quantity is positive. No grid translation,
+enumeration, selected quantity, point-evaluation API or out-of-support claim is
+introduced. For r, d, a, m_i, f_i, p_i from those unchanged owners:
+
+```text
+q(n) = r + n*d
+R(q) = a*q + sum(max(m_i, f_i + p_i*q))
+B_scenario(q) = B_current - R(q)
+```
+
+B_current is solely the original snapshot balance. Fixed/minimum branches remain
+symbolic. Decimal grammar is -?(0|[1-9][0-9]*)(\.[0-9]+)?. Local canonical output
+removes trailing fractional zeros/empty fraction and maps negative zero to 0.
+Index grammar is 0|[1-9][0-9]*. No exponents, plus signs or nonfinite values.
+Exact integer/rational interpretation and chunked huge-integer conversion avoid
+floating money arithmetic, ambient Decimal precision and process-wide setting
+changes. This owner needs no monetary point computation to return the exact
+symbolic descriptor. Zero/negative modeled balances remain valid factual values.
+
+### Outcomes, deterministic diagnostics and complete result
+
+Outcomes are exactly ESTABLISHED and UNKNOWN; structural failure raises
+ValueError. Validate every supplied independent structure and replay present
+owners before semantic outcomes. Structural failure takes precedence over
+missing prerequisites. Collect independently assessable findings; missing
+parents suppress only unassessable descendant noise. Missing context suppresses
+individual missing receipts; missing declaration suppresses charge-row noise.
+Explicit envelope charges/present effects remain reportable when assessable.
+
+Upstream null/UNKNOWN/NOT_SUITABLE produces local UNKNOWN with exact native
+negative/unresolved content preserved. No local NOT_SUITABLE or inferred floor
+breach exists. Partial native exclusions outside established C do not invalidate
+the projection on C. Establishment requires every local predicate and has only
+the positive local reason and no unresolved findings.
+
+Exact reason vocabulary and triggers:
+
+| Reason | Trigger |
+| --- | --- |
+| CONDITIONAL_BALANCE_PROJECTION_ESTABLISHED | All establishment predicates pass |
+| OWNER_MISSING | Null composition pair |
+| OWNER_UNKNOWN | Genuine composition UNKNOWN |
+| OWNER_NOT_SUITABLE | Genuine composition NOT_SUITABLE |
+| NATIVE_UNRESOLVED | Genuine composition retains unresolved findings |
+| MEASURE_TARGET_MISSING | Null target |
+| PROJECTION_EVIDENCE_MISSING | Null evidence |
+| ADMISSION_MISSING | Sixth context absent |
+| ADMISSION_NOT_CURRENT | Well-formed mandate does not contain T |
+| RECEIPT_MISSING | Required topic/charge receipt absent |
+| RECEIPT_UNRESOLVED | Required receipt status UNRESOLVED |
+| ORIGINAL_SUPPORT_MISSING | Required mapping, assertion or topic closure absent |
+| SOURCE_AVAILABILITY_UNKNOWN | Required consumed publication unavailable |
+| CURRENT_BASELINE_UNESTABLISHED | Balance/current state/cutoff not established |
+| MEASURE_BINDING_UNRESOLVED | Subject pin or direct selected account/measure relationship unresolved |
+| MEASURE_MODEL_UNSUPPORTED | EQUITY, separate adjustment or explicitly non-direct model |
+| DENOMINATION_UNRESOLVED | Matching literals lack required semantic admission |
+| INTERPRETATION_COVERAGE_UNRESOLVED | Declaration coverage/horizon/cutoff insufficient |
+| REVISION_HISTORY_INCOMPLETE | Honestly incomplete inception/roots/predecessors/revisions |
+| REVISION_ORDER_UNSUPPORTED | Unsupported backward lineage chronology |
+| COMPETING_INTERPRETATIONS | Multiple roots or branches |
+| NO_CURRENT_INTERPRETATION | Complete admitted history has no effective record |
+| INTERPRETATION_WITHDRAWN | Resolved governing withdrawal |
+| INTERPRETATION_EXPIRED | Governing declaration expired at T |
+| HORIZON_INTERPRETATION_CHANGE | Known successor/applicability expiry interrupts [T,H) |
+| PRICE_RECOGNITION_UNRESOLVED | Not exact once after baseline |
+| CHARGE_RECOGNITION_MISSING | No native charge recognition row |
+| CHARGE_RECOGNITION_UNRESOLVED | Recognition OTHER/UNKNOWN |
+| CHARGE_ALREADY_REFLECTED | Debit already in baseline |
+| CHARGE_AGGREGATION_UNRESOLVED | Aggregate native semantics unresolved |
+| COST_COVERAGE_UNRESOLVED | Complete exact cost coverage unestablished |
+| EXACT_DEBIT_UNESTABLISHED | Native envelope or unsupported exact debit |
+| ROUNDING_SEMANTICS_UNRESOLVED | Universal equality-preserving posting unresolved |
+| FINANCING_HORIZON_UNRESOLVED | Financing through H/nonapplicability unresolved |
+| FINANCIAL_COVERAGE_UNRESOLVED | Actor/source/category/state/revision coverage insufficient |
+| FINANCIAL_REPORT_MISSING | Roster source lacks report |
+| ADDITIONAL_FINANCIAL_EFFECT_PRESENT | Relevant additional effect present |
+| SCENARIO_CONTINUITY_UNRESOLVED | Endpoint/horizon/accounting/settlement unsupported |
+
+Literal currency contradictions, forged pins and malformed references reject
+instead of receiving uncertainty codes. Missing admission does not manufacture
+every possible accounting uncertainty. Withdrawal/expiry do not become
+NO_CURRENT_INTERPRETATION. Reasons sort uniquely; findings sort uniquely by
+(reason_code, subject), using evaluator-generated deterministic locations rather
+than caller-driven resolvers.
+
+```text
+Result = {
+  contract, rule_version, assessment_economic_time, knowledge_boundary,
+  scope, measure_target, scenario, outcome, reason_codes,
+  owner_reference, resolved_record, supported_domain, projection_basis,
+  native_diagnostics, unresolved_findings, conditions, limitations,
+  reconstruction_evidence, downstream_obligations, source_authentication,
+  authority, execution, assessment_identity
+}
+owner_reference = null | {
+  assessment_identity: Text, owner_bundle_sha256: Hash,
+  outcome: ESTABLISHED|UNKNOWN|NOT_SUITABLE
+}
+resolved_record = null | {record_id: Text, kind: DECLARE|WITHDRAW, content_sha256: Hash}
+supported_domain = null | NativeGrid
+projection_basis = null | ProjectionBasis
+native_diagnostics = null | {
+  negative_proofs: exact native array,
+  native_negative_proof_references: exact native array,
+  unresolved_findings: exact native array
+}
+unresolved_findings = {reason_code: nonpositive local reason, subject: Text}[]
+ReconstructionEvidence = {
+  request: normalized local Request with preserved complete native pair,
+  native_context_fingerprints: {
+    trusted_planning_context_sha256: Hash|null,
+    trusted_quantity_context_sha256: Hash|null,
+    trusted_feasibility_context_sha256: Hash|null,
+    trusted_position_effect_context_sha256: Hash|null,
+    trusted_position_limit_context_sha256: Hash|null
+  },
+  projection_evidence_sha256: Hash|null,
+  trusted_financial_projection_context_sha256: Hash|null
+}
+```
+
+Native diagnostic nested schemas/content are inherited unchanged from genuine
+Capability 5. Owner reference/diagnostics are null exactly when owner absent.
+Resolved record is nonnull only after supported complete lineage and independent
+revision admission; it may identify an expired declaration/withdrawal. Supported
+domain is nonnull exactly when Capability 5 is ESTABLISHED, even if local UNKNOWN.
+Projection basis is nonnull exactly when local ESTABLISHED. Target retains request
+nullability. Absent evidence/context fingerprints are null.
+
+### Canonical identity, preservation and detached validation
+
+Use sorted-key compact UTF-8 JSON with ordinary Unicode unescaped, no nonfinite
+values/invalid Unicode, and exact bool/int/native numeric distinctions. Finite
+native provenance floats retain their original numeric type but never enter
+money arithmetic. Preserve all native arrays, decimal/timestamp spellings and
+nulls. Normalize only locally owned timestamps/decimals before their hashes.
+
+Local ordering: originals by evidence_id; records by record_id; actors by actor_id;
+rosters/reports by inventory_id; category effects by effect_id; charge recognition
+by charge_id; roots by record identity; references/mappings by complete canonical
+identity; missing/actor IDs by text; admissions by canonical target; findings by
+reason_code/subject. Identity-bearing duplicates reject. Native copied arrays
+are never sorted by this owner.
+
+assessment_identity is IDENTITY_PREFIX plus SHA-256 of the complete canonical
+result before adding assessment_identity. The public validator fully reevaluates
+with all six original contexts, compares every supplied field to the expected
+canonical result without repairing forged output, and returns a detached copy.
+Rehashing altered native/local outputs grants no trust. Inputs, contexts and
+all returned nested structures have no mutable aliasing.
+
+### Fixed conditions, limitations, obligations and authority
+
+Exactly eight ordered conditions:
+
+```text
+NATIVE_MODELED_ENTRY_AND_STOP_COORDINATES_ASSUMED
+COMPLETE_MODELED_ENTRY_AND_STOP_CLOSE
+ALL_SCENARIO_AMOUNTS_RECOGNIZED_EXACTLY_ONCE
+SETTLEMENT_STRICTLY_BEFORE_DEADLINE
+NO_RELATED_UNSETTLED_AMOUNT_OR_POSITION_AT_ENDPOINT
+NO_UNRELATED_INTERVENING_FINANCIAL_EVENT
+ADMITTED_ACCOUNTING_AND_CHARGE_TERMS_REMAIN_APPLICABLE
+NATIVE_RISK_BASIS_CONDITIONS_RETAINED
+```
+
+Exactly eleven ordered limitations:
+
+```text
+CONDITIONAL_PLANNING_ASSUMPTIONS
+REALIZED_LOSS_CEILING_NOT_GUARANTEED
+FILL_AND_STOP_EXECUTION_NOT_GUARANTEED
+SOURCE_AUTHENTICITY_NOT_VERIFIED
+FUTURE_MARKET_AND_SPECIFICATION_CHANGES_NOT_COVERED
+NO_AUTHORIZATION_LEASE
+MODELED_SETTLEMENT_NOT_OBSERVED
+BALANCE_ONLY_EXACT_MODEL
+NO_PROJECTION_OUTSIDE_COMPOSED_SUPPORT
+PROVIDER_FLOOR_AND_HEADROOM_NOT_ASSESSED
+CONTINUOUS_DRAWDOWN_COMPLIANCE_NOT_ASSESSED
+```
+
+Exactly seventeen sorted downstream obligations, none marked discharged:
+
+```text
+ACCOUNT_PROFIT_LOCK_AND_PAYOUT_ELIGIBILITY
+ACTUAL_SETTLEMENT_AND_ACCOUNT_REVALIDATION
+ATOMIC_COMMITMENT_AND_RESERVATION_CONTROL
+CANDIDATE_VALIDITY
+CONTINUOUS_PROVIDER_MEASURE_AND_DRAWDOWN_COMPLIANCE
+CURRENT_STATE_MECHANICS_AND_RULE_REVALIDATION
+ENTRY_QUANTITY_DOMAIN_MEMBERSHIP
+EXECUTION_PATH_AND_PEAK_POSITION_LIMIT_COMPLIANCE
+MARGIN_AND_AVAILABLE_CAPITAL_FEASIBILITY
+MARKET_ORDER_AND_FILL_FEASIBILITY
+MISSION_CONTROL_CURRENT_AUTHORIZATION
+ORDER_ACCEPTANCE_AND_PENDING_COMMITMENT_RULES
+OTHER_PROVIDER_AND_ACCOUNT_RULE_COMPLIANCE
+POSITION_EFFECT_AND_ACCOUNT_RULE_COMPLIANCE
+POST_ENTRY_FLOOR_AND_PROVIDER_HEADROOM
+QUANTITY_SELECTION_POLICY_AND_SELECTION
+RISK_BUDGET_QUANTITY_FEASIBILITY
+```
+
+Authority has exactly quantity_selection, budget_approval,
+position_effect_compliance, margin_capital_approval, trade_decision,
+financial_risk and execution, all built-in false booleans. Numeric zero cannot
+impersonate false. Top-level execution is false and source authentication is
+NOT_VERIFIED_BY_THIS_CAPABILITY. No selected quantity, BUY/SELL/NO TRADE, floor
+headroom judgment, margin/financial authorization, broker order, settlement
+guarantee, payout action or authorization lease is returned.
+
+### Acceptance matrix and three-file boundary
+
+Positive tests rebuild genuine shared-original Capability 5 chains and separate
+synthetic admissions for LONG/SHORT crossed with NETTING/HEDGING. Cover positive,
+zero and negative modeled balances and unequal balance/equity; exact source
+schedules; minimum/fixed crossover equality; uncertain fill aggregation;
+already-reflected charges; envelopes; EQUITY/separate-adjustment targets;
+incomplete actors/sources/reports/revisions; empty lists without complete universe;
+all seven present-effect categories; missing target/baseline/measure support;
+literal currency rejection versus semantic admission uncertainty; universal
+rounding; missing/unresolved/topic-incomplete/per-charge admission; forged pins;
+raw-byte/base64/envelope/native-selector attacks; every required mapping;
+incomplete roots/predecessors/branches; withdrawal/expiry without revival;
+whole replacement; historical old pins; known change before H versus at/after H;
+post-K unused material; null/UNKNOWN/NOT_SUITABLE owner with preserved diagnostics;
+malformed evidence beside absent owner; huge indices/5,001-place decimals;
+zero-index/nonzero/negative-origin grids; no assertion beyond C; rehashed native
+and every local output-field tampering; input/context/output isolation; all false
+authority and no selection/order/floor/execution. Honest unsupported evidence
+yields UNKNOWN; structural contradiction yields ValueError; all predicates
+supported yield ESTABLISHED. Tests do not authenticate actual providers.
+
+Implementation scope is exactly:
+
+```text
+ADD src/ced_one/business_divisions/trading/xauusd_current_entry_provider_measure_projection_basis.py
+ADD tests/test_xauusd_current_entry_provider_measure_projection_basis.py
+APPEND ONLY docs/capability_architecture.md
+```
+
+No upstream owner/validator/contract, existing test/fixture, runtime, dependency,
+registry, export, provider connector, Mission Control or configuration changes.
+
+### External trust and mandatory separate profit lock
+
+Raw-byte/envelope hashing proves content binding; native replay proves
+reconstruction; independent host admission accepts bounded source/semantic
+propositions. Actual provider authentication remains external. None of those
+labels alone authenticates a provider. Uploaded bytes and caller-issued receipts
+cannot establish independence. The host must competently admit real source/actor
+completeness, document semantics, aggregation and universal posting compatibility;
+this pure function does not parse arbitrary documents into those truths. Without
+adequate real evidence and independent admission, operational outcome is UNKNOWN.
+Even established conditional arithmetic guarantees no actual fill, stop, fees,
+settlement or realized loss.
+
+The separate account-authorization capability must preserve configurable
+account-specific approximately 4–5% monthly targeting, defined net realized
+performance/cycle baseline, durable FROZEN_AWAITING_PAYOUT, no new trades while
+locked, safe existing position/order handling, verified payout and explicitly
+authorized eligible reactivation, and actual provider/cross-account restrictions.
+An established active lock vetoes new-trade authorization regardless of this
+projection. This owner implements and bypasses none of that lifecycle.
