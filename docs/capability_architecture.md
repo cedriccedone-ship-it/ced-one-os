@@ -4694,3 +4694,885 @@ locked, safe existing position/order handling, verified payout and explicitly
 authorized eligible reactivation, and actual provider/cross-account restrictions.
 An established active lock vetoes new-trade authorization regardless of this
 projection. This owner implements and bypasses none of that lifecycle.
+
+## Capability 7 — Current Post-Entry Provider Floor & Headroom Assessment v1
+
+### Frozen responsibility, public boundary and authority
+
+This section implements the final normative contract closure (sections A–P).
+Capability 7 proves only conditional modeled settled-endpoint native static-floor
+predicates over the complete finite C6 quantity domain C. Every supported rule
+must govern every q in C and every settlement instant s in [T,H), with invariant
+threshold, comparator, measure and mandatory force. The endpoint is exactly
+FULLY_SETTLED_MODELED_STOP. T equals K. H is inherited only from genuine C6.
+Actual settlement, actual provider compliance, continuous drawdown compliance,
+equity projection, authentication, quantity selection, margin/capital approval,
+execution and an authorization lease remain outside this owner's responsibility.
+
+The public APIs are:
+
+```python
+evaluate_current_post_entry_provider_floor_headroom(
+    request, *, trusted_planning_context=None, trusted_quantity_context=None,
+    trusted_feasibility_context=None, trusted_position_effect_context=None,
+    trusted_position_limit_context=None, trusted_financial_projection_context=None,
+    trusted_provider_floor_context=None,
+) -> dict
+
+validate_current_post_entry_provider_floor_headroom(
+    assessment, request, *, trusted_planning_context=None,
+    trusted_quantity_context=None, trusted_feasibility_context=None,
+    trusted_position_effect_context=None, trusted_position_limit_context=None,
+    trusted_financial_projection_context=None, trusted_provider_floor_context=None,
+) -> dict
+```
+
+The sole direct upstream pair is provider_measure_projection: {assessment,
+request}. Replay it using the public validate_current_entry_provider_measure_
+projection_basis validator, forwarding the first six contexts unchanged. No
+private upstream validation helper is imported. No replacement native bundle,
+balance, risk function, quantity grid, threshold or scenario is accepted.
+
+```text
+CONTRACT = trading.xauusd_current_post_entry_provider_floor_headroom.v1
+RULE_VERSION = xauusd_current_post_entry_provider_floor_headroom_v1
+ADMISSION_CONTRACT = trading.xauusd_current_post_entry_provider_floor_headroom.admission.v1
+ADMISSION_RULE_VERSION = xauusd_current_post_entry_provider_floor_headroom_admission_v1
+ADMISSION_PURPOSE = PROVIDER_FLOOR_FACT_ADMISSION_ONLY
+IDENTITY_PREFIX = current_post_entry_provider_floor_headroom_
+```
+
+### Closed primitive, request and original-evidence grammar
+
+Every object below has exactly its listed keys. All keys are required; X? means
+X or JSON null, never an omitted key. Arrays are JSON arrays. Text is nonblank
+valid Unicode preserved exactly; Hash is 64 lowercase hexadecimal characters;
+Nat is a nonnegative JSON integer excluding Boolean; Index matches
+0|[1-9][0-9]*; Currency is three uppercase ASCII letters. Decimal is a plain
+signed decimal string matching -?(0|[1-9][0-9]*)(\.[0-9]+)?. Normalize owned
+insignificant fractional zeros and negative zero. Native JSON and original byte
+content retain their original representation.
+
+Time requires an explicit zone, seconds and at most six fractional digits.
+Normalize owned times to UTC with six fractional digits and Z. Invalid dates,
+leap-second spellings, unknown zones and excess precision reject. Completeness
+is COMPLETE|LIMITED|UNKNOWN. Namespace/Source identity labels are claims until
+independently admitted; their existence does not authenticate a provider.
+
+```text
+Namespace = {source_id: Text, source_contract: Text, source_contract_version: Text}
+Source = {source_id: Text, source_contract: Text, source_contract_version: Text,
+          source_snapshot_id: Text}
+Scope = {
+  account: {source_id: Text, source_contract: Text, source_contract_version: Text,
+            account_id: Text, environment: DEMO|LIVE, currency: Currency},
+  provider_namespace: Namespace, provider_id: Text, venue_id: Text,
+  instrument: {source_id: Text, source_contract: Text, source_contract_version: Text,
+               environment: DEMO|LIVE, instrument_id: Text},
+  entry_direction: LONG|SHORT,
+  entry_mechanism: IMMEDIATE_MARKET_ENTRY_SCENARIO_V1, quantity_unit: Text
+}
+Request = {
+  contract: CONTRACT, rule_version: RULE_VERSION,
+  assessment_economic_time: Time, knowledge_boundary: Time, scope: Scope,
+  provider_measure_projection: {assessment: NativeJSON, request: NativeJSON}?,
+  floor_evidence: FloorEvidence?
+}
+FloorEvidence = {
+  source: Source, scope: Scope, source_available_at: Time?, observed_at: Time,
+  originals: Original[], native_mappings: NativeMapping[],
+  coverage: DeclarationCoverage, records: DeclarationRecord[]
+}
+Original = {
+  evidence_id: Text, source: Source, media_type: Text, content_base64: Text,
+  content_sha256: Hash, source_available_at: Time?, observed_at: Time
+}
+OriginalRef = {evidence_id: Text, envelope_sha256: Hash}
+Refs = OriginalRef[]
+NativeRef = {kind: NativeKind, owner_bundle_sha256: Hash,
+             selector: catalogue-specific object|null, content_sha256: Hash}
+NativeMapping = {native_reference: NativeRef, original_reference: OriginalRef,
+                 original_locator: Text,
+                 relationship: EXACT_DOCUMENT|CLAUSE_SUPPORT|ASSERTION_SUPPORT}
+```
+
+Account and instrument environments agree. Evidence scope equals request scope.
+When C6 exists, scope and both current times equal its reconstructed output.
+When C6 is absent all seven contexts are null. Independent evidence may still be
+structurally checked, with empty native mappings and null native subject pins;
+it cannot yield a numerical proof. A nonnull seventh context also requires
+nonnull floor evidence.
+
+Original content is nonempty canonical padded base64. content_sha256 hashes the
+decoded bytes. An OriginalRef hashes the entire normalized Original envelope.
+Every original reference resolves, has the correct hash, and was observed by its
+containing assertion's observation. Known source publication <= observation <= K.
+Child assertions precede their containers. Entries precede reports, which precede
+declarations, which precede the floor envelope. Coverage precedes the envelope.
+States and cutoffs cannot postdate containing observations. These checks apply
+to unused, historical and future-effective material as well. Known post-K
+information rejects; unknown publication is structurally allowed but prevents a
+proof requiring it. Future economic effect is allowed without early activation.
+
+### Frozen original recovery and bounded native catalogue
+
+```text
+P6 = request.provider_measure_projection
+CB = P6.request.quantity_composition
+FQ = CB.request.risk_budget_feasibility.request
+PB = FQ.risk_policy
+RB = FQ.risk_basis
+AB = PB.request.account_state
+GB = PB.request.account_rule_regime
+PB,RB = {assessment,request}
+AB = {snapshot,snapshot_input}
+GB = {assessment,assessment_input}
+```
+
+Absent paths remain absent. Owner hashes identify complete preserved original
+pairs. Content hashes identify exact original nodes except the genuine replayed
+risk function and charges. All array indices address raw original array order.
+
+| Kind | Owner | Exact selector | Target |
+| --- | --- | --- | --- |
+| COMPOSITION_BUNDLE | CB | null | Complete CB |
+| ACCOUNT_BUNDLE | AB | null | Complete AB |
+| POLICY_BUNDLE | PB | null | Complete PB |
+| REGIME_BUNDLE | GB | null | Complete GB |
+| RISK_BASIS_BUNDLE | RB | null | Complete RB |
+| RISK_FUNCTION | RB | null | Replayed risk_function |
+| RISK_CHARGE | RB | {charge_id: Text} | Replayed charge |
+| REGIME_ASSIGNMENT | GB | {assignment_id: Text} | Original manifest assignment |
+| REGIME_PACKAGE | GB | {package_id: Text, package_revision: Text} | Original package |
+| REGIME_BINDING | GB | {assignment_id: Text, binding_index: Nat} | Original binding |
+| REGIME_RULE | GB | {package_id: Text, package_revision: Text, rule_id: Text} | Original rule |
+| REGIME_MEASURE | GB | Same as REGIME_RULE | Original body.measure |
+| REGIME_DOCUMENT | GB | {evidence_id: Text} | Original manifest evidence |
+| REGIME_APPROVAL | GB | {approval_index: Nat} | Original approval |
+| REGIME_CLAUSE | GB | See below | Original clause reference |
+| POLICY_OPERAND | PB | {operand_index: Nat} | request.provider_operands[index] |
+| POLICY_OPERAND_SUPPORT | PB | {operand_index: Nat, evidence_index: Nat} | Operand supporting_evidence[index] |
+
+REGIME_CLAUSE.selector = {container: bounded non-clause NativeRef,
+field: EVIDENCE_REFS|COVERAGE_EVIDENCE_REFS|DEFINITION_REFS, clause_index: Nat}.
+Allowed combinations are assignment/binding/rule EVIDENCE_REFS; package
+EVIDENCE_REFS or COVERAGE_EVIDENCE_REFS; measure DEFINITION_REFS. They address
+respectively evidence_refs, coverage.evidence_refs or definition_refs. No other
+combination, recursive clause container or arbitrary path exists.
+
+Document mappings use EXACT_DOCUMENT; clauses CLAUSE_SUPPORT; other targets
+ASSERTION_SUPPORT. Native document source, known byte hash and known publication
+pins match. Clause mappings agree with their document envelope. Missing required
+support is UNKNOWN; conflicting known pins reject. Mapping originals precede
+the native assertion's deadline: account/manifest observation, package
+interpretation, approval observation, or operand/support available_at. A bundle
+or function without a native deadline uses envelope observation. Required native
+support includes clauses and their documents. Fractional operands include every
+original supporting-evidence member. The operand's own embedded native rule
+reference remains in the policy owner's hash scheme; it is never replaced by a
+C7 hash. Public replay validates its association with the selected native rule.
+
+### Complete provider-source universe
+
+```text
+Topic = RULES|EXCEPTIONS_AND_WAIVERS|OVERRIDES_AND_PRECEDENCE|
+        REVISIONS_AND_WITHDRAWALS|SCHEDULED_RULE_CHANGES|
+        ACCOUNT_PHASE_AND_PACKAGE_CHANGES
+RuleUniverse = {
+  state_at: Time, source_information_cutoff: Time?,
+  economic_from: Time, economic_until: Time,
+  source_universe_completeness: Completeness,
+  actor_universe_completeness: Completeness,
+  actors: Actor[], sources: RuleSource[], reports: SourceReport[],
+  entries: SourceEntry[], evidence_refs: Refs
+}
+Actor = {actor_id: Text, namespace: Namespace,
+         role: PROVIDER|ACCOUNT_AUTHORITY|GOVERNANCE|OTHER,
+         topics: Topic[], evidence_refs: Refs}
+RuleSource = {inventory_id: Text, namespace: Namespace,
+              role: RULEBOOK|AGREEMENT|SUPPLEMENTAL|REVISION_LEDGER|OTHER,
+              responsibilities: Responsibility[], evidence_refs: Refs}
+Responsibility = {actor_id: Text, topics: Topic[]}
+ReportKey = {inventory_id: Text, actor_id: Text, topic: Topic}
+SourceReport = {
+  key: ReportKey, source: Source, state_at: Time, source_information_cutoff: Time?,
+  economic_from: Time, economic_until: Time,
+  source_available_at: Time?, observed_at: Time,
+  inventory_completeness: Completeness, revision_completeness: Completeness,
+  starting_basis: FROM_INCEPTION|INCOMPLETE_OR_UNKNOWN,
+  entry_ids: Text[], missing_entry_ids: Text[],
+  entries_omitted: boolean?, history_truncated: boolean?, evidence_refs: Refs
+}
+Period = {effective_from: Time?, effective_until: Time?,
+          end_status: KNOWN|OPEN_ENDED|UNKNOWN}
+SourceEntry = {
+  entry_id: Text, report_key: ReportKey, source_record_id: Text, kind: EntryKind,
+  effective_period: Period, source_available_at: Time?, observed_at: Time,
+  disposition: EntryDisposition, native_rule_refs: NativeRef[],
+  related_entry_ids: Text[], evidence_refs: Refs
+}
+EntryRef = {entry_id: Text, content_sha256: Hash}
+EntryDisposition = MAPPED_NATIVE_RULE|SUPPORTING_RULE_EVIDENCE|
+                   HISTORICAL_NON_GOVERNING|PROVEN_OUTSIDE_SCOPE|
+                   OTHER_OBLIGATION|UNRESOLVED
+```
+
+| Topic | Exact allowed EntryKind values |
+| --- | --- |
+| RULES | RULE |
+| EXCEPTIONS_AND_WAIVERS | EXCEPTION, WAIVER |
+| OVERRIDES_AND_PRECEDENCE | OVERRIDE, PRECEDENCE |
+| REVISIONS_AND_WITHDRAWALS | AMENDMENT, WITHDRAWAL |
+| SCHEDULED_RULE_CHANGES | THRESHOLD_CHANGE, COMPARATOR_CHANGE, MEASURE_CHANGE, FORCE_CHANGE |
+| ACCOUNT_PHASE_AND_PACKAGE_CHANGES | PACKAGE_CHANGE, PHASE_CHANGE |
+
+Economic coverage intervals are finite and nonempty. Period KNOWN requires a
+finite end; other statuses require null end. A known start precedes a known end.
+Responsibilities reference actual actors and nonempty subsets of their topics.
+Report keys belong to actual responsibilities; report source namespaces match.
+Each entry belongs to exactly one report, whose entry_ids equal its supplied
+members. source_record_id is unique per report. Entry IDs are globally unique
+within a declaration. Missing IDs are disjoint from supplied IDs. Related IDs
+exist or are explicitly missing in the referring report; self-relations reject.
+EntryRef hashes the whole normalized entry in that declaration.
+
+MAPPED_NATIVE_RULE requires RULE and at least one genuine native rule;
+SUPPORTING_RULE_EVIDENCE requires a native rule. Current native references belong
+to the selected package. COMPLETE inventory cannot declare missing/omitted
+entries. COMPLETE revision history cannot declare gaps, truncation, omissions or
+an unknown starting basis. Relations alone do not resolve provider precedence;
+the host independently admits source-history interpretation from originals.
+
+Global positive proof requires complete independently admitted source and actor
+universes, a provider actor, coverage of all six topics, assignment of every
+actor topic to a source, and exactly one current complete report per actual
+responsibility/topic. Current state_at and cutoff equal T; reports and coverage
+contain [T,H). Native package coverage is COMPLETE. Every native rule has a
+mapped source RULE and proved disposition. Every source entry has a proved
+source disposition. Unmapped or unsupported relevant requirements remain
+unresolved. OTHER_OBLIGATION requires proof that the source requirement is
+outside this endpoint-floor proposition and retains its separate obligation.
+A caller's declared disposition is never automatically a proved disposition.
+
+### Rule applicability, force, exceptions and exact native operands
+
+```text
+Assertion<V> = {status: V, evidence_refs: Refs}
+Population = CONTAINS_SCENARIO|DISJOINT|UNKNOWN
+Endpoint = EXPLICIT_SETTLED_ENDPOINT|CONTINUOUS_INCLUDES_SETTLED_ENDPOINT|
+           OUTSIDE_SETTLED_ENDPOINT|UNKNOWN
+Force = MANDATORY_UNCHANGED|NOT_MANDATORY|UNKNOWN
+Measure = IDENTICAL|INCOMPATIBLE|UNKNOWN
+ExceptionResolution = NONE_APPLICABLE|RESOLVED_WITH_PREDICATE_UNCHANGED|
+                      WAIVED_THROUGHOUT|MODIFIES_NATIVE_PREDICATE|UNKNOWN
+HorizonStatus = INVARIANT_AS_KNOWN_ON_T_H|KNOWN_RELEVANT_CHANGE_BEFORE_H|UNKNOWN
+ThresholdRelationship = NATIVE_COMPATIBLE|INCOMPATIBLE|UNKNOWN
+Closure = {
+  source_universe_completeness: Completeness, revision_completeness: Completeness,
+  source_information_cutoff: Time?, report_keys: ReportKey[],
+  entry_refs: EntryRef[], evidence_refs: Refs
+}
+ExceptionClosure = {
+  resolution: ExceptionResolution, closure: Closure, authority_actor_ids: Text[],
+  authority_evidence_refs: Refs, precedence_evidence_refs: Refs, evidence_refs: Refs
+}
+HorizonClosure = {status: HorizonStatus, closure: Closure, evidence_refs: Refs}
+ThresholdBinding = {relationship: ThresholdRelationship,
+                    initial_reference_operand: NativeRef?, evidence_refs: Refs}
+RuleBinding = {
+  rule_reference: NativeRef, source_entries: EntryRef[],
+  population: Assertion<Population>, endpoint: Assertion<Endpoint>?,
+  force: Assertion<Force>?, exceptions: ExceptionClosure?,
+  measure: Assertion<Measure>?, threshold: ThresholdBinding?,
+  horizon: HorizonClosure?, evidence_refs: Refs
+}
+```
+
+Bindings name genuine selected-package rules and mapped source RULE entries.
+A usable closure has both completeness values COMPLETE, cutoff T, a nonempty
+set of complete admitted horizon-covering reports, resolved entry references,
+and independently admitted exhaustiveness of every source and actor capable of
+defeating that rule proposition. A scoped closure can be complete while an
+unrelated part of the global universe remains unknown.
+
+Disposition order is: proved invariant disjoint population ->
+DISJOINT_POPULATION; proved invariant endpoint exclusion -> OTHER_OBLIGATION for
+supported native ACCOUNT_STATE_REQUIREMENT, INSTRUMENT_ACTION_PERMISSION,
+AUTOMATION_PERMISSION, POSITION_LIMIT or ACTION_WINDOW, otherwise
+OUTSIDE_SETTLED_ENDPOINT; proved whole-horizon waiver -> WAIVED_THROUGHOUT;
+fully supported numerical static floor -> SUPPORTED_STATIC_FLOOR; otherwise
+UNRESOLVED. Native effects labels alone establish no endpoint or force fact.
+
+A waiver requires contained population, proved endpoint, NOT_MANDATORY,
+WAIVED_THROUGHOUT, complete exception/horizon closures, an actual WAIVER entry,
+existing authority actors, nonempty authority/precedence support and independent
+whole-domain/whole-horizon admission. Mandatory unchanged force plus a declared
+whole-horizon waiver is a structural contradiction. Bare NOT_MANDATORY is unknown.
+
+Numerical support requires native SUPPORTED STATIC_FLOOR, contained population,
+a positive endpoint relation, MANDATORY_UNCHANGED, NONE_APPLICABLE or
+RESOLVED_WITH_PREDICATE_UNCHANGED exceptions, IDENTICAL measure,
+NATIVE_COMPATIBLE threshold, invariant horizon and all receipts/support.
+Relevant daily-reset, trailing, EQUITY, conditional, changing and unrepresented
+requirements remain unresolved. MODIFIES_NATIVE_PREDICATE supplies no replacement.
+
+IDENTICAL means equality of the complete original measure object: kind,
+currency, original ordered definition_refs and cost_treatment. No alias or
+currency conversion exists. A false current IDENTICAL claim rejects; honest
+incompatibility is UNKNOWN. Only direct BALANCE with supported IN_MEASURE or
+NOT_APPLICABLE treatment is supported. SUBTRACT_SEPARATELY is not calculated.
+C6 already owns exact accounting recognition and charge coverage.
+
+ABSOLUTE uses the signed original amount and a null initial-reference selector.
+INITIAL_REFERENCE_FRACTION uses an original POLICY_OPERAND tagged
+INITIAL_REFERENCE for that exact native rule/account/reference/currency, valid
+through [T,H), with all original support mapped and admitted. Missing selector
+or insufficient interval yields UNKNOWN; wrong selector/binding or falsely
+claimed compatible denomination rejects. Preserve signed amount and fraction.
+INITIAL_EQUITY is allowed only as a historical threshold operand, never an
+EQUITY projection. No amount is supplied by the seventh context.
+
+### Immutable declaration and revision grammar
+
+```text
+Subjects = {
+  projection_bundle_sha256: Hash?, projection_basis_sha256: Hash?,
+  policy_bundle_sha256: Hash?, account_bundle_sha256: Hash?, regime_bundle_sha256: Hash?
+}
+DeclarationBody = {
+  subjects: Subjects, source_information_cutoff: Time?,
+  economic_from: Time, economic_until: Time,
+  universe: RuleUniverse, rule_bindings: RuleBinding[]
+}
+RecordRef = {record_id: Text, content_sha256: Hash}
+Predecessor = {kind: ROOT}|{kind: UNKNOWN}|{kind: RECORD, record: RecordRef}
+DECLARE = {
+  record_id: Text, kind: DECLARE, predecessor: Predecessor,
+  effective_from: Time, effective_until: Time?,
+  source_available_at: Time?, observed_at: Time,
+  evidence_refs: Refs, body: DeclarationBody
+}
+WITHDRAW = {
+  record_id: Text, kind: WITHDRAW, predecessor: Predecessor,
+  effective_from: Time, source_available_at: Time?, observed_at: Time,
+  evidence_refs: Refs
+}
+DeclarationRecord = DECLARE|WITHDRAW
+DeclarationCoverage = {
+  economic_from: Time, economic_until: Time, source_information_cutoff: Time?,
+  declaration_completeness: Completeness, revision_completeness: Completeness,
+  starting_basis: FROM_INCEPTION|INCOMPLETE_OR_UNKNOWN,
+  root_records: RecordRef[], missing_record_ids: Text[],
+  records_omitted: boolean?, history_truncated: boolean?,
+  source_available_at: Time?, observed_at: Time, evidence_refs: Refs
+}
+```
+
+Each DECLARE replaces the entire preceding interpretation. Nonnull expiry is
+strictly after its effective start. WITHDRAW cannot be a root. IDs are unique;
+root/parent hashes identify complete normalized records. Every supplied root
+appears in coverage. Missing referenced IDs must be explicitly declared missing
+and cannot also be supplied. Cycles, self-parenting, false roots, wrong hashes
+and unexplained dangling references reject. COMPLETE history contradicting gaps,
+unknown predecessors, omissions or truncation rejects. Honest incompleteness,
+multiple roots, competing children and backward effective/observation/known
+publication ordering are UNKNOWN. A usable chain is connected, complete and
+nonbranching from one independently supported root, containing every record.
+
+Select the last lineage record effective at T, with equal effective times ordered
+by lineage, never IDs or list order. Coverage must be complete/current at T and
+span [T,H). No effective record, a current withdrawal or expired latest declaration
+provides a current proof. Never revive a predecessor. A known future successor
+or current expiry strictly before H prevents either invariant positive or local
+negative proof. A transition exactly at H does not affect [T,H).
+
+Current unexpired native subject pins must match actual owners/basis. Wrong
+nonnull pins reject; unavailable subjects have null pins; missing available pins
+remain unresolved. Current entry/binding native references resolve against the
+selected owner tree. Historical/expired/future body references are checked for
+local grammar, hashes, local relationships, originals and causality, but are not
+rebound to today's native tree. Historical targets remain inert. Global native
+mappings always address today's supplied owners. Required lineage publication
+uncertainty remains unresolved.
+
+Provider economic enrollment, phase, package and contributing binding intervals
+must support the complete horizon. A relevant native/source transition inside
+the horizon prevents the affected proof even if a declaration claims invariance.
+A change at T must already be reflected in the current interpretation. Governance
+approval expiry is not economic provider-rule expiry. No provider timezone label
+is authenticated or converted into an economic boundary by this capability.
+
+### Seventh independent host admission and exact support unions
+
+```text
+FloorAdmission = {
+  contract: ADMISSION_CONTRACT, rule_version: ADMISSION_RULE_VERSION,
+  admission_id: Text, authority_namespace: Namespace, authority_id: Text,
+  mandate_id: Text, mandate_revision: positive JSON integer,
+  purpose: ADMISSION_PURPOSE, request_content_sha256: Hash,
+  knowledge_boundary: Time, effective_from: Time, effective_until: Time?,
+  admitted_at: Time, available_at: Time, admissions: Receipt[]
+}
+Receipt = {
+  target: AdmissionTarget, subject_content_sha256: Hash,
+  status: ADMITTED|UNRESOLVED, evidence_refs: Refs
+}
+AdmissionTarget =
+  {kind: REGIME_SCOPE}
+  |{kind: DECLARATION_REVISION_COVERAGE}
+  |{kind: RULE_SOURCE_UNIVERSE}
+  |{kind: SOURCE_REPORT, record_id: Text, report_key: ReportKey}
+  |{kind: SOURCE_ENTRY_DISPOSITION, record_id: Text, entry_reference: EntryRef}
+  |{kind: RuleTopic, record_id: Text, rule_reference: NativeRef}
+RuleTopic = RULE_DISPOSITION|RULE_ENDPOINT_FORCE|RULE_EXCEPTIONS|RULE_MEASURE|
+            RULE_THRESHOLD|RULE_HORIZON
+SixFingerprints = {
+  trusted_planning_context_sha256: Hash?, trusted_quantity_context_sha256: Hash?,
+  trusted_feasibility_context_sha256: Hash?, trusted_position_effect_context_sha256: Hash?,
+  trusted_position_limit_context_sha256: Hash?, trusted_financial_projection_context_sha256: Hash?
+}
+```
+
+Receipt targets identify genuine supplied subjects; record-specific targets
+require DECLARE records. Historical targets cannot support current conclusions.
+Targets are unique. Recover the first five fingerprints from genuine C6
+reconstruction_evidence.native_context_fingerprints and the sixth from its
+trusted_financial_projection_context_sha256. Do not replace these with independently
+hashed raw caller contexts. All six are null without an upstream owner.
+
+```text
+request_content_sha256 = HJSON(normalized Request)
+subject_content_sha256 = HJSON({request_content_sha256,
+                               native_context_fingerprints: SixFingerprints,
+                               target})
+```
+
+All supplied C7 observations precede admission; admitted_at <= available_at <= K.
+Knowledge boundary equals K. The mandate interval is nonempty and must contain T
+for usable admission; it supplies no lease through H. Missing/stale contexts and
+missing/unresolved receipts fail closed. Incorrect request/subject pins, dangling
+targets, empty ADMITTED receipts and impossible chronology reject.
+
+For the following table E(node) is its own OriginalRefs in evidence_refs and,
+where present, authority_evidence_refs and precedence_evidence_refs. M(native)
+is the union of all mappings for the required native nodes, their clauses and
+those clauses' native documents. Missing mappings remain unresolved and never
+silently shrink a proof. All unions are exact sets of complete OriginalRefs.
+
+| Target | Exact required original support union |
+| --- | --- |
+| REGIME_SCOPE | Current record E; account bundle, selected assignment/package, every binding contributing at T, their clauses/documents, connected selected approvals |
+| DECLARATION_REVISION_COVERAGE | Coverage E and every supplied record's own E |
+| RULE_SOURCE_UNIVERSE | Universe/actor/source E and native selected-package coverage clauses/documents |
+| SOURCE_REPORT | Report, roster-source and actor E plus E of every supplied member entry |
+| SOURCE_ENTRY_DISPOSITION | Entry/report/source/actor E plus its native rule mappings and clauses/documents |
+| RULE_DISPOSITION | Binding/population E, bound source-entry support, native rule mapping and clauses/documents |
+| RULE_ENDPOINT_FORCE | Rule-disposition support plus endpoint/force E |
+| RULE_EXCEPTIONS | Rule-disposition support, exception/authority/precedence E, support of all closure reports/entries |
+| RULE_MEASURE | Rule-disposition support, measure E, rule measure/definitions, C6 target measure/definitions, account mapping |
+| RULE_THRESHOLD | Rule-disposition support, threshold E, native rule support, original operand and every supporting-evidence mapping for fractional thresholds |
+| RULE_HORIZON | Rule-disposition support, horizon/closure E, all closure-report/entry support, selected assignment/package/bindings and clauses/documents |
+
+Support of a referenced report/entry is its table union. An ADMITTED receipt must
+have exactly that evidence set; nonempty incomplete or extraneous support yields
+RECEIPT_SUPPORT_MISMATCH. Unknown required publication remains unresolved even
+with an ADMITTED label. A caller cannot select a smaller support union.
+
+Every proved rule requires REGIME_SCOPE, DECLARATION_REVISION_COVERAGE,
+RULE_DISPOSITION and RULE_HORIZON. Endpoint exclusion additionally requires
+RULE_ENDPOINT_FORCE; waiver also requires RULE_EXCEPTIONS; numerical floors
+require all six rule topics. Bound source entries and closure entries/reports
+require their own receipts. An entry also requires its report's receipt. Global
+positive establishment additionally requires RULE_SOURCE_UNIVERSE and every
+responsibility report and source-entry disposition.
+
+The host independently controls issuer, actual mandate/revision and factual
+admission. Local code validates content binding, reconstruction, chronology and
+support. External provider authentication remains external. A fully self-consistent
+fabricated context cannot be authenticated from its issuer strings or hashes;
+untrusted caller contexts must not be promoted into the trusted host argument.
+No provider integration, document parser or trusted issuer registry is introduced.
+The seventh context cannot repair native UNKNOWN, invent rules/operands, bypass
+financial coverage, substitute measures/amounts or authorize a trade.
+
+### Exact finite-grid mathematics and outcome precedence
+
+For established C6 preserve C exactly:
+
+```text
+q(n) = origin + n*increment
+0 <= L=first_index <= n <= U=last_index < infinity
+increment > 0; q(L) > 0
+R(q) = a*q + sum(max(m_i, f_i+p_i*q))
+B(q) = B0-R(q)
+F_r = A_r or I_r*alpha_r
+h_r(q) = B0-R(q)-F_r
+GREATER_THAN: h_r(q)>0
+GREATER_THAN_OR_EQUAL: h_r(q)>=0
+```
+
+The native payoff coefficient and adverse distance are positive, so a>0. Native
+fixed/minimum/per-unit charges are nonnegative. Every charge is nondecreasing;
+R is strictly increasing; each h is strictly decreasing. Negative native origin
+and index zero are preserved when q is positive. No index translation occurs.
+
+Failure at L yields empty passing prefix and all-C exclusion; success at U yields
+all C passing; otherwise exact logarithmic integer binary search finds the largest
+passing J. Passing indices [L,J] and excluded [J+1,U] are inclusive. Intersect
+complete predicates by the smallest passing upper index. An empty intersection
+of these prefixes implies an individually empty prefix. Never enumerate a large
+grid or use float money, epsilon, cents rounding, approximate fee breakpoints or
+global numerical-setting mutation. Parse/format huge integer coefficients and
+indices in chunks. Exact rational arithmetic preserves signed thresholds,
+initial amounts and balances. Negative balance alone is not a rule violation.
+Fixed and minimum charges remain in the native risk function exactly once.
+
+Precedence is structural ValueError first, then self-contained NOT_SUITABLE,
+then UNKNOWN, then ESTABLISHED. Validate unused material before conclusions.
+NOT_SUITABLE requires an independently proved mandatory supported invariant floor
+excluding all C, including current declaration/scope, exact original operands,
+complete own exceptions/horizon and receipts. Unrelated global unknowns survive
+as findings without defeating this proof. No native diagnostic outside C is
+promoted into a C7 endpoint breach. Missing/UNKNOWN C6 permits no C7 arithmetic.
+
+ESTABLISHED requires genuine nonempty C, at least one proved mandatory supported
+floor, complete two-sided native/source coverage, every relevant rule resolved,
+and a nonempty exact conjunction. No supported applicable floor is UNKNOWN.
+Partial exclusion with incomplete coverage preserves the suffix witness and
+headroom but never approves an aggregate positive complement.
+
+### Closed result, diagnostics, canonical identity and replay
+
+```text
+QuantityDomain = {quantity_unit: Text, domain:
+  {kind: EMPTY}|{kind: REGULAR_GRID, origin: Decimal, increment: Decimal,
+                first_index: Index, last_index: Index}}
+Headroom = {
+  kind: C6_BALANCE_MINUS_NATIVE_STATIC_FLOOR, projection_basis_sha256: Hash,
+  rule_reference: NativeRef, threshold_amount: Decimal, currency: Currency,
+  compliant_when: GREATER_THAN|GREATER_THAN_OR_EQUAL,
+  initial_reference_operand: NativeRef?
+}
+RuleDisposition = SUPPORTED_STATIC_FLOOR|DISJOINT_POPULATION|
+                  OUTSIDE_SETTLED_ENDPOINT|WAIVED_THROUGHOUT|OTHER_OBLIGATION|UNRESOLVED
+RuleResult = {
+  rule_reference: NativeRef, disposition: RuleDisposition, reason_codes: ReasonCode[],
+  headroom: Headroom?, rule_passing_domain: QuantityDomain?,
+  rule_excluded_domain: QuantityDomain?
+}
+SourceDisposition = {entry_reference: EntryRef, disposition: EntryDisposition,
+                     reason_codes: ReasonCode[]}
+Conjunction = {kind: STATIC_SETTLED_ENDPOINT_FLOOR_CONJUNCTION,
+               support: NativeGrid, rule_references: NativeRef[]}
+NegativeProof = {
+  kind: ALL_C_EXCLUDED|SUFFIX_EXCLUDED,
+  scope: CONDITIONAL_SETTLED_ENDPOINT_ON_C, rule_reference: NativeRef,
+  declaration: RecordRef, headroom_sha256: Hash, excluded_domain: QuantityDomain,
+  admission_targets: AdmissionTarget[], evidence_refs: Refs
+}
+Finding = {reason_code: FindingCode,
+           subject: {root: REQUEST|TRUSTED_PROVIDER_FLOOR_CONTEXT|UPSTREAM_ASSESSMENT,
+                     pointer: JSON-Pointer string}}
+OwnerReference = {assessment_identity: Text, owner_bundle_sha256: Hash,
+                  outcome: ESTABLISHED|UNKNOWN}
+ResolvedRecord = {record_id: Text, kind: DECLARE|WITHDRAW, content_sha256: Hash}
+Reconstruction = {request: Request, native_context_fingerprints: SixFingerprints,
+                  floor_evidence_sha256: Hash?,
+                  trusted_provider_floor_context_sha256: Hash?}
+Authority = {quantity_selection: false, budget_approval: false,
+             position_effect_compliance: false, margin_capital_approval: false,
+             trade_decision: false, financial_risk: false, execution: false}
+Result = {
+  contract: CONTRACT, rule_version: RULE_VERSION,
+  assessment_economic_time: Time, knowledge_boundary: Time, scope: Scope,
+  scenario: NativeScenario?, outcome: ESTABLISHED|NOT_SUITABLE|UNKNOWN,
+  reason_codes: ReasonCode[], owner_reference: OwnerReference?,
+  resolved_record: ResolvedRecord?, supported_domain: NativeGrid?,
+  rule_results: RuleResult[], source_dispositions: SourceDisposition[],
+  complete_predicate: Conjunction?, passing_domain: QuantityDomain?,
+  negative_proofs: NegativeProof[], unresolved_findings: Finding[],
+  native_diagnostics: NativeJSON?, native_unresolved_findings: NativeJSON?,
+  native_conditions: Text[]?, native_limitations: Text[]?,
+  conditions: Text[], limitations: Text[], reconstruction_evidence: Reconstruction,
+  downstream_obligations: Text[],
+  source_authentication: NOT_VERIFIED_BY_THIS_CAPABILITY,
+  authority: Authority, execution: false, assessment_identity: Text
+}
+```
+
+NativeScenario is complete unchanged C6 {endpoint,settlement_before}; NativeGrid
+is its unchanged {quantity_unit,domain:{kind:REGULAR_GRID,origin,increment,
+first_index,last_index}}. With no owner, owner/scenario/native fields/support
+are null. With an owner, copy scenario and all native diagnostics/conditions/
+limitations even for UNKNOWN. native_diagnostics equals C6.native_diagnostics;
+native_unresolved_findings equals C6.unresolved_findings. supported_domain exists
+only for established C6. Do not rewrite upstream historical ownership.
+
+A locally unique latest record may populate resolved_record even if expired,
+withdrawn or not admitted. It is not a proof flag. No unique candidate gives null.
+Rule rows cover every selected native rule; missing bindings remain unresolved.
+Source rows cover the locally selected unexpired DECLARE's entries; otherwise
+empty. Unproved source dispositions output UNRESOLVED. Numerical row fields
+are all null unless a supported floor is fully proved. Preserve proved numerical
+rows and suffix witnesses despite aggregate UNKNOWN.
+
+complete_predicate exists only for complete global coverage and at least one
+supported floor; it may accompany a complete all-C negative. passing_domain is
+its exact conjunction. A scoped all-C proof with incomplete global coverage
+emits EMPTY passing_domain and null complete_predicate. Other incomplete cases
+have null aggregate passing_domain. Empty excluded intervals produce no witness.
+Each witness includes exactly its required receipt targets and their support
+union; its headroom hash pins the corresponding row's complete descriptor.
+
+The exact closed FindingCode set and trigger classes are:
+
+| Code | Trigger |
+| --- | --- |
+| OWNER_MISSING | Direct owner absent |
+| OWNER_UNKNOWN | Genuine C6 UNKNOWN |
+| EVIDENCE_MISSING | Floor evidence absent |
+| SOURCE_AVAILABILITY_UNKNOWN | Required publication unknown |
+| NATIVE_SUPPORT_MISSING | Required mapping/original/subject support absent |
+| ADMISSION_MISSING | Seventh context absent |
+| ADMISSION_NOT_CURRENT | Mandate does not contain T |
+| RECEIPT_MISSING | Required target absent |
+| RECEIPT_UNRESOLVED | Explicit UNRESOLVED receipt |
+| RECEIPT_SUPPORT_MISMATCH | Nonempty admitted support differs from exact union |
+| DECLARATION_COVERAGE_INCOMPLETE | Declaration coverage incomplete/stale/short |
+| REVISION_HISTORY_INCOMPLETE | Honest gaps or incomplete lineage |
+| REVISION_ORDER_UNSUPPORTED | Backward lineage chronology |
+| COMPETING_DECLARATIONS | Multiple roots/children |
+| NO_CURRENT_DECLARATION | No effective current candidate |
+| DECLARATION_WITHDRAWN | Latest effective withdrawal |
+| DECLARATION_EXPIRED | Latest declaration expired |
+| HORIZON_CHANGE | Known relevant transition/expiry before H |
+| SOURCE_UNIVERSE_INCOMPLETE | Source/actor/topic/responsibility proof inadequate |
+| REPORT_MISSING | Responsibility report absent |
+| REPORT_COVERAGE_INCOMPLETE | Report completeness/current/horizon inadequate |
+| NATIVE_COVERAGE_INCOMPLETE | Native selected-package inventory incomplete |
+| UNMAPPED_SOURCE_ENTRY | Relevant source entry lacks required native mapping |
+| SOURCE_ENTRY_UNRESOLVED | Source disposition unproved |
+| RULE_BINDING_MISSING | Native rule binding absent |
+| RULE_SOURCE_BINDING_MISSING | Mapped source RULE support absent |
+| RULE_DISPOSITION_UNRESOLVED | No proved permitted disposition |
+| POPULATION_UNRESOLVED | Population proposition unproved |
+| ENDPOINT_UNRESOLVED | Endpoint proposition unproved |
+| FORCE_UNRESOLVED | Mandatory/waiver force unproved |
+| EXCEPTIONS_UNRESOLVED | Exception resolution/closure inadequate |
+| RULE_MODEL_UNSUPPORTED | Relevant model outside native static subset |
+| MEASURE_UNSUPPORTED | Relevant equity/separate-deduction measure |
+| MEASURE_IDENTITY_UNRESOLVED | Exact original identity unproved |
+| THRESHOLD_OPERAND_UNRESOLVED | Threshold relationship/operand/interval inadequate |
+| HORIZON_UNRESOLVED | Invariant closure unproved |
+| NO_SUPPORTED_APPLICABLE_FLOOR | No proved mandatory supported floor |
+
+ReasonCode is precisely FindingCode plus ALL_C_EXCLUDED, SUFFIX_EXCLUDED and
+STATIC_ENDPOINT_DOMAIN_ESTABLISHED. Generate semantic failures for existing
+subjects; missing parents produce absence findings rather than invented child
+subjects. Continue independent branches. Row reasons contain failed shared and
+local gates; resolved nonnumeric rows may have empty reasons. Top-level reasons
+are the sorted union of local finding codes and proof kinds, plus the positive
+code only for ESTABLISHED. Do not import native reason strings into the C7 enum.
+Pointers use RFC 6901 escaping and address normalized parent collections/fields
+when a child is missing.
+
+Fixed conditions, in order:
+
+```text
+C6_SCENARIO_CONDITIONS_RETAINED
+SUPPORTED_NATIVE_FLOOR_INTERPRETATIONS_APPLY_AT_ENDPOINT
+NO_UNMODELED_RELEVANT_RULE_CHANGE
+```
+
+Fixed limitations, in order:
+
+```text
+CONDITIONAL_SETTLED_ENDPOINT_ONLY
+STATIC_IDENTICAL_BALANCE_FLOORS_ONLY
+SOURCE_AUTHENTICITY_NOT_VERIFIED
+CONTINUOUS_AND_ACTUAL_PROVIDER_COMPLIANCE_NOT_ESTABLISHED
+NO_AUTHORIZATION_LEASE
+NO_SELECTION_OR_CAPITAL_APPROVAL
+NO_ASSERTION_OUTSIDE_NATIVE_C
+NO_VACUOUS_NO_FLOOR_POSITIVE
+```
+
+Fixed downstream obligations, lexicographically sorted:
+
+```text
+ACCOUNT_PROFIT_LOCK_AND_PAYOUT_ELIGIBILITY
+ACTUAL_SETTLEMENT_AND_ACCOUNT_REVALIDATION
+ATOMIC_COMMITMENT_AND_RESERVATION_CONTROL
+CANDIDATE_VALIDITY
+CONTINUOUS_PROVIDER_MEASURE_AND_DRAWDOWN_COMPLIANCE
+CURRENT_STATE_MECHANICS_AND_RULE_REVALIDATION
+ENTRY_QUANTITY_DOMAIN_MEMBERSHIP
+EXECUTION_PATH_AND_PEAK_POSITION_LIMIT_COMPLIANCE
+MARGIN_AND_AVAILABLE_CAPITAL_FEASIBILITY
+MARKET_ORDER_AND_FILL_FEASIBILITY
+MISSION_CONTROL_CURRENT_AUTHORIZATION
+ORDER_ACCEPTANCE_AND_PENDING_COMMITMENT_RULES
+OTHER_PROVIDER_AND_ACCOUNT_RULE_COMPLIANCE
+POSITION_EFFECT_AND_ACCOUNT_RULE_COMPLIANCE
+POST_ENTRY_FLOOR_AND_PROVIDER_HEADROOM
+QUANTITY_SELECTION_POLICY_AND_SELECTION
+RISK_BUDGET_QUANTITY_FEASIBILITY
+```
+
+The broader floor/headroom obligation remains because only this conditional
+subcase is assessed. Authority's seven fields and result.execution are exact
+Boolean false; integer zero cannot substitute.
+
+Preserve native trees, native arrays and original bytes. Normalize only owned
+times/decimals/set ordering. Canonical JSON is compact UTF-8, keys sorted by
+Unicode order, standard JSON escaping without ASCII escaping. Preserve primitive
+types: false, 0 and 0.0 differ. Native finite floats remain provenance only;
+reject nonfinite/non-JSON/invalid-Unicode values. Arbitrary integer formatting
+uses chunks, with no global digit-limit mutation. Keyed arrays sort by identity:
+original/evidence_id; actor/actor_id; source/inventory_id; report/canonical key;
+entry/entry_id; record/record_id; binding/canonical native reference;
+receipt/canonical target. Other owned sets sort by canonical member. Reject input
+duplicate identities/references/mappings/targets; output unions deduplicate exact
+members. Findings sort by root,pointer,code; rule rows by native reference; source
+rows by entry reference; proofs by rule reference,kind. Fixed arrays retain order.
+
+```text
+HJSON(x) = SHA256(canonical UTF-8 JSON(x))
+assessment_identity = IDENTITY_PREFIX + HJSON(result without assessment_identity)
+```
+
+Raw-byte, normalized-envelope, native-original and embedded owner-native hashes
+have distinct subjects/algorithms. The detached validator reruns all seven
+contexts and compares every result field with canonical type-preserving equality.
+A rehashed forgery is not valid. Both APIs detach every occurrence so neither
+input aliases nor repeated output occurrences can mutate another result field.
+
+### Acceptance boundary and separate funded-account profit lock
+
+The dedicated C7 tests reconstruct actual public C6/C5 chains, including the four
+LONG/SHORT x NETTING/HEDGING combinations; signed absolute/fractional thresholds
+and historical initial equity; strict/inclusive equality; multiple floors;
+full/singleton/empty prefixes; fee crossover; extreme precision/huge finite
+indices; negative origin/index zero; missing originals and unmapped sources;
+unsupported rules; incomplete native/source/actor/report coverage; exceptions,
+waivers and scoped negatives; before-H/at-H transitions; historical, expired,
+withdrawn and competing declarations; native UNKNOWN and preserved diagnostics;
+partial exclusions without optimistic complements; structural defects beside
+negative arithmetic; wrong identity/pins; receipt attacks; post-K evidence;
+rehashed owner/result tampering; mutation isolation and exact false authority.
+Synthetic admissions test local behavior only, never real provider authenticity.
+
+Implementation scope is exactly:
+
+```text
+ADD src/ced_one/business_divisions/trading/xauusd_current_post_entry_provider_floor_headroom.py
+ADD tests/test_xauusd_current_post_entry_provider_floor_headroom.py
+APPEND ONLY docs/capability_architecture.md
+```
+
+No existing owner, test, fixture, runtime, dependency, registry, provider connector,
+package export or Mission Control change is part of this implementation.
+
+Actual provider authentication and competent independent host admission of real
+source/actor completeness, native interpretation, exceptions and universal
+horizon applicability remain external. Without adequate evidence and admission,
+operational outcome is UNKNOWN. No actual fill, settlement or provider compliance
+is guaranteed by a conditional successful calculation.
+
+The mandatory separate funded-account authorization gate retains configurable
+account-specific approximately 4–5% monthly targets; net realized profit and
+exact payout-cycle baseline; durable FROZEN_AWAITING_PAYOUT; no new entries while
+locked; safe existing position/pending-order management; verified payout and
+explicitly controlled reactivation; provider/cross-account restrictions. An
+established active lock vetoes new trading independently of C7. This capability
+implements and bypasses none of that lifecycle and grants no trade authority.
+
+Known entries connected to a native rule through related_entry_ids must have
+proved source dispositions before its scoped closure is usable. Relation
+components are traversed only to conservatively identify possible relevance;
+this does not resolve provider precedence. Unresolved linked waivers, overrides
+or changes cannot be omitted from a self-contained negative. Genuinely unrelated
+global unknowns remain independent. Findings identify normalized rule/report/
+entry objects so equal reason codes on different subjects remain separate.
+
+Owned normalization detaches occurrences before modifying them, so a caller's
+alias between a local Period and a native original cannot rewrite preserved
+native provenance. REGIME_SCOPE support covers bindings contributing at T;
+RULE_HORIZON additionally covers every native binding used across [T,H), including
+known future-effective continuations. Missing future binding originals remain
+UNKNOWN. Known economic expiry/change reports HORIZON_CHANGE; incomplete
+applicability reports HORIZON_UNRESOLVED. Strict JSON validation permits an exact
+standard serializer fast path and retains chunk-based arbitrary integer rendering;
+no hash or primitive-type semantics change between those paths.
+
+For numerical mandatory force, mapped source RULE intervals must cover the whole
+settlement horizon. A rule first effective at H or expired at T cannot establish
+current mandatory applicability. Known expiry exactly at H covers the half-open
+horizon. These are source-applicability checks in addition to native economic
+coverage and independent rule-force/horizon admission.
+
+The current entry-quantity-domain owner canonicalizes provider grid origins to
+nonnegative residues before C5/C6. C7 preserves the resulting actual C6 grid,
+including genuine index-zero cases; it does not restore provider-declaration
+indices. A separate exact-arithmetic test checks negative-origin representation
+preservation on the same genuine projected quantities, without forging or mocking
+an established native owner. Public positive assessments always use genuine replay.
+
+Known competing native account assignments and different-package bindings are
+also checked over [T,H), even when the selected assignment/package remains
+open-ended. A proven overlap prevents invariant proof (HORIZON_CHANGE);
+potential overlap with unknown applicability remains HORIZON_UNRESOLVED.
+Provably historical assertions ending at T and future assertions starting at H
+do not overlap this half-open horizon. This checks preserved native information;
+it introduces no future-regime selection or replacement floor calculation.
+
+WAIVED_THROUGHOUT also requires the actual admitted WAIVER entries in the
+exception closure to cover [T,H). A waiver first effective at H or expired at T
+cannot establish current whole-horizon waiver. An actual waiver ending at H
+covers this half-open horizon. The independent force, authority, precedence,
+exception and horizon receipts remain required; period coverage replaces none
+of those gates. Missing waiver applicability stays UNKNOWN.
+
+Only operative SUPPORTING_RULE_EVIDENCE waiver entries can supply that coverage.
+A PROVEN_OUTSIDE_SCOPE, HISTORICAL_NON_GOVERNING or OTHER_OBLIGATION source
+disposition cannot simultaneously establish a current operative waiver.
+Independent unresolved rules retain their own numerical partial exclusions;
+the aggregate passing domain remains null while waiver proof is unresolved.
+
+### Observed continuation verification — 2026-11-02
+
+The final focused invocation reconstructed genuine C5/C6 owners and exercised
+the complete C7 module after the native-horizon and operative-waiver corrections.
+The original native C6 grid is inherited unchanged. The negative-origin helper
+check is isolated arithmetic on equivalent proven quantities, never a fabricated
+established owner or a replacement for positive public replay.
+
+The following are observed terminal results, all with zero failures and zero
+skips. Deselected cases belong only to the targeted invocation.
+
+| Invocation | Observed result | Duration | Exit code |
+| --- | --- | --- | --- |
+| Final waiver/source-horizon/linked-defeater targets | 14 passed, 309 deselected | 223.70s | 0 |
+| Entire final C7 module | 323 passed | 3738.68s | 0 |
+| Adjacent C5 quantity-constraint composition module | 126 passed | 740.40s | 0 |
+| Adjacent C6 provider-measure projection module | 188 passed | 1712.24s | 0 |
+| Seven broader trading modules | 1563 passed | 369.18s | 0 |
+
+The broader invocation covered account-specific risk policy, current entry-to-stop
+risk basis, entry quantity domain, risk-budget quantity feasibility, entry
+position-effect basis, terminal position limits and trading vertical slice v29.
+C5 and C6 were run independently in parallel after the final focused module
+passed. The earlier 317-pass C7 invocation preceded the waiver corrections and
+does not verify the final source. The earlier combined adjacent invocation was
+interrupted at 280 passed (exit 2), and is not a completed regression result.
+The preceding unavailable targeted tail remains unverified; no pass is inferred
+from its progress output. Full-repository terminal results are reported separately
+in the completion report; no full-suite success is asserted by this table.
+
+Verification used PYTHONDONTWRITEBYTECODE=1, PYTHONPATH=src and pytest with its
+cache provider disabled. Source and test hashes were checked unchanged across
+the final focused run, and the pre-existing architecture prefix remained exactly
+318069 bytes. Synthetic admissions establish local contract behavior only;
+actual provider authentication, independent host control and the separate funded
+account profit-lock gate remain external, mandatory boundaries. All seven
+authority fields and result-level execution remain exact Boolean false.
