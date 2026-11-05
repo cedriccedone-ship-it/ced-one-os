@@ -5576,3 +5576,440 @@ the final focused run, and the pre-existing architecture prefix remained exactly
 actual provider authentication, independent host control and the separate funded
 account profit-lock gate remain external, mandatory boundaries. All seven
 authority fields and result-level execution remain exact Boolean false.
+
+## Capability 8 — As-of Intraday Trailing-Loss Threshold State v1
+
+This append implements the frozen bounded contract, its seven-defect repair,
+the dual-boundary/source-roster repair and the final freeze approval. It adds
+only the C8 callable library and focused tests. The `current_` spelling in the
+module and wire identifiers is a stable identifier, not a live-state claim.
+
+### Owned proposition and public API
+
+For one independently admitted account, currency and unchanged original rule
+lifecycle, reconstruct the account-wide balance watermark as of economic T,
+using originals and independent admission available by K, with T <= K:
+
+```
+B0 = H0 = I
+Bj = Bj-1 + all-in admitted atomic full-position-close delta
+Hj = max(Hj-1, Bj)
+L(T) = Hn - I/10
+```
+
+The initial allowance is always I, including an empty positively complete
+history or negative closing balances. The snapshot must reconcile to final B.
+Every relevant account instrument is included. Calculations use exact rational
+arithmetic and canonical finite decimals, without binary floating point,
+currency conversion, currency rounding or ambient Decimal precision.
+
+The public entry points in
+`current_intraday_trailing_loss_threshold_state.py` are:
+
+```
+evaluate_current_intraday_trailing_loss_threshold_state(
+    request, *, trusted_context=None) -> dict
+validate_current_intraday_trailing_loss_threshold_state(
+    value, request, *, trusted_context=None) -> dict
+CURRENT_INTRADAY_TRAILING_LOSS_THRESHOLD_STATE.analyze(
+    request, trusted_context=None).to_dict() -> dict
+```
+
+The host independently chooses the trusted issuer/mandate and passes context as
+a separate argument. Issuer labels and serialized receipts do not authenticate
+the issuer. No embedded result context or fingerprint substitutes for this
+independent argument. Missing admission yields UNKNOWN, subject to earlier
+structural errors/findings.
+
+### Closed serialized language
+
+All objects below are sealed; every listed field is required. `X?` means X or
+JSON null, never an omitted key. Arrays can be empty unless explicitly required
+for establishment. Strict JSON containers and exact primitive types are used;
+Boolean never substitutes for an integer. Duplicate native JSON keys, malformed
+UTF-8, non-finite numbers, tuple/custom-container coercions and noncanonical
+base64 reject.
+
+- Text: nonempty Unicode, no leading/trailing whitespace or surrogate points.
+- ID: Text matching `[A-Za-z0-9_.:-]+`.
+- Time: valid UTC `YYYY-MM-DDTHH:MM:SS.ffffffZ`; no leap seconds.
+- Money: exact canonical decimal string, no plus, exponent, leading zeros,
+  negative zero, empty fraction or trailing fractional zeros.
+- Nat/PosInt: exact JSON integer >=0/>=1; no Boolean.
+- Currency: three uppercase ASCII letters.
+- Hash: 64 lowercase hexadecimal characters.
+- Bytes: canonical padded RFC 4648 base64.
+- Pointer: RFC 6901 JSON Pointer, including empty string for the whole root.
+
+HJSON is SHA-256 over UTF-8 of `json.dumps(x, ensure_ascii=True, sort_keys=True,
+separators=(",", ":"), allow_nan=False)`. C8's encoder preserves these bytes
+for arbitrary-size integers without altering process-wide integer limits.
+Object-key order is immaterial; list order is material. Native timestamp
+comparisons use their UTC-normalized values, preserving original bundle bytes.
+
+```
+Namespace = {source_id: Text, source_contract: Text,
+             source_contract_version: Text}
+Source = {source_id: Text, source_contract: Text,
+          source_contract_version: Text, source_snapshot_id: Text}
+Account = {namespace: Namespace, account_id: Text,
+           environment: DEMO|LIVE, currency: Currency}
+Scope = {account: Account, provider_namespace: Namespace, provider_id: Text,
+         program_id: Text, account_type_id: Text, phase_id: Text,
+         lifecycle_id: ID}
+NativeBundle = {input_json: Bytes, result_json: Bytes}
+Request = {contract: "trading.current_intraday_trailing_loss_threshold_state.v1",
+           rule_version: "current_intraday_trailing_loss_threshold_state_v1",
+           economic_time: Time, knowledge_boundary: Time, scope: Scope,
+           account_snapshot: NativeBundle?, provider_regime: NativeBundle?,
+           originals: Original[], history: History?,
+           support_assertions: SupportAssertion[]}
+DocumentIdentity = {namespace: Namespace, document_id: Text,
+                    document_revision: Text?}
+Original = {evidence_id: ID, source: Source, document: DocumentIdentity,
+            media_type: Text, content: Bytes, content_sha256: Hash,
+            source_available_at: Time?, observed_at: Time}
+OriginalRef = {evidence_id: ID, original_sha256: Hash}
+Citation = {evidence_id: ID, locator: Text}
+InitialCapital = {amount: Money, currency: Currency, citations: Citation[]}
+Rule = {assignment_id: Text, package_index: Nat, rule_index: Nat,
+        native_rule_sha256: Hash, effective_from: Time, effective_until: Time?,
+        model: CLOSED_POSITION_BALANCE_HIGH_WATERMARK|UNKNOWN,
+        deduction: ONE_TENTH_INITIAL_CAPITAL|UNKNOWN,
+        lower_bound: INITIAL_CAPITAL|UNKNOWN,
+        update: EACH_ATOMIC_FULL_POSITION_CLOSE|UNKNOWN, citations: Citation[]}
+SourceMember = {namespace: Namespace, topics: Topic[], citations: Citation[]}
+Coverage = {report: OriginalRef, from: Time?, through: Time?,
+            source_information_cutoff: Time?, account_wide: COMPLETE|UNKNOWN,
+            inception: COMPLETE|UNKNOWN, source_inventory: COMPLETE|UNKNOWN,
+            events: COMPLETE|UNKNOWN, revisions: COMPLETE|UNKNOWN,
+            ordering: AUTHORITATIVE_TOTAL_ORDER|UNKNOWN,
+            expected_event_count: Nat?, exclusions: Exclusions,
+            citations: Citation[]}
+Exclusions = {rewards_or_withdrawals: ExclusionState,
+              deposits_or_credits: ExclusionState,
+              reset_or_migration: ExclusionState, capital_change: ExclusionState,
+              historical_correction: ExclusionState,
+              partial_close_or_deal_posting: ExclusionState,
+              unknown_transaction: ExclusionState,
+              separate_cost_posting: ExclusionState,
+              unresolved_cost: ExclusionState, ambiguous_ordering: ExclusionState,
+              rule_change: ExclusionState}
+ExclusionState = ABSENT|PRESENT|UNKNOWN
+Instrument = {namespace: Namespace, instrument_id: Text}
+Close = {position_id: Text, instrument: Instrument, balance_before: Money,
+         gross_realized_pnl: Money, commission_delta: Money,
+         financing_delta: Money, other_cost_delta: Money,
+         net_balance_delta: Money, balance_after: Money}
+Event = {event_id: ID, origin: Source, original_record_id: Text,
+         occurred_at: Time, sequence: PosInt?, currency: Currency,
+         kind: EventKind, close: Close?, citations: Citation[]}
+RevisionNotice = {notice_id: ID, origin: Source, original_record_id: Text,
+                  effective_at: Time, kind: CORRECTION|REPLACEMENT|WITHDRAWAL|UNKNOWN,
+                  citations: Citation[]}
+History = {inception: Time?, initial_capital: InitialCapital?, rule: Rule?,
+           sources: SourceMember[], coverage: Coverage?, events: Event[],
+           revisions: RevisionNotice[]}
+```
+
+Topic order is BALANCE_ACTIVITY, POSITION_CLOSURES, ACCOUNT_LIFECYCLE,
+RULE_LIFECYCLE, SOURCE_REVISIONS. EventKind is ATOMIC_FULL_CLOSE,
+REWARD_OR_WITHDRAWAL, DEPOSIT_OR_CREDIT, RESET_OR_MIGRATION, CAPITAL_CHANGE,
+HISTORICAL_CORRECTION, PARTIAL_CLOSE_OR_DEAL_POSTING, UNKNOWN_TRANSACTION,
+SEPARATE_COST_POSTING, UNRESOLVED_COST, RULE_CHANGE.
+
+Close is non-null exactly for ATOMIC_FULL_CLOSE. Its signed identities are:
+net = gross + commission_delta + financing_delta + other_cost_delta, and
+balance_after = balance_before + net. Incorrect arithmetic rejects; unresolved
+costs or separate postings do not become zero. Full-close position IDs may not
+be reused within the same origin namespace. No prices, leverage, quantities,
+partial-close groupings, MT5 deal aggregation or provider transaction semantics
+are inferred.
+
+Original document namespace equals its source namespace. Document family key is
+(namespace, document_id); version key adds document_revision; capture key adds
+the full source reference. Duplicate evidence IDs or capture keys reject. Same
+version with different bytes or media type rejects. Different documents in one
+snapshot are allowed; same version/bytes across different snapshots is allowed.
+More than one revision value in a family, including null alongside named,
+returns revision UNKNOWN. Null supplies no revision assurance. There is no v1
+revision selection/repair machinery. Content hashes bind decoded bytes; report
+original_sha256 binds the entire Original, including identity and timing.
+Every citation resolves; semantic relevance is independently admitted.
+
+### Native ownership and dual-boundary chronology
+
+Decode each supplied NativeBundle as strict UTF-8 JSON objects. Call the genuine
+public native validators, with (result, input):
+
+- validate_causal_financial_account_state_snapshot
+- validate_causal_account_rule_regime_assessment
+
+Each invokes its actual owner analyzer and reconstructs the full native result.
+No cached approval replaces replay. The native language is exactly that of the
+baseline 55e3693 public owners. Snapshot identity is snapshot_id (no invented
+native outcome); regime identity is assessment_id. Raw native arrays remain in
+original owner-defined input order, even when native results sort them.
+
+Account ID, environment, currency and observation-source namespace must match
+C8 account scope. Regime account namespace/ID/environment must match; known
+selected assignment/package provider/program/type/phase mismatches reject.
+Namespace correspondence and genuine provider attribution additionally require
+independent identity admission; matching labels do not authenticate anything.
+
+Let T=Request.economic_time, K=Request.knowledge_boundary,
+R=native regime input.requested_knowledge_boundary, and
+S=Coverage.source_information_cutoff. Establishment requires:
+
+```
+T <= K
+native account requested_evaluation_timestamp = K
+native snapshot effective_at = T
+T <= snapshot source_available_at <= snapshot observed_at <= K
+native regime economic_timestamp = T
+T <= R <= K
+coverage.from = inception <= T = coverage.through
+T <= S <= report source_available_at <= report observed_at <= K
+max(all supplied observation times) <= admitted_at <= available_at <= K
+context effective_from <= K < context effective_until (or open-ended null)
+```
+
+Native regime unique resolution forces its manifest cutoff/observation to R;
+R may precede C8 admission/K. No native result is rewritten to a newer boundary.
+Observation set includes every C8 original, native account, native manifest,
+every native evidence observation and every native approval observation. Source
+availability must be known for C8 originals and native account/manifest/evidence
+to establish. Native approvals have no publication field; none is invented.
+All original observations must be by K. Known publication after observation,
+report issuance/observation before its known coverage/cutoff, admission before
+observation, reversed intervals or T>K reject. Context availability after K
+returns UNKNOWN. A valid snapshot effective at another time returns UNKNOWN.
+
+Known inception>T rejects even with no events. Events require inception <
+occurred_at <= T when inception exists, and occurred_at <= T independently.
+Inception=T permits a zero-event history. The first close starts at I; an empty
+history ends at I. Currency contradictions reject, while chain/snapshot
+reconciliation failures return UNKNOWN after admission gates.
+
+The C8 original rule must cover [inception,T], with half-open end >T or null.
+Its original native selector is manifest.packages[package_index].rules[rule_index],
+with an exact HJSON hash. It must correspond to the selected assignment/package
+and an account-wide UNSUPPORTED native rule. Native UNSUPPORTED does not supply
+the C8 interpretation: separate original-rule admission does. A missing regime
+defers well-formed selector resolution; a malformed selector or invalid selector
+against a present regime rejects.
+
+Historical native manifest economic coverage, selected enrollment/phase/package
+periods and the known union of same-package bindings must cover [inception,T].
+Native periods retain KNOWN/OPEN_ENDED/UNKNOWN and half-open semantics. Touching
+same-package intervals may merge; gaps or relevant unknown bounds prevent
+establishment. Other assignments or different-package bindings that may overlap
+the lifecycle prevent establishment. Current native approval is required at T;
+historical trading authorization is not inferred or required by C8.
+
+Economic history is complete through T, not through K. Report cutoff S and
+native cutoff R do not waive later-knowledge obligations: trusted ORIGINAL_RULE,
+COMPLETE_HISTORY and SOURCE_REVISIONS_AVAILABILITY support must cover relevant
+subsequently known evidence through K. Known corrections affecting the supported
+history remain unsupported; missing support prevents establishment. An old
+report or extended receipt validity is not proof that no newer revision exists.
+No evidence observed after T is represented as knowledge available at T, and
+no assumption says the balance/watermark/threshold remained unchanged until K.
+
+### Independent admission
+
+```
+Target = {kind: TargetKind, event_id: ID?}
+SupportAssertion = {target: Target, citations: Citation[]}
+Receipt = {target: Target, request_sha256: Hash, assertion_sha256: Hash?,
+           original_ids: ID[], decision: ADMITTED|UNRESOLVED}
+TrustedContext = {
+  contract: "trading.current_intraday_trailing_loss_threshold_state.admission.v1",
+  rule_version: "current_intraday_trailing_loss_threshold_state_admission_v1",
+  admission_id: ID, authority_namespace: Namespace, authority_id: Text,
+  mandate_id: Text, mandate_revision: PosInt, request_sha256: Hash,
+  admitted_at: Time, available_at: Time, effective_from: Time,
+  effective_until: Time?, receipts: Receipt[]}
+```
+
+Always derive these nine targets, in order, with null event_id:
+
+| TargetKind | Independent semantic obligation |
+| --- | --- |
+| ACCOUNT_PROVIDER_IDENTITY | Original account, namespace, provider/program/type/phase, lifecycle and native correspondence |
+| ORIGINAL_RULE | Authoritative original rule, faithful selected-rule interpretation and unchanged lifecycle applicability |
+| INITIAL_CAPITAL | Original positive I, currency and inception; not a later balance |
+| COMPLETE_HISTORY | Exhaustive source roster/account-wide history, bound report, counts and positive empty-history support |
+| HISTORICAL_ORDERING | Original authoritative economic sequence, including same-time ordering |
+| BALANCE_RECONSTRUCTION | Exactly-once balance changes, opening I and complete all-in signed costs |
+| SNAPSHOT_CONSISTENCY | Same account/currency/lifecycle/as-of time and balance meaning |
+| SOURCE_REVISIONS_AVAILABILITY | Original-version identity, exhaustive applicable revisions, causal availability and later knowledge through K |
+| EXCLUDED_ACTIVITY_ABSENCE | Positive original coverage of every exclusion, not absence of rows in an unrelated export |
+
+Add EVENT_CLASSIFICATION for every supplied event, ordered by event_id; its
+event_id must identify that event. It admits the exact original atomic full
+close and all-in balance/cost meaning. No receipt creates/suppresses a target.
+
+Let Q=HJSON(entire request), U=all original evidence IDs in order. Context and
+each receipt must bind Q. Receipt assertion_sha256 is HJSON(the corresponding
+assertion), or null exactly when no assertion exists. Unknown targets, dangling
+citations/IDs, wrong hashes and duplicate identities reject. Establishment
+requires one nonempty cited assertion and ADMITTED receipt per required target,
+and each receipt.original_ids exactly U. A proper subset returns UNKNOWN;
+nonexistent IDs reject. All admitted originals being members does not establish
+their target relevance. The external host admits actual authority, semantic
+support and completeness; C8 never authenticates provider truth from labels.
+
+### Validation priority, missing parents and diagnostics
+
+Structural order is sealed grammar/order; local identities/hashes/arithmetic/
+chronology; public native replay; present-container resolution/native bindings/
+conditional source membership; derived target/context/hash/chronology validation.
+Any structural failure yields no Result and fixed ValueError text
+INVALID_TRAILING_LOSS_INPUT. Such failures precede every UNKNOWN.
+
+An empty source roster defers report/event/revision namespace membership, but
+never original/citation/hash validation. A nonempty roster missing a required
+namespace rejects. Empty roster or missing Topic returns source-coverage UNKNOWN
+at its priority. Missing owners defer only dependent resolution; they never
+excuse malformed local grammar or invalid references against present parents.
+
+Semantic gates emit exactly the first finding below; no companions or later
+descendants. Pointers address the retained request (default root REQUEST), or
+independent TRUSTED_CONTEXT. `i` is the first offending canonical element.
+
+| Priority | Reason | Trigger / pointer |
+| --- | --- | --- |
+| 1 | ACCOUNT_SNAPSHOT_MISSING | null /account_snapshot |
+| 2 | PROVIDER_REGIME_MISSING | null /provider_regime |
+| 3 | HISTORY_MISSING | null /history |
+| 4 | INCEPTION_MISSING | null /history/inception |
+| 5 | INITIAL_CAPITAL_MISSING | null /history/initial_capital |
+| 6 | RULE_MISSING | null /history/rule |
+| 7 | COVERAGE_MISSING | null /history/coverage |
+| 8 | NATIVE_REGIME_UNRESOLVED | not native unique approved /provider_regime |
+| 9 | RULE_NOT_SUPPORTED | unknown model literal, non-account-wide/non-UNSUPPORTED rule, wrong selected assignment/package or incomplete C8 rule interval /history/rule |
+| 10 | NATIVE_HISTORICAL_APPLICABILITY_UNRESOLVED | historical native coverage/continuity fails /provider_regime |
+| 11 | SNAPSHOT_BALANCE_MISSING | native balance exactly null /account_snapshot |
+| 12 | SNAPSHOT_NOT_AT_ASSESSMENT_TIME | native effective time differs from T /account_snapshot |
+| 13 | SOURCE_COVERAGE_INCOMPLETE | empty roster or missing Topic /history/sources |
+| 14 | HISTORY_COVERAGE_INCOMPLETE | endpoints/cutoff/completeness/count fail /history/coverage |
+| 15 | REVISION_UNSUPPORTED | nonempty inventory /history/revisions/0, else first conflicting document family /originals/i |
+| 16 | EXCLUDED_ACTIVITY_UNRESOLVED | first non-ABSENT exclusion /history/coverage/exclusions/field |
+| 17 | EVENT_UNSUPPORTED | first non-atomic-full-close /history/events/i |
+| 18 | ORDER_UNRESOLVED | null/gapped sequence, decreasing time or non-authoritative declaration /history/events |
+| 19 | ORIGINAL_AVAILABILITY_UNKNOWN | null publication /originals/i/source_available_at |
+| 20 | NATIVE_AVAILABILITY_UNKNOWN | account, manifest, then evidence-by-ID null publication /account_snapshot or /provider_regime |
+| 21 | SUPPORT_INCOMPLETE | missing assertion/citations/report citation /support_assertions |
+| 22 | ADMISSION_MISSING | null context, root TRUSTED_CONTEXT pointer empty string |
+| 23 | ADMISSION_NOT_CURRENT | availability>K, else start>K, else end<=K; context /available_at, /effective_from or /effective_until |
+| 24 | RECEIPT_MISSING | missing target receipt, context /receipts |
+| 25 | RECEIPT_UNRESOLVED | first unresolved, context /receipts/i |
+| 26 | RECEIPT_MEMBERSHIP_INCOMPLETE | first original membership !=U, context /receipts/i/original_ids |
+| 27 | BALANCE_CHAIN_UNRECONCILED | first before != prior balance /history/events/i/close/balance_before |
+| 28 | SNAPSHOT_UNRECONCILED | final B != native balance /account_snapshot |
+
+Exclusion priority follows Exclusions field order above. A known excluded event
+contradicting ABSENT rejects structurally; PRESENT/UNKNOWN exclusions precede
+EVENT_UNSUPPORTED. No artificial fixture skips these earlier gates to force a
+later reason. SNAPSHOT_NOT_CURRENT is superseded and is not an accepted code.
+
+### Complete result, identity and ordering
+
+```
+Step = {event_id: ID, sequence: PosInt, balance: Money,
+        high_watermark: Money, threshold: Money}
+State = {inception: Time, as_of: Time, currency: Currency,
+         initial_capital: Money, final_balance: Money,
+         high_watermark: Money, threshold: Money, steps: Step[]}
+NativeReferences = {
+  account_snapshot: {snapshot_id: Text, bundle_sha256: Hash}?,
+  provider_regime: {assessment_id: Text, bundle_sha256: Hash}?}
+Binding = {target: Target, assertion_sha256: Hash?, receipt_sha256: Hash?,
+           original_ids: ID[]}
+Finding = {reason_code: Reason,
+           subject: {root: REQUEST|TRUSTED_CONTEXT, pointer: Pointer}}
+Reconstruction = {request: Request, request_sha256: Hash,
+                  trusted_context_sha256: Hash?}
+Authority = {quantity_selection: false, budget_approval: false,
+             position_effect_compliance: false, margin_capital_approval: false,
+             trade_decision: false, financial_risk: false, execution: false}
+Result = {
+  contract: "trading.current_intraday_trailing_loss_threshold_state.v1",
+  rule_version: "current_intraday_trailing_loss_threshold_state_v1",
+  temporal_scope: AS_OF_T_USING_EVIDENCE_BY_K,
+  economic_time: Time, knowledge_boundary: Time, scope: Scope,
+  outcome: ESTABLISHED|UNKNOWN, reason_codes: Reason[], findings: Finding[],
+  state: State?, native_references: NativeReferences,
+  required_targets: Target[], admission_bindings: Binding[],
+  reconstruction_evidence: Reconstruction,
+  source_authentication: NOT_VERIFIED_BY_THIS_CAPABILITY,
+  authority: Authority, execution: false, assessment_identity: Text}
+```
+
+Reason is precisely THRESHOLD_ESTABLISHED plus the table's reason codes.
+ESTABLISHED has one success reason, no findings, and State with exactly one step
+per event. UNKNOWN has state=null, one reason and one finding, no partial
+watermark/threshold and no unconditional positive authenticity/independence
+claim. State.as_of and result.economic_time are T; knowledge_boundary is K.
+
+Each native reference is null iff its bundle is absent, even in UNKNOWN;
+otherwise it contains the replayed native identity and HJSON(the exact bundle).
+There is exactly one binding per derived target in every Result. Missing
+assertion/receipt produces a null hash; supplied unresolved/incomplete receipts
+remain hashed. Binding.original_ids is always U, never receipt-selected.
+Reconstruction retains the exact complete request and independently supplied
+context hash (null iff absent), not an embedded substitute trusted context.
+
+assessment_identity is `current_intraday_trailing_loss_threshold_state_` plus
+HJSON(the complete result excluding only assessment_identity), including
+temporal_scope, every binding, native reference, finding and authority Boolean.
+Detached validation repeats native public replay and the complete evaluator
+with independent arguments, then compares complete type-sensitive canonical
+JSON. Changed hashes or false-to-zero mutations do not pass. A result mismatch
+uses fixed ValueError text TRAILING_LOSS_RESULT_MISMATCH; invalid independent
+request/context retains INVALID_TRAILING_LOSS_INPUT. Returned data are detached.
+
+| Collection | Identity / required ordering |
+| --- | --- |
+| Originals | unique evidence ID/capture key, ordered by evidence ID; document conflicts as above |
+| Citations | unique (evidence_id,locator), ordered by that tuple |
+| Sources | unique namespace triple, ordered by that triple |
+| Topics | unique Topic, enumeration order |
+| Events | unique event ID, (full origin,original_record_id), known sequence, (origin namespace,position_id); known sequence first ascending, null sequence then event ID |
+| Revisions | unique notice ID and (full origin,original_record_id); (effective_at,notice_id) order |
+| Targets/assertions/receipts/bindings | unique Target; nine standing kinds then classification by event ID |
+| Original-ID membership | unique ID ascending |
+| Steps | event/sequence identity, ascending sequence |
+| Findings/reasons | singleton by priority, or success reason with no findings |
+| Native arrays | original input bytes/order preserved; public owner controls its normalized result |
+
+Text comparisons use Unicode code-point order and exact identity, without case
+folding or trimming. Duplicate collections or wrong caller array order reject;
+C8 does not silently reorder original data.
+
+### Limits and verification scope
+
+This is a useful delayed factual reconstruction, not current account eligibility.
+Consumers retain both T and K, assess intervening changes/freshness separately,
+and never present later evidence as information available at T. No equity path,
+historical/current breach, daily-loss compliance, margin/capital feasibility,
+order acceptance, trading permission or payout eligibility is established.
+
+The seven authority values and top-level execution are exact Boolean false.
+The separate funded-account FROZEN_AWAITING_PAYOUT veto remains mandatory.
+C8 neither reads nor mutates that gate and adds no runtime registration or
+authorization integration. Prior owners, capabilities 1-7 and their public
+validators are unchanged. C5-C7 successful outcomes are not dependencies.
+
+Focused tests use synthetic originals and independently supplied test admission,
+and genuine public native replay. They cover complete zero-event and multi-
+instrument 1100/1050/1120 histories, delayed T<K, exact costs/decimals/negative
+balances, missing owners/history/evidence, temporal/identity conflicts, roster
+absence, unsupported activity/revisions, ordering, receipt membership and
+binding, retained native unresolved artifacts, result rehash/mutation and exact
+false authority. No successful native validation is mocked. Synthetic evidence
+establishes software behavior only, never actual FTMO applicability or provider
+authenticity. Actual source completeness/semantics and competent host trust
+remain explicit external obligations. Full regression and Git publication
+require separate authorization.
