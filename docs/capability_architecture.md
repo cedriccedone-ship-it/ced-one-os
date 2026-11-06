@@ -6013,3 +6013,369 @@ establishes software behavior only, never actual FTMO applicability or provider
 authenticity. Actual source completeness/semantics and competent host trust
 remain explicit external obligations. Full regression and Git publication
 require separate authorization.
+
+## Capability 9: As-of Account Equity Versus Intraday Trailing-Loss Threshold v1
+
+### Ownership and public interface
+
+This capability establishes one admitted historical comparison: account equity
+E minus the genuinely reconstructed C8 trailing-loss threshold L at economic
+time T, using evidence available by knowledge boundary K. It does not establish
+continuous compliance, present account eligibility, source authenticity or an
+authorization. A negative difference is an ESTABLISHED factual result.
+
+Module: `ced_one.business_divisions.trading.as_of_equity_trailing_loss_threshold_comparison`.
+Public functions:
+
+```python
+evaluate_as_of_equity_trailing_loss_threshold_comparison(
+    request, *, trusted_c8_context=None, trusted_equity_context=None
+) -> dict
+validate_as_of_equity_trailing_loss_threshold_comparison(
+    result, request, *, trusted_c8_context=None, trusted_equity_context=None
+) -> dict
+```
+
+The independently supplied contexts are host trust inputs, never selected from
+the request or a caller-supplied result. C8 is replayed with its genuine public
+`validate_current_intraday_trailing_loss_threshold_state`; the exact account
+snapshot embedded in that C8 request is additionally replayed with the public
+`validate_causal_financial_account_state_snapshot`. There is no alternative
+snapshot, private-owner shortcut, cached approval or fingerprint-only replay.
+C1-C8, native validators, runtime and risk policy remain unchanged.
+
+Constants:
+
+```text
+contract = trading.as_of_equity_trailing_loss_threshold_comparison.v1
+rule_version = as_of_equity_trailing_loss_threshold_comparison_v1
+admission contract = trading.as_of_equity_trailing_loss_threshold_comparison.admission.v1
+admission rule_version = as_of_equity_trailing_loss_threshold_comparison_admission_v1
+identity prefix = as_of_equity_trailing_loss_threshold_comparison_
+temporal_scope = AS_OF_T_USING_EVIDENCE_BY_K
+source_authentication = NOT_VERIFIED_BY_THIS_CAPABILITY
+```
+
+### Sealed grammar and canonical identities
+
+Every object below has exactly its listed keys, all required. Nullable fields
+use explicit null; no omitted-key defaults, extra keys, floats, non-JSON values,
+duplicate JSON object keys or Unicode surrogates are accepted. Native nested
+JSON is subject to the complete existing public owner schemas at baseline
+`1f6a8f0101169c4fe6820316d022cd3eef798fb5`, without a second invented schema.
+
+Primitive definitions:
+
+- Text: nonempty UTF-8 string without leading or trailing whitespace.
+- ID: Text matching `[A-Za-z0-9_.:-]+`; Currency: `[A-Z]{3}`.
+- Nat and PosInt: exact JSON integers at least zero and one, respectively;
+  Boolean values are not integers for these purposes.
+- Time: valid UTC `YYYY-MM-DDTHH:MM:SS.ffffffZ`, with exactly six fractional digits.
+- Money: string matching `-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?`, excluding `-0`.
+  There is no precision limit imposed on C9 money or integer fields.
+- Bytes: canonical padded RFC 4648 base64 string. Content hashes are SHA-256 of
+  decoded bytes. Hash: 64 lowercase hexadecimal characters.
+- H(value): SHA-256 of UTF-8 canonical JSON equivalent to `json.dumps(value,
+  ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)`.
+  Integers retain arbitrary precision without changing process-wide limits.
+  Array order and exact Boolean versus integer types are preserved.
+
+```text
+Namespace = {source_id:Text, source_contract:Text, source_contract_version:Text}
+Source = {source_id:Text, source_contract:Text, source_contract_version:Text,
+          source_snapshot_id:Text}
+Account = {namespace:Namespace, account_id:Text, environment:DEMO|LIVE,
+           currency:Currency}
+Scope = {account:Account, provider_namespace:Namespace, provider_id:Text,
+         program_id:Text, account_type_id:Text, phase_id:Text, lifecycle_id:ID}
+C8Dependency = {request_json:Bytes, result_json:Bytes}
+Document = {namespace:Namespace, document_id:Text, document_revision:Text|null}
+Original = {evidence_id:ID, source:Source, document:Document, media_type:Text,
+            content:Bytes, content_sha256:Hash, source_available_at:Time|null,
+            observed_at:Time}
+OriginalRef = {evidence_id:ID, original_sha256:Hash}
+Roles = {aggregate:OriginalRef|null, definition:OriginalRef|null,
+         coverage:OriginalRef|null}
+DefinitionPeriod = {effective_from:Time|null, effective_until:Time|null,
+                    end_status:KNOWN|OPEN_ENDED|UNKNOWN}
+Components = {balance:INCLUDED_ONCE|OMITTED|UNKNOWN,
+              floating_pnl:INCLUDED_ONCE|OMITTED|UNKNOWN,
+              commissions:INCLUDED_ONCE|NOT_APPLICABLE|OMITTED|UNKNOWN,
+              swaps:INCLUDED_ONCE|NOT_APPLICABLE|OMITTED|UNKNOWN,
+              other_costs:INCLUDED_ONCE|NOT_APPLICABLE|OMITTED|UNKNOWN}
+EquityAssertion = {scope:Scope, economic_time:Time, knowledge_boundary:Time,
+                   snapshot_source:Source, snapshot_id:Text,
+                   snapshot_bundle_sha256:Hash, amount:Money|null,
+                   currency:Currency, originals:Roles,
+                   definition_period:DefinitionPeriod,
+                   source_information_cutoff:Time|null,
+                   account_wide:COMPLETE|UNKNOWN, components:Components,
+                   component_integrity:COMPLETE_EXACTLY_ONCE|OMISSION|DUPLICATION|UNKNOWN,
+                   source_revisions:NONE|PRESENT|UNKNOWN}
+Citation = {evidence_id:ID, start:Nat, end:PosInt}
+SupportAssertion = {target:Target, equity_sha256:Hash|null, citations:[Citation]}
+Request = {contract:constant, rule_version:constant, economic_time:Time,
+           knowledge_boundary:Time, scope:Scope, c8:C8Dependency|null,
+           equity:EquityAssertion|null, originals:[Original],
+           support_assertions:[SupportAssertion]}
+Receipt = {target:Target, request_sha256:Hash, c8_context_sha256:Hash|null,
+           assertion_sha256:Hash|null, original_ids:[ID],
+           decision:ADMITTED|UNRESOLVED}
+EquityTrustedContext = {contract:admission constant, rule_version:admission constant,
+                        admission_id:ID, authority_namespace:Namespace,
+                        authority_id:Text, mandate_id:Text, mandate_revision:PosInt,
+                        request_sha256:Hash, c8_context_sha256:Hash|null,
+                        admitted_at:Time, available_at:Time, effective_from:Time,
+                        effective_until:Time|null, receipts:[Receipt]}
+```
+
+The request and independent equity context are these exact objects. The
+independent C8 context is null or the existing sealed C8 trusted context, validated
+by its public owner. A nonnull C8 context with absent C8 dependency rejects.
+Native JSON bytes must decode to objects with strict JSON types and unique keys;
+their original base64 strings remain in the request and dependency hashes.
+
+### Source joins, document versions and equity meaning
+
+T must be no later than K. Equity scope, T, K and currency exactly match the
+request. The C8 request scope, T and K also exactly match. C8 preserves its native
+snapshot effective time T and account evaluation boundary K, native regime time
+T and knowledge boundary R with T <= R <= K, and coverage cutoff S requirements.
+C9 does not relax those native or C8 obligations.
+
+When the embedded snapshot exists, the equity assertion binds its full original
+source, the public validated result's `snapshot_id`, and H(the exact embedded
+native bundle). Both nonnull equity amounts must match the canonical native
+value exactly. Missing native equity is never inferred from balance or positions.
+The native source namespace must match the request account namespace. Text and
+namespace comparisons are exact, without trimming or case folding; C9's Text
+restriction also applies to `source_snapshot_id` even where a native owner is
+more permissive.
+
+There are at most three local originals. An OriginalRef resolves an existing
+local evidence ID and H(the entire envelope), not only its content hash.
+Document namespace equals source namespace. Aggregate and coverage originals
+belong to the account namespace; definition may belong to account or provider
+namespace. Aggregate's full source equals the asserted/native snapshot source.
+If aggregate and native publication times are both known, they must match;
+their observation times need not match. Every local original must fill a role
+for establishment; one original may fill several roles.
+
+Document family is (namespace triple, document_id); version is family plus
+document_revision; capture is full Source plus version. Duplicate local captures
+reject. The same version with different decoded content or media type rejects
+across both C8 and C9. Reusing a capture across owners requires identical entire
+envelopes except each owner's local evidence_id. Local IDs are not global IDs.
+A null local document revision or multiple versions of a relevant local family
+across either owner produces UNKNOWN according to the priority below.
+
+The aggregate is an original account-wide equity statement. The definition
+establishes its meaning, currency, effective applicability and component
+treatment. Coverage supports complete multi-instrument inclusion and version
+review through S9. Balance and floating P/L must each be INCLUDED_ONCE. Costs
+must each be INCLUDED_ONCE or independently supported NOT_APPLICABLE. Integrity
+must be COMPLETE_EXACTLY_ONCE, account coverage COMPLETE, and source revisions
+NONE. These labels alone are not semantic evidence: all required support and
+independent admission are mandatory. C9 does not synthesize an equity formula,
+sum an incomplete position list, infer provider rules or authenticate the issuer.
+
+Definition KNOWN requires a nonnull end; OPEN_ENDED and UNKNOWN require null end.
+Known start/end must satisfy start < end. Establishment requires a known start
+at or before T and either OPEN_ENDED or T strictly before the known end.
+
+### Historical chronology and independent admission
+
+S9 is the equity assertion's source_information_cutoff. When known it must
+satisfy T <= S9 <= K. Every original observation is at or before K; known source
+publication is at or before its observation. Coverage publication, when known,
+and observation must be at or after S9. Establishment requires all publication
+times known and aggregate/definition publication at or before S9. Publication
+after S9 for these two roles yields UNKNOWN, not an invented earlier availability.
+
+Let O contain every supplied local original observation, the normalized native
+snapshot observation if present, and the C8 context availability if present.
+For a supplied equity context, every o in O must satisfy o <= admitted_at.
+The universal condition is true when O is empty; no maximum of an empty set is
+evaluated. Missing equity context skips this dependent comparison only. All
+independent schema, hash binding and temporal checks still apply.
+
+Admission must precede or equal its availability. A known context end must be
+strictly later than its start. Establishment additionally requires availability
+by K and both admitted_at and K inside the context's half-open validity period.
+The admission context and every receipt bind H(request) and H(C8 trusted context),
+the latter null iff that context is absent. Every receipt also binds H(its target's
+support assertion), null iff absent. A valid bound context with zero receipts
+and no C8/equity/originals/support has a well-defined UNKNOWN / C8_MISSING result.
+
+This is revision review through reported S9, not a latest-known-at-K assertion.
+The independent host must not admit evidence it knows was corrected after S9;
+it must supply UNRESOLVED or a newly supported request. C9 can detect supplied
+conflicts, but cannot detect facts hidden by an untrustworthy host. Later knowledge
+is never presented as available at T, and changes between T and K are not assumed
+absent.
+
+All five targets always exist, in this order, independently of parent presence,
+receipt success or returned outcome:
+
+| Target | Required role citations | Independently admitted obligation |
+| --- | --- | --- |
+| EQUITY_IDENTITY_BINDING | aggregate, definition | Exact account, currency, lifecycle, snapshot and assessment identity |
+| EQUITY_AGGREGATE_MEANING | aggregate, definition | Asserted native amount has the admitted equity meaning |
+| EQUITY_ACCOUNT_WIDE_COMPLETENESS | aggregate, coverage | All relevant account instruments and exposures included |
+| EQUITY_COST_COMPONENTS | definition, coverage | Required components included exactly once or admitted not applicable |
+| EQUITY_SOURCE_VERSION_VALIDITY | aggregate, definition, coverage | Applicable original versions, publication and review through S9 |
+
+Each support assertion binds H(equity), null iff equity is absent. Citations are
+nonempty half-open byte ranges satisfying 0 <= start < end <= decoded content
+length. A target requires citations covering all its required role IDs; a shared
+role ID need only be cited once. Valid byte ranges demonstrate referential support,
+not semantic truth. The independently trusted host supplies target-specific
+semantic admission. Every admitted receipt must contain the complete sorted
+local original ID inventory U. Unknown IDs reject; a proper subset yields UNKNOWN.
+C8 originals are bound through the complete C8 dependency and its own admission,
+not flattened into C9's local evidence namespace.
+
+### Deterministic rejection, UNKNOWN and results
+
+Structural validation precedes every UNKNOWN gate: exact JSON and request
+schema/times/scope; local originals; equity joins/roles/period/cutoff; support
+bindings/citations; genuine C8 and embedded native replay; cross-owner document
+conflicts; independent equity context/chronology/receipts. Missing parents defer
+only comparisons requiring them. They never hide malformed present originals,
+invalid byte envelopes, forged replay or misbound contexts/receipts.
+
+Any invalid input raises `ValueError("INVALID_EQUITY_THRESHOLD_INPUT")`. There
+is no result for invalid native replay. After structural validation the first
+applicable UNKNOWN gate below supplies the sole reason and finding. All later
+findings are suppressed. Array index i denotes the first applicable entry in
+the required order. Root is REQUEST unless explicitly specified.
+
+| Priority / reason | Exact trigger | Subject pointer |
+| --- | --- | --- |
+| 1 C8_MISSING | c8 is null | /c8 |
+| 2 C8_CONTEXT_MISSING | C8 exists and trusted C8 context is null | C8_TRUSTED_CONTEXT, empty pointer |
+| 3 C8_NOT_ESTABLISHED | replayed C8 outcome is not ESTABLISHED | /c8 |
+| 4 NATIVE_EQUITY_MISSING | validated native equity is null | /c8 |
+| 5 EQUITY_ASSERTION_MISSING | equity is null | /equity |
+| 6 EQUITY_AMOUNT_UNDECLARED | equity amount is null | /equity/amount |
+| 7 AGGREGATE_ORIGINAL_MISSING | aggregate role is null | /equity/originals/aggregate |
+| 8 DEFINITION_ORIGINAL_MISSING | definition role is null | /equity/originals/definition |
+| 9 COVERAGE_ORIGINAL_MISSING | coverage role is null | /equity/originals/coverage |
+| 10 ORIGINAL_ROLE_COVERAGE_INCOMPLETE | first local original has no role | /originals/i |
+| 11 DOCUMENT_REVISION_UNKNOWN | first local revision is null | /originals/i/document/document_revision |
+| 12 DOCUMENT_VERSION_CONFLICT | first local family has multiple C8/C9 versions | /originals/i/document |
+| 13 SOURCE_REVIEW_CUTOFF_UNKNOWN | S9 is null | /equity/source_information_cutoff |
+| 14 ORIGINAL_AVAILABILITY_UNKNOWN | first local publication is null | /originals/i/source_available_at |
+| 15 SOURCE_REVIEW_CUTOFF_INSUFFICIENT | aggregate or definition publication exceeds S9 | /equity/source_information_cutoff |
+| 16 SOURCE_REVISIONS_UNRESOLVED | source_revisions is not NONE | /equity/source_revisions |
+| 17 DEFINITION_NOT_APPLICABLE | unknown start/end status, start after T, or known end at/before T | /equity/definition_period |
+| 18 ACCOUNT_WIDE_UNRESOLVED | account_wide is not COMPLETE | /equity/account_wide |
+| 19 COMPONENT_TREATMENT_UNSUPPORTED | first component is OMITTED or UNKNOWN | /equity/components/field |
+| 20 COMPONENT_INTEGRITY_UNRESOLVED | integrity is not COMPLETE_EXACTLY_ONCE | /equity/component_integrity |
+| 21 SUPPORT_INCOMPLETE | target assertion absent or lacks a required role ID citation | /support_assertions |
+| 22 EQUITY_ADMISSION_MISSING | trusted equity context is null | EQUITY_TRUSTED_CONTEXT, empty pointer |
+| 23 EQUITY_ADMISSION_NOT_CURRENT | availability exceeds K; otherwise admitted_at or K before start; otherwise at/after known end | EQUITY_TRUSTED_CONTEXT, /available_at, /effective_from, or /effective_until in that priority |
+| 24 RECEIPT_MISSING | at least one required target lacks a receipt | EQUITY_TRUSTED_CONTEXT, /receipts |
+| 25 RECEIPT_UNRESOLVED | first receipt has decision UNRESOLVED | EQUITY_TRUSTED_CONTEXT, /receipts/i |
+| 26 RECEIPT_MEMBERSHIP_INCOMPLETE | first receipt's original_ids is a proper subset of U | EQUITY_TRUSTED_CONTEXT, /receipts/i/original_ids |
+
+Missing C8 context is reachable with a genuinely replayable C8 UNKNOWN produced
+without that context. A formerly ESTABLISHED C8 result supplied without its
+required context fails native detached replay structurally. Missing native
+parents are handled by earlier C8 gates rather than invented successful results.
+Component order is balance, floating_pnl, commissions, swaps, other_costs.
+
+```text
+State = {as_of:Time, currency:Currency, equity:Money, threshold:Money,
+         difference:Money, relation:ABOVE|EQUAL|BELOW,
+         source_information_cutoff:Time}
+C8Reference = {assessment_identity:Text, bundle_sha256:Hash,
+               outcome:ESTABLISHED|UNKNOWN}
+SnapshotReference = {snapshot_id:Text, bundle_sha256:Hash}
+NativeReferences = {c8:C8Reference|null, account_snapshot:SnapshotReference|null}
+AdmissionBinding = {target:Target, assertion_sha256:Hash|null,
+                    receipt_sha256:Hash|null, original_ids:[ID]}
+Subject = {root:REQUEST|C8_TRUSTED_CONTEXT|EQUITY_TRUSTED_CONTEXT,
+           pointer:RFC6901 string}
+Finding = {reason_code:one UNKNOWN reason above, subject:Subject}
+Reconstruction = {request:Request, request_sha256:Hash,
+                  c8_trusted_context_sha256:Hash|null,
+                  equity_trusted_context_sha256:Hash|null}
+Authority = {quantity_selection:false, budget_approval:false,
+             position_effect_compliance:false, margin_capital_approval:false,
+             trade_decision:false, financial_risk:false, execution:false}
+Result = {contract:constant, rule_version:constant, temporal_scope:constant,
+          economic_time:Time, knowledge_boundary:Time, scope:Scope,
+          outcome:ESTABLISHED|UNKNOWN, reason_codes:[reason], findings:[Finding],
+          state:State|null, native_references:NativeReferences,
+          required_targets:[Target], admission_bindings:[AdmissionBinding],
+          reconstruction_evidence:Reconstruction, source_authentication:constant,
+          limitations:[fixed limitation], authority:Authority, execution:false,
+          assessment_identity:Text}
+```
+
+On establishment, compute D = E - L with exact rational arithmetic and render
+canonical finite-decimal Money. Relation is ABOVE for D > 0, EQUAL for D = 0 and
+BELOW for D < 0. The sole success reason is COMPARISON_ESTABLISHED, findings are
+empty, and state contains T, scope currency, native equity, C8 threshold, D and
+S9. UNKNOWN always has state=null and exactly one reason/finding.
+
+C8Reference is null iff request.c8 is null. Otherwise its identity and outcome
+come from genuine replay and its bundle hash is H(request.c8), including the
+original base64 strings. SnapshotReference is null iff C8 or its embedded
+account-snapshot bundle is absent. Otherwise its identity is `snapshot_id` from
+the genuine public validated native result, and its hash is H(the exact original
+embedded native bundle). Both valid references are retained for UNKNOWN even
+when admission fails. Invalid replay never becomes a null reference.
+
+Required targets and admission bindings contain all five entries. Each binding
+contains H(the corresponding supplied assertion/receipt), or null if absent,
+and always U, irrespective of a receipt's actual membership. Reconstruction
+contains the exact detached request and all three input hashes, with null context
+hashes iff absent. The fixed limitations, in order, are AS_OF_ONLY,
+SOURCE_REVISION_REVIEW_THROUGH_REPORTED_CUTOFF, NO_CONTINUOUS_BREACH_PROOF,
+NO_DAILY_LOSS_MARGIN_OR_AUTHORIZATION, NO_SOURCE_AUTHENTICATION.
+
+Assessment identity is the identity prefix plus H(the complete result excluding
+assessment_identity), including temporal_scope, references, bindings, limitations
+and authority. Detached validation reconstructs from request and independently
+supplied contexts, invoking both genuine public owners again, then compares the
+entire result with type-sensitive canonical equality. Rehashing an altered
+result, changing false to integer zero, or substituting matching labels cannot
+bypass reconstruction. Invalid input retains INVALID_EQUITY_THRESHOLD_INPUT;
+an altered result raises `ValueError("EQUITY_THRESHOLD_RESULT_MISMATCH")`.
+Inputs and returned nested data are detached; no caller mutation is required.
+
+| Collection | Identity and required ordering |
+| --- | --- |
+| Local originals | unique evidence_id and capture; ascending evidence_id; maximum three |
+| Native original arrays | original bytes/order retained; native public owner remains authoritative |
+| Support assertions and receipts | unique Target; fixed five-target order; subsets may be supplied |
+| Citations | unique (evidence_id,start,end); ascending tuple order |
+| Receipt/binding original IDs | unique ID; ascending ID order; bindings always full U |
+| Required targets and bindings | exactly all five, fixed target order |
+| Findings and reason codes | singleton UNKNOWN or singleton success reason with empty findings |
+| Limitations | exactly the five constants in the specified order |
+
+Duplicate or incorrectly ordered input collections reject rather than being
+silently normalized. Text ordering is Unicode code-point order.
+
+### Security boundary and focused verification
+
+All seven authority fields and top-level execution are exact Boolean false.
+The separate FROZEN_AWAITING_PAYOUT veto remains mandatory and untouched. This
+capability grants no trading, execution, margin/capital, daily-loss compliance,
+continuous or current equity-compliance, reward or payout permission. A BELOW
+result is a historical comparison, not a reconstructed breach history.
+
+Focused tests use synthetic originals and independently supplied synthetic
+admission with genuine public C8 and native snapshot replay; successful native
+validation is never mocked. They cover BELOW/EQUAL/ABOVE, zero-event and
+multi-event C8 dependencies, all 26 UNKNOWN branches, both repaired cases,
+delayed evidence and cutoff boundaries, account/currency/lifecycle joins,
+document/capture/revision conflicts across owners, missing and tampered evidence,
+byte-range and receipt membership, unknown native equity, exact money beyond
+Python's default integer conversion limit, rehashed result mutation and
+Boolean/integer distinctions. This verifies software behavior, not real FTMO
+applicability, authenticated source semantics or an honest external trust host.
+Full regression and Git publication require separate authorization.
