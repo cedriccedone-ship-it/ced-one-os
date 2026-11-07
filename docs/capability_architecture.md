@@ -6822,3 +6822,448 @@ attacks, full-session applicability, DST and delayed evidence, exact arithmetic
 and type-sensitive rehashed-result tampering. Implementation remains confined to
 one new module, its test module and this append-only documentation. Full
 regression and Git publication each require separate authorization.
+
+## Capability 11 — As-of Equity Versus Daily-Reset Loss-Floor Comparison v1
+
+This section records the frozen C11 A–N normative contract and its independent
+freeze review, approved without a repair delta. It adds one historical point
+comparison to C10, with independently admitted equity meaning. It changes no
+C1–C10 owner, native validator, runtime, risk policy or execution authority.
+
+### Owned proposition and public API
+
+For one exact account/provider/program/type/phase/lifecycle/currency scope, at
+economic time T using evidence available by K, public C10 establishes F(T), an
+explicit public native snapshot supplies E(T), and independent admission proves
+that E has the meaning of the exact C10-selected daily-rule EQUITY measure.
+C11 computes D=E-F: BELOW if D<0, EQUAL if D=0, ABOVE if D>0. All three are valid
+ESTABLISHED results. UNKNOWN always has state=null.
+
+```text
+evaluate_as_of_equity_daily_reset_loss_floor_comparison(
+    request, *, trusted_c8_context=None, trusted_c10_context=None,
+    trusted_context=None)
+validate_as_of_equity_daily_reset_loss_floor_comparison(
+    result, request, *, trusted_c8_context=None, trusted_c10_context=None,
+    trusted_context=None)
+```
+
+The original C8/C10 trusted contexts are independent arguments, never copied
+from caller result evidence or replaced by C11 admission. The C11 trusted_context
+must independently come from the host's trusted admission mechanism. A matching
+authority label, hash or self-declared ADMITTED object does not establish trust.
+
+Constants are exactly:
+
+```text
+CONTRACT = trading.as_of_equity_daily_reset_loss_floor_comparison.v1
+RULE_VERSION = as_of_equity_daily_reset_loss_floor_comparison_v1
+ADMISSION_CONTRACT = trading.as_of_equity_daily_reset_loss_floor_comparison.admission.v1
+ADMISSION_RULE_VERSION = as_of_equity_daily_reset_loss_floor_comparison_admission_v1
+IDENTITY_PREFIX = as_of_equity_daily_reset_loss_floor_comparison_
+TEMPORAL_SCOPE = AS_OF_T_USING_EVIDENCE_BY_K
+SOURCE_AUTHENTICATION = NOT_VERIFIED_BY_THIS_CAPABILITY
+```
+
+### Canonical JSON, exact numbers and sealed schemas
+
+All objects below require exactly the listed fields; every field is mandatory,
+null is permitted only where stated, and no defaults are inferred. Arrays are
+finite. JSON permits only objects with string keys, arrays, Unicode scalar
+strings, arbitrary-precision integers, Booleans and null. Duplicate keys, floats,
+NaN, Infinity, lone surrogates and non-JSON values reject. Integer tests exclude
+Booleans. Object keys sort by Unicode codepoint; arrays retain declared order.
+
+J(x) is UTF-8 canonical JSON with ensure_ascii=True, sorted keys and compact
+separators. H(x)=lowercase SHA256(J(x)); B(raw)=lowercase SHA256(raw bytes).
+Integers render without exponent or redundant zeroes, with no process-wide
+integer/Decimal setting changes. Boolean false and integer zero remain distinct.
+Bytes uses canonical standard RFC 4648 base64, with exact encode/decode roundtrip,
+required padding and no whitespace. JSON dependency bytes decode as UTF-8 objects,
+reject duplicate keys and retain the original base64 strings as hash operands.
+Original content is byte evidence, not automatically interpreted as JSON.
+
+String is a valid Unicode scalar JSON string. Text is nonempty String without
+leading/trailing whitespace from exactly U+0009–000D, U+001C–001F, U+0020, U+0085,
+U+00A0, U+1680, U+2000–200A, U+2028, U+2029, U+202F, U+205F, U+3000. ID matches
+[A-Za-z0-9_.:-]+. Nat/PosInt are exact integers >=0/>=1. Currency matches [A-Z]{3}.
+Hash is 64 lowercase hex digits. Time is valid UTC YYYY-MM-DDTHH:MM:SS.ffffffZ,
+exactly six fraction digits, year 0001–9999, no leap seconds. Money matches
+-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])? except -0: no exponent, plus, leading integer
+zeroes or trailing fractional zeroes. Money has no precision cap. No Unicode,
+identifier, document or media-type normalization occurs.
+
+```text
+Namespace = {source_id:Text, source_contract:Text, source_contract_version:Text}
+Source = {source_id:Text, source_contract:Text, source_contract_version:Text,
+          source_snapshot_id:Text}
+AccountScope = {namespace:Namespace, account_id:Text, environment:DEMO|LIVE,
+                currency:Currency}
+Scope = {account:AccountScope, provider_namespace:Namespace, provider_id:Text,
+         program_id:Text, account_type_id:Text, phase_id:Text, lifecycle_id:ID}
+Document = {namespace:Namespace, document_id:Text, document_revision:Text|null}
+Original = {evidence_id:ID, source:Source, document:Document, media_type:Text,
+            content:Bytes, content_sha256:Hash, source_available_at:Time|null,
+            observed_at:Time}
+OriginalRef = {evidence_id:ID, original_sha256:Hash}
+Roles = {aggregate:OriginalRef|null, definition:OriginalRef|null,
+         coverage:OriginalRef|null}
+C10Dependency = {request_json:Bytes, result_json:Bytes}
+SnapshotDependency = {input_json:Bytes, result_json:Bytes}
+DefinitionPeriod = {effective_from:Time|null, effective_until:Time|null,
+                    end_status:KNOWN|OPEN_ENDED|UNKNOWN}
+EquityCoverage = {economic_time:Time, source_information_cutoff:Time,
+                  account_wide:COMPLETE|UNKNOWN,
+                  source_revisions:NONE|PRESENT|UNKNOWN,
+                  known_later_corrections:NONE|PRESENT|UNKNOWN}
+BaseComponent = INCLUDED_ONCE|OMITTED|UNKNOWN
+CostComponent = INCLUDED_ONCE|NOT_APPLICABLE|OMITTED|UNKNOWN
+Components = {balance:BaseComponent, floating_pnl:BaseComponent,
+              commissions:CostComponent, financing:CostComponent,
+              other_costs:CostComponent}
+Equity = {scope:Scope, economic_time:Time, knowledge_boundary:Time,
+          snapshot_reference:SnapshotReference|null, daily_measure_sha256:Hash|null,
+          amount:Money|null, currency:Currency, roles:Roles,
+          definition_period:DefinitionPeriod, coverage:EquityCoverage,
+          measure_equivalence:EXACT|DIFFERENT|UNKNOWN, components:Components,
+          component_integrity:COMPLETE_EXACTLY_ONCE|OMISSION|DUPLICATION|UNKNOWN}
+Request = {contract:CONTRACT, rule_version:RULE_VERSION, economic_time:Time,
+           knowledge_boundary:Time, source_information_cutoff:Time, scope:Scope,
+           c10:C10Dependency|null, account_snapshot:SnapshotDependency|null,
+           equity:Equity|null, originals:[Original],
+           support_assertions:[SupportAssertion]}
+Owner = C8|C10|C11
+EvidenceMember = {owner:Owner, evidence_id:ID, original_sha256:Hash}
+Citation = {owner:Owner, evidence_id:ID, start:Nat, end:PosInt}
+Target = EQUITY_IDENTITY_BINDING|EQUITY_AGGREGATE_MEANING|
+         EQUITY_ACCOUNT_WIDE_COMPLETENESS|EQUITY_COST_COMPONENTS|
+         EQUITY_SOURCE_VERSION_VALIDITY
+SupportAssertion = {target:Target, equity_sha256:Hash|null, citations:[Citation]}
+Receipt = {target:Target, request_sha256:Hash, c8_context_sha256:Hash|null,
+           c10_context_sha256:Hash|null, assertion_sha256:Hash|null,
+           originals:[EvidenceMember], decision:ADMITTED|UNRESOLVED}
+TrustedContext = {contract:ADMISSION_CONTRACT, rule_version:ADMISSION_RULE_VERSION,
+                  admission_id:ID, authority_namespace:Namespace,
+                  authority_id:Text, mandate_id:Text, mandate_revision:PosInt,
+                  request_sha256:Hash, c8_context_sha256:Hash|null,
+                  c10_context_sha256:Hash|null, admitted_at:Time,
+                  available_at:Time, effective_from:Time,
+                  effective_until:Time|null, receipts:[Receipt]}
+```
+
+Local originals have cardinality 0–3 and nonempty decoded content. Its raw hash
+is content_sha256. Document namespace equals Source namespace. A nonnull local
+OriginalRef resolves to one local original with its complete H(envelope).
+Support assertions have cardinality 0–5. Target uniqueness similarly bounds
+receipts to five. The imported decoded C10 request/result and original C8/C10
+contexts use the existing closed owner contracts above, validated unchanged by
+the public C10 owner on baseline e1d6357b0c63f323bc7c09d2650bdce72379ff9b. Native
+snapshot schemas are imported from their existing public owner; no generic
+replacement or new native schema is introduced.
+
+### Identity, collections and original roles
+
+Local originals sort uniquely by evidence_id. Membership sorts by owner order
+C8,C10,C11, then evidence_id. Assertions and receipts sort uniquely by the five
+Target values above. Citations sort uniquely by (owner rank,evidence_id,start,end).
+Receipt members sort uniquely like membership. Duplicate or unordered local
+collections reject rather than being silently sorted. Definition bindings retain
+the exact original native clause order and index. All original dependency arrays
+remain in their owner-defined order inside unchanged byte envelopes.
+
+Family=(document.namespace,document_id), version=(family,document_revision),
+capture=(full Source,version). Different bytes or media_type for one known version
+reject. An unknown revision is not a known version and is never replaced by a
+content hash. Duplicate local captures reject. Across owners the same capture
+requires identical envelopes except local evidence_id. Multiple revisions of one
+family remain separate and yield UNKNOWN without selecting a winner. Identical
+text or bytes under different document identities prove no equivalence.
+Source snapshot identity is not document identity or metadata identity.
+
+Aggregate and coverage originals belong to the account namespace; definition
+belongs to the account or provider namespace. Aggregate Source equals the full
+validated T-snapshot Source when present, and their known source-publication
+times must match. For establishment every local original has at least one role.
+One original may carry multiple roles if every role's constraints hold together;
+it is represented once in the local original inventory.
+
+Equity scope/T/K/currency equal Request exactly. Coverage economic_time=T and its
+cutoff=SE=Request.source_information_cutoff. snapshot_reference equals the derived
+explicit-snapshot reference including null; daily_measure_sha256 equals the full
+H(DailyMeasureReference) or null iff that reference does not exist. Known amount
+must equal the canonical validated native equity when both are present. KNOWN
+definition end requires nonnull Time and, if start is known, start<end. OPEN_ENDED
+and UNKNOWN require null end. Establishment requires known start<=T and either
+OPEN_ENDED or KNOWN with T<end; unknown/nonapplicable periods yield UNKNOWN.
+
+### Genuine replay and exact daily measure
+
+When C10 exists, invoke public validate_as_of_daily_reset_loss_floor_state with
+its decoded result/request and the exact original trusted_c8_context and
+trusted_c10_context (the latter passed as the owner's trusted_context).
+Require original C10 scope/T/K to equal C11, including during UNKNOWN. When C10
+is null, both upstream contexts must be null. Invalid replay always rejects.
+The public C10 chain retains its own genuine C8, reset-snapshot, regime, calendar
+and admission reconstruction. C11 computes no alternative floor or calendar.
+
+Every explicit account_snapshot invokes public
+validate_causal_financial_account_state_snapshot(result,input). Require its
+normalized effective_at=T, requested_evaluation_timestamp=K, Source namespace
+matching the scoped account namespace, and exact account_id/environment/currency.
+No fallback to the reset snapshot at M exists. Explicit reuse of identical
+original reset-bundle bytes is possible at M=T, with all separate C11 evidence
+and admission duties. Native PARTIAL is permitted if equity exists; COMPLETE
+only describes native field availability and is no semantic completeness proof.
+Current balance may differ from reset balance. No position valuation is rebuilt.
+
+```text
+C10Reference = {assessment_identity:String, outcome:ESTABLISHED|UNKNOWN,
+                bundle_sha256:Hash}
+SnapshotReference = {snapshot_id:String, bundle_sha256:Hash}
+NativeReferences = {c10:C10Reference|null, account_snapshot:SnapshotReference|null}
+CostTreatment = {commissions:IN_MEASURE, financing:IN_MEASURE,
+                 other_charges:IN_MEASURE|NOT_APPLICABLE}
+DefinitionBinding = {index:Nat, native_evidence_id:String, clause_locator:String,
+                     original:EvidenceMember}
+DailyMeasureReference = {c10_assessment_identity:String, c10_bundle_sha256:Hash,
+    daily_regime_bundle_sha256:Hash, assignment_id:String, package_index:Nat,
+    package_id:String, package_revision:String, rule_index:Nat, rule_id:String,
+    native_rule_sha256:Hash, measure_sha256:Hash, kind:EQUITY, currency:Currency,
+    instrument_scope:ALL_ACCOUNT_INSTRUMENTS, cost_treatment:CostTreatment,
+    rule_original:EvidenceMember, definition_bindings:[DefinitionBinding]}
+```
+
+C10Reference is null iff the C10 dependency is absent. Otherwise identity/outcome
+come from public replay and bundle_sha256=H(original C10Dependency). The snapshot
+reference is null iff the explicit snapshot dependency is absent; snapshot_id
+comes from its validated result and bundle_sha256=H(original SnapshotDependency).
+Valid references are retained even when C11 is UNKNOWN or admission fails.
+
+DailyMeasureReference is null iff C10 is absent or not ESTABLISHED. Otherwise
+read exactly manifest.packages[selector.package_index].rules[selector.rule_index]
+from the original daily-regime input already validated by C10. Never index the
+normalized selected-package arrays or select another rule. Copy original
+assignment/package/revision/rule identities, indices, native_rule_sha256, measure
+kind/currency/scope/cost treatment. measure_sha256=H(original rule.body.measure);
+daily_regime_bundle_sha256=H(original C10 daily_regime), including selector;
+c10_bundle_sha256=H(original C10Dependency). rule_original is the C10 daily_rule
+role's member. For each original measure.definition_refs[i], preserve i, evidence
+ID and clause locator, and resolve the unique C10 native mapping to its exact
+C10 original member. package_revision is a native string, not an integer.
+
+### Independent support and membership
+
+M_all is every actual C8 original inside C10, then every actual C10 original,
+then every C11 original, with full owner/local-ID/H(envelope) identity. No
+cross-owner deduplication occurs. It is generated independently of receipt
+presence, decision or membership. Every citation references one such original
+and a nonempty half-open byte range 0<=start<end<=decoded content length.
+Overlapping ranges are permitted; exact duplicate citation tuples reject.
+Assertion equity_sha256 is H(Equity), null iff the declaration is absent.
+
+Let A,D,C be local aggregate/definition/coverage members; EN the C10 enrollment
+member; DR its daily-rule member; DF all mapped measure-definition members; CR
+its coverage member. Required support is:
+
+| Target | Required cited original members | Independent semantic obligation |
+| --- | --- | --- |
+| EQUITY_IDENTITY_BINDING | A,D,EN | Exact complete account/provider/program/type/phase/lifecycle/currency/T and snapshot/original binding |
+| EQUITY_AGGREGATE_MEANING | A,D,DR,DF | Original aggregate realizes the precise selected daily-rule equity meaning |
+| EQUITY_ACCOUNT_WIDE_COMPLETENESS | A,C | All relevant account instruments, positions and components at T |
+| EQUITY_COST_COMPONENTS | D,C,DR,DF | Floating/realized components and applicable costs correctly included exactly once |
+| EQUITY_SOURCE_VERSION_VALIDITY | A,D,C,DR,DF,CR | Original revisions, availability, review cutoffs and known corrections |
+
+Sets deduplicate by owner/local ID; shared roles keep all semantic duties. An
+original is cited by at least one valid nonempty range. Missing parent/reference
+makes its support predicate false; earlier parent gates suppress descendant
+UNKNOWN findings. All five targets always exist independently of receipt success.
+
+Establishment needs five independently admitted target-specific assertions,
+complete required citations, five matching ADMITTED receipts and a valid host
+mandate. Every receipt originals must equal M_all. Existing exact subsets are
+structurally valid but UNKNOWN; nonexistent, duplicate, false-owner or wrong-hash
+members reject. Receipt/assertion bindings are not source authentication.
+
+Whenever C11 context exists, root request_sha256=H(Request), c8_context_sha256
+is H(original C8 context) or null, c10_context_sha256 similarly. This holds even
+with zero receipts or missing parents. Every receipt repeats these exact roots
+and assertion_sha256=H(its assertion), null iff absent. Contextroot validation
+never depends on receipt success. Receipts have no separate timestamps.
+
+For establishment balance/floating_pnl/commissions/financing are INCLUDED_ONCE.
+Financing includes swaps and every applicable financing cost; swaps are not a
+second amount to add again. IN_MEASURE other_charges requires INCLUDED_ONCE
+other_costs; NOT_APPLICABLE requires NOT_APPLICABLE. Integrity must be
+COMPLETE_EXACTLY_ONCE. Included means already represented in aggregate equity,
+including costs already in balance; there is no extra subtraction. Matching
+EQUITY labels, amounts or COMPLETE/EXACT declarations never replace admission.
+
+### Temporal causality and corrections
+
+T is economic assessment time; K the knowledge boundary; M/N C10's reset/next
+reset boundaries; S10 C10's original cutoff; SE C11's equity review cutoff.
+Require T<=SE<=K and exact C10/C11 T/K. Public C10 establishes M<=T<N. SE need
+not equal S10. Preserve all C10-owned cutoff, applicability and lifecycle rules;
+do not reclassify all imported originals under SE. A capture reused as a local
+C11 role additionally satisfies that role's own constraints.
+
+Every local observed_at<=K; known source publication<=observation. Coverage
+observation and known publication must be >=SE structurally. Establishment
+requires known explicit snapshot publication and all known local publications;
+aggregate and definition publications<=SE. A shared report/operational original
+therefore requires publication exactly SE. Native snapshot chronology remains
+T<=known publication<=observation<=K, permitting delayed T<K acquisition. Native
+offset timestamps normalize according to their public owner while original
+bundle strings remain unchanged. Known future calendar boundary N>K is allowed;
+future account observations are not.
+
+Observation set O contains all C8/C10/C11 original observations, reset/native-T
+snapshot observations, C8 and daily-regime manifest/evidence/approval observations,
+and available_at of each original upstream trusted context. Normalize native
+times to UTC. Structurally require every o in O <= C11 admitted_at and
+admitted_at<=available_at. The universal condition is true when O is empty.
+For establishment context available_at<=K, effective_from<=admitted_at and <=K,
+and null end or both admitted_at<end and K<end. A late/noncurrent context is
+UNKNOWN; an observation after admission is structural rejection.
+
+source_revisions describes unresolved relevant equity revisions/conflicts through
+SE. known_later_corrections describes known corrections affecting the used
+historical operands/scope/definitions after SE for equity or after the inherited
+C10 review for floor evidence, and available by K. Both must be NONE for
+establishment. PRESENT/UNKNOWN yield UNKNOWN. Ordinary later trades and purely
+prospective rule changes are not automatically corrections of the fact at T.
+A host knowing a relevant later correction must update/withhold admission,
+not reuse stale ADMITTED approval. This external trust duty does not claim a
+global absence of unseen publications through K or latest-known-at-K state.
+
+### Deterministic structural rejection and UNKNOWN precedence
+
+Evaluator input violations, including invalid native replay, raise exactly
+ValueError("INVALID_EQUITY_DAILY_FLOOR_INPUT"). All structural checks precede
+UNKNOWN: sealed JSON/scalars/order, genuine dependencies and scope/time joins,
+original/ref/capture/hash/chronology, assertions/citations, contextroot and receipt
+membership/admission chronology. Missing parents suppress descendant UNKNOWN,
+never invalid present dependencies, originals or context. No diagnostic strings
+outside the closed reason/subject schema are returned.
+
+The first applicable gate wins. All others are suppressed. Q=REQUEST,
+CTX=TRUSTED_CONTEXT. ORIG identifies the actual original array/index under its
+REQUEST, C10_REQUEST or C8_REQUEST root; scan members in M_all order.
+
+| # | Reason | Exact trigger | Subject |
+| --- | --- | --- | --- |
+| 1 | C10_MISSING | null C10 | Q /c10 |
+| 2 | C8_CONTEXT_MISSING | embedded C8 exists, C8 context null | TRUSTED_C8_CONTEXT empty pointer |
+| 3 | C10_CONTEXT_MISSING | C10 exists, C10 context null | TRUSTED_C10_CONTEXT empty pointer |
+| 4 | C10_NOT_ESTABLISHED | valid C10 outcome not ESTABLISHED | Q /c10 |
+| 5 | EQUITY_SNAPSHOT_MISSING | explicit T snapshot null | Q /account_snapshot |
+| 6 | NATIVE_EQUITY_MISSING | validated native equity null | Q /account_snapshot |
+| 7 | EQUITY_ASSERTION_MISSING | declaration null | Q /equity |
+| 8 | EQUITY_AMOUNT_UNDECLARED | amount null | Q /equity/amount |
+| 9 | AGGREGATE_ORIGINAL_MISSING | aggregate role null | Q /equity/roles/aggregate |
+| 10 | DEFINITION_ORIGINAL_MISSING | definition role null | Q /equity/roles/definition |
+| 11 | COVERAGE_ORIGINAL_MISSING | coverage role null | Q /equity/roles/coverage |
+| 12 | ORIGINAL_ROLE_COVERAGE_INCOMPLETE | first unused local original | Q /originals/{i} |
+| 13 | DOCUMENT_REVISION_UNKNOWN | first member with null revision | ORIG /document/document_revision |
+| 14 | DOCUMENT_VERSION_CONFLICT | first member of any family with multiple revisions | ORIG /document |
+| 15 | NATIVE_AVAILABILITY_UNKNOWN | explicit native publication null | Q /account_snapshot |
+| 16 | ORIGINAL_AVAILABILITY_UNKNOWN | first local publication null | Q /originals/{i}/source_available_at |
+| 17 | EQUITY_SOURCE_CUTOFF_INSUFFICIENT | aggregate or definition publication>SE | Q /source_information_cutoff |
+| 18 | SOURCE_REVISIONS_UNRESOLVED | source_revisions then known_later_corrections not NONE | Q /equity/coverage/{field} |
+| 19 | DEFINITION_NOT_APPLICABLE | unknown start, start>T, UNKNOWN end or known end<=T | Q /equity/definition_period |
+| 20 | ACCOUNT_WIDE_UNRESOLVED | account_wide not COMPLETE | Q /equity/coverage/account_wide |
+| 21 | RULE_MEASURE_EQUIVALENCE_UNRESOLVED | equivalence not EXACT | Q /equity/measure_equivalence |
+| 22 | COMPONENT_TREATMENT_UNSUPPORTED | first component not supported by selected cost treatment | Q /equity/components/{field} |
+| 23 | COMPONENT_INTEGRITY_UNRESOLVED | integrity not COMPLETE_EXACTLY_ONCE | Q /equity/component_integrity |
+| 24 | SUPPORT_INCOMPLETE | first missing/incompletely supported target | Q /support_assertions |
+| 25 | EQUITY_ADMISSION_MISSING | C11 context null | CTX empty pointer |
+| 26 | EQUITY_ADMISSION_NOT_CURRENT | availability>K, then invalid start, then invalid end | CTX /{timefield} |
+| 27 | RECEIPT_MISSING | any required receipt absent | CTX /receipts |
+| 28 | RECEIPT_UNRESOLVED | first UNRESOLVED receipt | CTX /receipts/{i} |
+| 29 | RECEIPT_MEMBERSHIP_INCOMPLETE | first receipt with proper subset of M_all | CTX /receipts/{i}/originals |
+
+Component priority is balance,floating_pnl,commissions,financing,other_costs;
+target/receipt priority is the fixed Target order. Gate 26 checks available_at>K,
+then effective_from>min(admitted_at,K), then nonnull end<=max(admitted_at,K).
+The empty pointer selects the whole context value, including null. Missing-owner
+UNKNOWN witnesses require genuine upstream UNKNOWN replay, not retained positive
+results with missing original contexts (those structurally reject).
+
+### Result construction, exact arithmetic and detached validation
+
+```text
+State = {as_of:Time, reset_boundary:Time, next_reset_boundary:Time,
+         currency:Currency, equity:Money, daily_loss_floor:Money, difference:Money,
+         relation:BELOW|EQUAL|ABOVE}
+Root = REQUEST|C10_REQUEST|C8_REQUEST|TRUSTED_C8_CONTEXT|TRUSTED_C10_CONTEXT|
+       TRUSTED_CONTEXT
+Subject = {root:Root, pointer:String}
+Finding = {reason_code:UnknownReason, subject:Subject}
+AdmissionBinding = {target:Target, assertion_sha256:Hash|null,
+                    receipt_sha256:Hash|null, originals:[EvidenceMember]}
+ReconstructionEvidence = {request:Request, request_sha256:Hash,
+    c8_context_sha256:Hash|null, c10_context_sha256:Hash|null,
+    trusted_context_sha256:Hash|null}
+Authority = {quantity_selection:false, budget_approval:false,
+    position_effect_compliance:false, margin_capital_approval:false,
+    trade_decision:false, financial_risk:false, execution:false}
+Result = {contract:CONTRACT, rule_version:RULE_VERSION,
+    temporal_scope:TEMPORAL_SCOPE, economic_time:Time, knowledge_boundary:Time,
+    source_information_cutoff:Time, scope:Scope, outcome:ESTABLISHED|UNKNOWN,
+    reason_codes:[ComparisonReason], findings:[Finding], state:State|null,
+    native_references:NativeReferences, daily_measure:DailyMeasureReference|null,
+    required_targets:[Target], admission_bindings:[AdmissionBinding],
+    reconstruction_evidence:ReconstructionEvidence,
+    source_authentication:SOURCE_AUTHENTICATION, limitations:[Limitation],
+    authority:Authority, execution:false, assessment_identity:String}
+```
+
+UnknownReason is exactly the 29 codes above; ComparisonReason adds only
+COMPARISON_ESTABLISHED. ESTABLISHED has that one code, findings=[] and complete
+State. UNKNOWN has one reason, exactly its one finding and state=null. T/K/SE
+and scope copy Request. Every result has all five required targets/bindings;
+each binding contains full M_all and exact existing assertion/receipt hashes,
+null iff absent, independently of receipt success. Reconstruction contains an
+exact deepcopy of Request with original base64 strings, H(Request), and H of
+each original external context or null. Identity is IDENTITY_PREFIX followed
+by H(the entire result excluding assessment_identity).
+
+Only after all gates succeed, parse validated snapshot equity E and validated
+C10 daily_loss_floor F as exact rationals; subtract once D=E-F. Preserve C10 M/N
+and floor, canonically render finite exact decimal outputs without rounding, FX,
+float arithmetic or process-wide precision changes. A negative D is ESTABLISHED
+BELOW. No equity or floor is reconstructed from trades, positions or prices.
+
+Detached validation first fully evaluates the independently supplied Request and
+original external contexts. Invalid input retains INVALID_EQUITY_DAILY_FLOOR_INPUT.
+Otherwise compare J(supplied result) with J(reconstructed result), checking all
+fields and types, including false versus integer zero. Any mismatch or malformed
+result raises ValueError("EQUITY_DAILY_FLOOR_RESULT_MISMATCH"). Rehashing altered
+results never bypasses reconstruction. Return independent deep copies.
+
+Limitation is this exact ordered array:
+AS_OF_ONLY, SOURCE_REVIEW_CUTOFFS_NOT_LATEST_AT_K, NO_CONTINUOUS_COMPLIANCE,
+NO_EARLIER_BREACH_ABSENCE, NO_CURRENT_ELIGIBILITY, NO_MARGIN_OR_EXECUTION_APPROVAL,
+NO_PAYOUT_AUTHORIZATION, SOURCE_AUTHENTICATION_EXTERNAL,
+FROZEN_AWAITING_PAYOUT_VETO_EXTERNAL.
+
+### Trust, boundaries and verification scope
+
+All seven Authority fields and top-level execution remain exact Boolean false.
+The comparison establishes no continuous compliance, earlier-breach absence,
+current/live eligibility, margin/capital/order approval, trading permission or
+reward/payout eligibility. A later recovery does not erase an earlier breach.
+FROZEN_AWAITING_PAYOUT remains a separate mandatory trading veto. No actual FTMO
+or other real-account applicability is established from synthetic source records,
+labels, hashes or trusted-test declarations. Host source authentication and
+semantic truth remain external obligations.
+
+Focused C11 tests use genuine public C10/native detached replay, complete
+synthetic below/equal/above witnesses, all 29 UNKNOWN gates and canonical
+pointers, exact daily-rule original selectors and definition-clause order,
+independent target support and complete cross-owner membership, strict byte
+and document identity, delayed distinct S10/SE chronology, cost equivalence,
+source corrections, extreme exact arithmetic and type-sensitive rehashed
+mutation attacks. Production scope is one new C11 module, its focused test
+module and this append-only section. Full regression and Git publication
+require separate explicit authorization.
