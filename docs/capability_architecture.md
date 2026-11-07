@@ -6379,3 +6379,446 @@ Python's default integer conversion limit, rehashed result mutation and
 Boolean/integer distinctions. This verifies software behavior, not real FTMO
 applicability, authenticated source semantics or an honest external trust host.
 Full regression and Git publication require separate authorization.
+
+## Capability 10 — As-of Daily-Reset Loss-Floor State Reconstruction v1
+
+This section records the effective frozen C10 contract: the original bounded
+A–N design plus the three targeted repairs confirmed by the final independent
+freeze recheck. Implementation baseline: fd842d3ec06818ccbbd01935994e27791f2191ef.
+No C1–C9, native owner, runtime or risk-policy contract changes are introduced.
+
+### Owned proposition and public API
+
+For one independently admitted account, lifecycle and currency, C10 establishes
+only the provider-applicable historical daily-loss floor at economic time T in
+one proven reset session [M,N), using evidence available by K. It consumes I and
+B(M) from a genuinely reconstructed C8 assessment at M and derives exactly
+F(T)=B(M)−3I/100. The supported 3% model requires original historical account-rule
+applicability and independent semantic admission. No provider label establishes
+that applicability. The initial partial account day is outside v1: inception<M.
+
+```python
+evaluate_as_of_daily_reset_loss_floor_state(
+    request: dict, *, trusted_c8_context=None, trusted_context=None,
+) -> dict
+validate_as_of_daily_reset_loss_floor_state(
+    result: dict, request: dict, *, trusted_c8_context=None, trusted_context=None,
+) -> dict
+```
+
+```text
+CONTRACT = trading.as_of_daily_reset_loss_floor_state.v1
+RULE_VERSION = as_of_daily_reset_loss_floor_state_v1
+ADMISSION_CONTRACT = trading.as_of_daily_reset_loss_floor_state.admission.v1
+ADMISSION_RULE_VERSION = as_of_daily_reset_loss_floor_state_admission_v1
+IDENTITY_PREFIX = as_of_daily_reset_loss_floor_state_
+TEMPORAL_SCOPE = AS_OF_T_USING_EVIDENCE_BY_K
+SOURCE_AUTHENTICATION = NOT_VERIFIED_BY_THIS_CAPABILITY
+```
+
+### Sealed grammar and canonical identity
+
+All keys below are required and extra keys reject. Only explicit null unions
+permit null. Text is nonempty valid UTF-8 without leading/trailing whitespace;
+no trimming, case folding or Unicode normalization occurs. ID matches
+[A-Za-z0-9_.:-]+. Currency matches [A-Z]{3}. Nat and PosInt are exact integers
+>=0 and >=1; Boolean is never an integer. Time is valid UTC
+YYYY-MM-DDTHH:MM:SS.ffffffZ, years 0001–9999 without leap seconds. Date is valid
+YYYY-MM-DD with a representable following date. Hash is 64 lowercase hex digits.
+Bytes is canonical padded RFC4648 base64. Money is the canonical finite decimal
+string -?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?, excluding -0.
+
+JSON accepts only objects, arrays, strings, arbitrary-precision integers,
+Booleans and null. Duplicate keys, floats, NaN, Infinity and invalid Unicode
+reject. J(x) is UTF-8 of JSON with ensure_ascii=True, sort_keys=True,
+separators=(",",":"), allow_nan=False, including arbitrary integers without
+process-wide limit changes. H(x)=SHA256(J(x)). B(bytes)=SHA256(raw bytes).
+Object-key order is immaterial, array order and Boolean/integer type are material.
+Native byte envelopes preserve their original base64 strings in all hash operands.
+
+```text
+Namespace = {source_id:Text, source_contract:Text, source_contract_version:Text}
+Source = {source_id:Text, source_contract:Text, source_contract_version:Text,
+          source_snapshot_id:Text}
+Account = {namespace:Namespace, account_id:Text, environment:DEMO|LIVE,
+           currency:Currency}
+Scope = {account:Account, provider_namespace:Namespace, provider_id:Text,
+         program_id:Text, account_type_id:Text, phase_id:Text, lifecycle_id:ID}
+Document = {namespace:Namespace, document_id:Text, document_revision:Text|null}
+Original = {evidence_id:ID, source:Source, document:Document, media_type:Text,
+            content:Bytes, content_sha256:Hash, source_available_at:Time|null,
+            observed_at:Time}
+OriginalRef = {evidence_id:ID, original_sha256:Hash}
+Citation = {evidence_id:ID, start:Nat, end:PosInt}
+C8Dependency = {request_json:Bytes, result_json:Bytes}
+RuleSelector = {assignment_id:Text, package_index:Nat, rule_index:Nat,
+                native_rule_sha256:Hash}
+DailyRegimeDependency = {input_json:Bytes, result_json:Bytes,
+                        selector:RuleSelector|null}
+Calendar = {timezone_id:Text, tzdb_release:Text, tzif_sha256:Hash,
+            local_date:Date, local_reset_time:"00:00:00",
+            utc_start:Time, utc_end:Time}
+ResetMeaning = {mode:AFTER_ALL_C8_EVENTS_AT_M|NO_C8_EVENTS_AT_M|
+                    BEFORE_SOME_EVENTS_AT_M|UNKNOWN}
+Roles = {enrollment:OriginalRef|null, daily_rule:OriginalRef|null,
+         calendar_definition:OriginalRef|null, tzif:OriginalRef|null,
+         reset_balance:OriginalRef|null, initial_capital:OriginalRef|null,
+         coverage:OriginalRef|null}
+NativeMapping = {native_evidence_id:Text, original:OriginalRef}
+ExcludedActivity = {deposits_or_credits:Absence, rewards_or_withdrawals:Absence,
+                    capital_change:Absence, phase_change:Absence,
+                    reset_or_migration:Absence, anchor_correction:Absence,
+                    rule_or_calendar_change:Absence, unresolved_activity:Absence}
+Absence = ABSENT|PRESENT|UNKNOWN
+Coverage = {economic_from:Time, economic_through:Time, sources:[Namespace],
+            source_inventory:COMPLETE|UNKNOWN, reset_activity:COMPLETE|UNKNOWN,
+            lifecycle:COMPLETE|UNKNOWN, rule_calendar:COMPLETE|UNKNOWN,
+            source_revisions:NONE|PRESENT|UNKNOWN,
+            excluded_activity:ExcludedActivity}
+Target = ACCOUNT_LIFECYCLE|DAILY_RULE|RESET_CALENDAR|RESET_BALANCE|
+         INITIAL_CAPITAL|SOURCE_COMPLETENESS|SOURCE_REVISIONS
+SupportAssertion = {target:Target, citations:[Citation]}
+Request = {contract:CONTRACT, rule_version:RULE_VERSION, economic_time:Time,
+           knowledge_boundary:Time, reset_boundary:Time,
+           source_information_cutoff:Time, scope:Scope, c8:C8Dependency|null,
+           daily_regime:DailyRegimeDependency|null, calendar:Calendar|null,
+           reset_meaning:ResetMeaning|null, coverage:Coverage|null,
+           originals:[Original], roles:Roles, native_mappings:[NativeMapping],
+           support_assertions:[SupportAssertion]}
+EvidenceMember = {owner:C8|C10, evidence_id:ID, original_sha256:Hash}
+Receipt = {target:Target, request_sha256:Hash, c8_context_sha256:Hash|null,
+           assertion_sha256:Hash|null, originals:[EvidenceMember],
+           decision:ADMITTED|UNRESOLVED}
+TrustedContext = {contract:ADMISSION_CONTRACT, rule_version:ADMISSION_RULE_VERSION,
+                  admission_id:ID, authority_namespace:Namespace,
+                  authority_id:Text, mandate_id:Text, mandate_revision:PosInt,
+                  request_sha256:Hash, c8_context_sha256:Hash|null,
+                  admitted_at:Time, available_at:Time, effective_from:Time,
+                  effective_until:Time|null, receipts:[Receipt]}
+```
+
+OriginalRef binds H(the entire original envelope), not only its content hash.
+Citations bind local decoded byte ranges 0<=start<end<=byte_length(content).
+The independent trusted_c8_context is null or the existing sealed C8 context,
+unchanged and validated by the public C8 owner. It contains the native C8
+contract/rule, admission_id, authority_namespace, authority_id, mandate_id,
+mandate_revision, request_sha256, admitted_at, available_at, effective_from,
+effective_until and native receipts with target={kind,event_id}, request_sha256,
+assertion_sha256, original_ids and decision. Existing C8 target, context and
+receipt semantics are imported verbatim from the C8 contract above.
+
+### Ordering and evidence identity
+
+Local originals sort uniquely by evidence_id; source rosters by namespace
+triple; native mappings by native_evidence_id; assertions, receipts, required
+targets and result admission bindings by the seven Target values in declaration
+order. Citations sort uniquely by (evidence_id,start,end). Membership sorts by
+owner C8 before C10, then evidence_id. Native arrays remain in original
+owner-defined order, including the source package/rule selectors. Unordered or
+duplicate local keys reject without deduplication.
+
+Document namespace must equal source namespace. Family=(namespace,document_id),
+version=(family,document_revision), capture=(full Source,version). Null revision
+is one explicit unknown value, never a wildcard. Conflicting bytes/media for one
+version reject; multiple revisions of a family remain UNKNOWN. Duplicate local
+captures reject. Cross-C8/C10 reuse of a capture requires identical entire
+envelopes except local evidence_id. IDs are owner-local, never globally merged.
+
+Enrollment and initial-capital originals belong to the account or provider
+namespace. Daily-rule and calendar-definition originals belong to the provider
+namespace. Reset-balance original belongs to the account namespace and its full
+Source equals the exact embedded snapshot Source; both known publication times
+must match. TZif and coverage may have their own explicit source namespace.
+Every nonnull role reference must resolve correctly even if an owner is missing.
+
+For establishment every original fills a role or a native mapping. Every native
+manifest evidence entry has exactly one mapping; mappings bind full Source,
+document_reference to document_id, revision including null, every known native
+document hash, and both known publication times. Different observations are
+allowed. Missing mappings give UNKNOWN; duplicates, dangling IDs and known
+contradictions reject.
+
+### Genuine native replay and financial model
+
+Strictly decode all byte envelopes to JSON objects, then always call public
+validate_current_intraday_trailing_loss_threshold_state with the original C8
+request/result and independent trusted_c8_context. Require exact scope,
+C8 economic_time=M, C8 knowledge_boundary=K. Nonnull C8 context with no C8 bundle
+rejects. Preserve genuine C8 UNKNOWN. Do not take an intermediate step from a
+later C8 assessment or reconstruct balances locally.
+
+Independently replay the exact C8-embedded account snapshot with
+validate_causal_financial_account_state_snapshot. No alternate snapshot exists.
+Replay the daily dependency through validate_causal_account_rule_regime_assessment
+at economic time T and knowledge boundary R with T<=R<=S<=K. Account namespace,
+account_id, environment and known provider/program/type/phase joins are exact.
+
+Selector indices address original input manifest.packages[package_index].rules[
+rule_index], never sorted result arrays. Assignment must exist and the raw rule
+hash must equal native_rule_sha256. A valid declaration not pointing to the
+selected assignment/package/rule is UNKNOWN; an invalid reference/hash rejects.
+Known currency disagreement rejects.
+
+The only supported model has SUPPORTED representation, ALL_ACCOUNT_INSTRUMENTS,
+DAILY_RESET_FLOOR, BALANCE reset_anchor, INITIAL_REFERENCE_FRACTION deduction
+with reference INITIAL_BALANCE and exact fraction 0.03, EQUITY measure in account
+currency, commissions and financing IN_MEASURE, other_charges IN_MEASURE or
+NOT_APPLICABLE, compliant_when GREATER_THAN_OR_EQUAL, and adjustment_policy
+NO_UNREPRESENTED_CAPITAL_OR_PHASE_ADJUSTMENTS. Other genuine models are UNKNOWN.
+Unrelated UNSUPPORTED rules, including C8's trailing rule, are preserved.
+
+Selected package identity and reconstructed content must match C8's package at M.
+Manifest economic coverage, enrollment, phase and package periods cover [M,N).
+Original same-package bindings and APPROVED approvals must each union-cover the
+session without gaps. No overlapping rejection or potentially competing
+assignment/package is allowed. Unknown relevant bounds prevent establishment.
+Clip known intervals to [M,N), sort, merge overlaps/adjacency and require complete
+coverage; OPEN_ENDED is positive infinity. End=N is sufficient. This verifies
+published applicability as known, not absence of future changes after K.
+
+### Reset and calendar semantics
+
+C8 includes every supported event with inception<occurred_at<=M and preserves
+its independently admitted total sequence. AFTER_ALL_C8_EVENTS_AT_M requires
+original provider evidence that reset balance is after all such events and no
+other relevant posting is omitted. NO_C8_EVENTS_AT_M additionally requires no C8
+event on M; contradicting that declaration rejects. BEFORE_SOME_EVENTS_AT_M or
+UNKNOWN remains UNKNOWN. Timestamp sorting alone establishes no reset ordering.
+
+Load only roles.tzif original bytes with ZoneInfo.from_file(BytesIO(bytes),
+key=timezone_id), verify the content and calendar hashes, and independently admit
+the provider-timezone/release/bytes binding. Never use the host zone database.
+For local_date midnight and next-date midnight, construct folds 0 and 1,
+convert to UTC and roundtrip; retain only exact local datetime matches and dedup
+UTC instants. Each boundary must have exactly one candidate. Zero or two gives
+UNKNOWN; unique boundaries must exactly equal calendar.utc_start=M and utc_end=N.
+Require M<=T<N. Do not impose an 86400-second day. Invalid TZif or contradictory
+known boundaries reject. The native schedule must be exactly one session with
+matching timezone and clock, finite period [M,N) and boundaries [M,N]. A larger
+schedule is unsupported, and known timezone/clock contradictions reject.
+Preserve native body.measure.definition_refs and nested
+body.reset_schedule.evidence_refs from original arrays.
+
+### Source coverage, semantic targets and chronology
+
+Expected source namespaces union account and provider, all C8 history sources,
+all C8/C10 original sources and the daily native manifest/evidence sources.
+Admission and approver namespaces are not financial source actors. Coverage
+roster may include extras but must cover this entire set. Empty roster gives
+UNKNOWN. A nonempty roster omitting its explicit report source rejects.
+Coverage.from equals C8 inception and through equals T. Reset activity,
+lifecycle, rule/calendar inventory and source inventory must be COMPLETE;
+source_revisions must be NONE and all exclusions ABSENT. Reset coverage includes
+all account instruments. Relevant known corrections after S but by K cannot be
+hidden: their presence remains unsupported; no revision-selection engine exists.
+Ordinary subsequent trades do not change the admitted reset anchor. No account
+state is forward-filled from T to K.
+
+All seven targets always exist, including with absent parents and zero receipts.
+Required citation roles per target are respectively:
+
+| Target | Required cited originals |
+| --- | --- |
+| ACCOUNT_LIFECYCLE | enrollment |
+| DAILY_RULE | daily_rule, enrollment, every native mapping original |
+| RESET_CALENDAR | calendar_definition, tzif, daily_rule |
+| RESET_BALANCE | reset_balance, daily_rule |
+| INITIAL_CAPITAL | initial_capital, daily_rule |
+| SOURCE_COMPLETENESS | coverage |
+| SOURCE_REVISIONS | coverage |
+
+Each required original needs a valid byte-range citation. TZif additionally needs
+one exact full-byte-range citation. Structural validity and citation membership
+are not semantic proof. Independent host ADMITTED receipts must establish exact
+lifecycle joins; historically applicable unique governing daily rule and measure;
+calendar/timezone/TZif binding; original reset balance meaning; initial-capital
+basis; complete sources/activity and exclusions; and source revision validity.
+The host supplies authentic source authority independently of request/result.
+
+Always require M<=T<=S<=K. Inception<M is required for the supported positive
+proposition. Native snapshot is effective M and evaluated at K; native rules are
+evaluated at their respective economic times. All originals have observed_at<=K
+and every known publication<=observation. C8's own cutoff must be <=S. The reset
+snapshot's known publication must be <=S. Calendar-known N may be after K without
+using future account observations. All existing native/C8 causal checks remain.
+
+### Repaired root binding, result membership and cutoff precedence
+
+Whenever C10 trusted_context exists, structurally require request_sha256=H(request)
+and c8_context_sha256=null iff trusted_c8_context is null, otherwise its complete
+H. This holds with zero receipts, missing C8, C8 UNKNOWN and missing evidence.
+Receipt hashes remain independently mandatory and cannot validate the root.
+
+Every receipt binds H(request), the exact C8-context hash, the exact target
+assertion hash (null iff absent), and original members. Referenced members must
+exist with the correct owner/local ID and complete envelope hash. A valid subset
+is UNKNOWN; a false member or hash rejects. Every result target binding always
+contains the full evaluator-derived membership E: all actual C8 envelopes then
+all actual C10 envelopes, with exact ordering and no cross-owner deduplication.
+Its assertion and receipt hashes are H(the exact supplied object), null iff
+missing. This is unchanged for UNKNOWN, unresolved receipts and missing owners.
+
+A report original is designated by C10 roles.coverage or C8 history.coverage.report.
+Operational uses are C10's six noncoverage roles, all native mappings and citations
+for its first five targets; C8 initial_capital/rule/events/revisions citations,
+and citations for ACCOUNT_PROVIDER_IDENTITY, ORIGINAL_RULE, INITIAL_CAPITAL,
+HISTORICAL_ORDERING, BALANCE_RECONSTRUCTION, SNAPSHOT_CONSISTENCY and
+EVENT_CLASSIFICATION. C10's last two targets, C8 history.coverage/history.sources
+citations and COMPLETE_HISTORY/SOURCE_REVISIONS_AVAILABILITY/
+EXCLUDED_ACTIVITY_ABSENCE citations alone add no operational use. Membership is
+not an operational citation. Combined uses propagate across the same capture
+under both owners. Different captures/revisions are not merged or selected.
+
+With p=known publication, establishment requires:
+
+| Classification | Requirement |
+| --- | --- |
+| Not a designated report | p<=S |
+| Designated report with no operational use | S<=p |
+| Designated report also operational | p=S |
+
+These conditions apply to imported C8 reports as additional C10 establishment
+conditions; they do not modify C8. Publication>S for an operational original or
+publication<S for any designated report gives SOURCE_CUTOFF_UNRESOLVED, not by
+itself structural rejection. Earlier gates retain priority. Unknown local
+publication uses ORIGINAL_AVAILABILITY_UNKNOWN. Ordinary invalid chronology,
+including publication>observation or observation>K, always rejects first.
+A mixed report's p=S does not force T=S, observation=S, admission=S or K=S.
+
+The observation set includes all C8/C10 originals, the embedded snapshot, both
+native manifest/evidence/approval observations and original C8 context availability.
+For every observation o require o<=C10 admitted_at; the empty set satisfies this.
+Require admitted_at<=available_at and a valid context interval. Establishment
+requires available_at<=K and effective_from<=K<effective_until, with null end
+open-ended. Missing, late or stale admission remains UNKNOWN. Binding errors,
+backwards chronology or admission before an observation reject.
+
+### Result and detached reconstruction
+
+```text
+C8Reference = {assessment_identity:Text, outcome:ESTABLISHED|UNKNOWN,
+               bundle_sha256:Hash}
+SnapshotReference = {snapshot_id:Text, bundle_sha256:Hash}
+DailyRegimeReference = {assessment_id:Text,
+                       outcome:UNIQUE_APPLICABLE_APPROVED_REGIME|
+                         NO_APPLICABLE_APPROVED_REGIME_ESTABLISHED|UNRESOLVED,
+                       bundle_sha256:Hash}
+NativeReferences = {c8:C8Reference|null, reset_snapshot:SnapshotReference|null,
+                    daily_regime:DailyRegimeReference|null}
+State = {inception:Time, as_of:Time, reset_boundary:Time,
+         next_reset_boundary:Time, local_date:Date, timezone_id:Text,
+         currency:Currency, initial_capital:Money, reset_balance:Money,
+         daily_loss_allowance:Money, daily_loss_floor:Money}
+Subject = {root:REQUEST|TRUSTED_CONTEXT, pointer:Pointer}
+Finding = {reason_code:UnknownReason, subject:Subject}
+AdmissionBinding = {target:Target, assertion_sha256:Hash|null,
+                    receipt_sha256:Hash|null, originals:[EvidenceMember]}
+ReconstructionEvidence = {request:Request, request_sha256:Hash,
+                         c8_context_sha256:Hash|null,
+                         trusted_context_sha256:Hash|null}
+Authority = {quantity_selection:false, budget_approval:false,
+             position_effect_compliance:false, margin_capital_approval:false,
+             trade_decision:false, financial_risk:false, execution:false}
+Result = {contract:CONTRACT, rule_version:RULE_VERSION,
+          temporal_scope:TEMPORAL_SCOPE, economic_time:Time,
+          knowledge_boundary:Time, reset_boundary:Time,
+          source_information_cutoff:Time, scope:Scope,
+          outcome:ESTABLISHED|UNKNOWN, reason_codes:[Reason], findings:[Finding],
+          state:State|null, native_references:NativeReferences,
+          required_targets:[Target], admission_bindings:[AdmissionBinding],
+          reconstruction_evidence:ReconstructionEvidence,
+          source_authentication:SOURCE_AUTHENTICATION, limitations:[Limitation],
+          authority:Authority, execution:false, assessment_identity:Text}
+```
+
+C8 reference is null iff request.c8 is null; otherwise use the genuinely replayed
+assessment_identity/outcome and H(exact C8 dependency including base64 strings).
+Reset snapshot reference is null iff the embedded bundle is absent; otherwise
+use public validated snapshot_id and H(exact embedded bundle). Daily reference
+is null iff its dependency is absent; otherwise use public validated identity,
+outcome and H(exact daily dependency including selector). Retain all valid
+references even for UNKNOWN. Invalid replay rejects.
+
+Exact rational I=C8.state.initial_capital and B=C8.state.final_balance give
+allowance=3I/100 and floor=B−allowance. Do not use the high watermark. No rounding,
+FX or float arithmetic. Negative floors are supported. State takes inception
+from C8, as_of=T, boundaries M/N, calendar date/zone, and exact account currency.
+ESTABLISHED has reason_codes=[DAILY_FLOOR_ESTABLISHED], findings=[] and full state.
+UNKNOWN has exactly one reason/finding and state=null. Reason is that success
+constant or UnknownReason from the ordered matrix below. Pointer is RFC6901,
+including empty string for the whole root.
+
+Reconstruction hashes bind the complete original request and independent contexts,
+null iff absent. assessment_identity=IDENTITY_PREFIX+H(result without that field).
+Detached validation repeats all public replay and result construction, then
+compares exact canonical JSON including Boolean/integer types. Rehashing a
+caller-altered result cannot bypass reconstruction. The result error is
+ValueError("DAILY_RESET_FLOOR_RESULT_MISMATCH"); invalid input always gives
+ValueError("INVALID_DAILY_RESET_FLOOR_INPUT").
+
+### Ordered diagnostics
+
+All structural checks precede all gates: JSON/schema/order, hashes/references and
+document conflicts, genuine native replay, exact known joins/selectors, TZif and
+known calendar contradictions, mappings/report binding, context and receipt
+binding/chronology. Only the first failing gate is returned; all descendants and
+later failures are suppressed. Missing parents use earlier gates, never nonexistent
+child pointers. Array indices follow the mandatory order. CTX means TRUSTED_CONTEXT;
+all other subjects use REQUEST. UnknownReason is exactly these 31 codes.
+
+| # | Reason | Trigger | Pointer |
+| --- | --- | --- | --- |
+| 1 | C8_MISSING | c8 null | /c8 |
+| 2 | C8_NOT_ESTABLISHED | replayed C8 UNKNOWN | /c8 |
+| 3 | FIRST_PARTIAL_DAY_UNSUPPORTED | C8 inception=M | /reset_boundary |
+| 4 | DAILY_REGIME_MISSING | daily dependency null | /daily_regime |
+| 5 | NATIVE_REGIME_UNRESOLVED | native outcome not UNIQUE | /daily_regime |
+| 6 | RULE_SELECTOR_MISSING | selector null | /daily_regime/selector |
+| 7 | RULE_NOT_SELECTED | declared selector not selected | /daily_regime/selector |
+| 8 | RULE_MODEL_UNSUPPORTED | supported model predicate fails | /daily_regime/selector |
+| 9 | RULE_COVERAGE_INCOMPLETE | package coverage not COMPLETE, interpretation or selected evidence limitations | /daily_regime |
+| 10 | CALENDAR_MISSING | calendar null | /calendar |
+| 11 | ORIGINAL_ROLE_MISSING | first null role in Roles order | /roles/{role} |
+| 12 | CALENDAR_BOUNDARY_UNRESOLVED | midnight has zero/two UTC instants | /calendar |
+| 13 | RULE_CALENDAR_UNSUPPORTED | native schedule not exact single session | /daily_regime/selector |
+| 14 | RULE_SESSION_UNRESOLVED | full-session/package predicate fails | /daily_regime |
+| 15 | RESET_SEMANTICS_UNRESOLVED | meaning null, BEFORE_SOME_EVENTS_AT_M or UNKNOWN | /reset_meaning |
+| 16 | COVERAGE_MISSING | coverage null | /coverage |
+| 17 | SOURCE_COVERAGE_INCOMPLETE | empty/incomplete roster or inventory not COMPLETE | /coverage/sources |
+| 18 | COVERAGE_INCOMPLETE | from/through mismatch or reset/lifecycle/rule coverage not COMPLETE | /coverage |
+| 19 | REVISION_UNSUPPORTED | multi-revision family, else revision status not NONE | /originals, else /coverage/source_revisions |
+| 20 | EXCLUDED_ACTIVITY_UNRESOLVED | first exclusion not ABSENT in declared order | /coverage/excluded_activity/{field} |
+| 21 | ORIGINAL_AVAILABILITY_UNKNOWN | first local publication null | /originals/{i}/source_available_at |
+| 22 | SOURCE_CUTOFF_UNRESOLVED | repaired publication/C8 cutoff condition fails | /source_information_cutoff |
+| 23 | NATIVE_AVAILABILITY_UNKNOWN | daily native manifest/evidence publication null | /daily_regime |
+| 24 | NATIVE_MAPPING_INCOMPLETE | missing native evidence mapping | /native_mappings |
+| 25 | ORIGINAL_UNUSED | first original has no role/mapping | /originals/{i} |
+| 26 | SUPPORT_INCOMPLETE | a required assertion/citation absent | /support_assertions |
+| 27 | ADMISSION_MISSING | trusted_context null | CTX: empty string |
+| 28 | ADMISSION_NOT_CURRENT | available_at>K, effective_from>K, or effective_until<=K in that order | CTX: /{field} |
+| 29 | RECEIPT_MISSING | any target receipt absent | CTX: /receipts |
+| 30 | RECEIPT_UNRESOLVED | first UNRESOLVED receipt | CTX: /receipts/{i} |
+| 31 | RECEIPT_MEMBERSHIP_INCOMPLETE | first valid receipt with partial E | CTX: /receipts/{i}/originals |
+
+### Limitations and verification scope
+
+Limitation is the enum of this exact fixed ordered result array:
+AS_OF_ONLY, SOURCE_REVISION_COVERAGE_THROUGH_S, NO_EQUITY_COMPARISON,
+NO_CONTINUOUS_COMPLIANCE, NO_CURRENT_ELIGIBILITY, NO_MARGIN_OR_EXECUTION_APPROVAL,
+NO_PAYOUT_AUTHORIZATION, SOURCE_AUTHENTICATION_EXTERNAL,
+FROZEN_AWAITING_PAYOUT_VETO_EXTERNAL.
+
+All seven authority flags and top-level execution are exact Boolean false.
+No current/historical equity or daily compliance, prior-breach clearance, margin,
+capital, order acceptance, trading, reward or payout permission is established.
+An earlier equity breach is not erased by establishing a floor. The separate
+FROZEN_AWAITING_PAYOUT veto remains mandatory. Synthetic fixtures never establish
+actual FTMO account applicability or source authenticity.
+
+Focused tests exercise genuine public C8, exact snapshot and daily-regime replay,
+zero/multi-event and same-timestamp histories, all seven targets and all 31 UNKNOWN
+gates, repaired root/membership/cutoff cases, source/capture/revision and receipt
+attacks, full-session applicability, DST and delayed evidence, exact arithmetic
+and type-sensitive rehashed-result tampering. Implementation remains confined to
+one new module, its test module and this append-only documentation. Full
+regression and Git publication each require separate authorization.
