@@ -7267,3 +7267,513 @@ source corrections, extreme exact arithmetic and type-sensitive rehashed
 mutation attacks. Production scope is one new C11 module, its focused test
 module and this append-only section. Full regression and Git publication
 require separate explicit authorization.
+
+## Capability 12 — As-of Historical Loss-Limit Breach-Condition Witness v1
+
+### Frozen ownership and public interfaces
+
+For one economic observation time T and knowledge boundary K, C12 establishes
+whether exactly one genuinely validated C9 or C11 comparison satisfies the
+independently admitted instantaneous breach condition of the exact applicable
+original mandatory loss-limit rule. It consumes the upstream relation and exact
+difference; it never recalculates equity, initial capital, watermark, threshold
+or daily floor. ESTABLISHED has either BREACH_CONDITION_MET or
+BREACH_CONDITION_NOT_MET. UNKNOWN always has state=null.
+
+NOT_MET is point-scoped only: it proves neither earlier breach absence nor
+continuous compliance. MET is not provider-recorded breach status, account
+disqualification or a consequence decision. Later equity recovery cannot erase
+a supported historical witness. Genuine corrections can invalidate its evidence;
+a later assessment must reflect them without rewriting the old audit artifact.
+
+```python
+evaluate_as_of_historical_loss_limit_breach_condition_witness(
+    request, *, trusted_upstream_contexts=None, trusted_context=None,
+) -> dict
+validate_as_of_historical_loss_limit_breach_condition_witness(
+    result, request, *, trusted_upstream_contexts=None, trusted_context=None,
+) -> dict
+```
+
+Contexts are independent host inputs, never request fields. No public trading,
+approval or execution interface is introduced.
+
+### Constants and strict serialization
+
+```text
+CONTRACT = trading.as_of_historical_loss_limit_breach_condition_witness.v1
+RULE_VERSION = as_of_historical_loss_limit_breach_condition_witness_v1
+ADMISSION_CONTRACT = trading.as_of_historical_loss_limit_breach_condition_witness.admission.v1
+ADMISSION_RULE_VERSION = as_of_historical_loss_limit_breach_condition_witness_admission_v1
+IDENTITY_PREFIX = as_of_historical_loss_limit_breach_condition_witness_
+TEMPORAL_SCOPE = AS_OF_T_USING_EVIDENCE_BY_K
+SOURCE_AUTHENTICATION = NOT_VERIFIED_BY_THIS_CAPABILITY
+```
+
+Every object below is sealed: all listed fields, including nullable fields, are
+required; additional keys are invalid. X|null is exactly X or JSON null. [X] is
+an array, with the identities and order specified below. String is a Unicode
+scalar-value string; lone surrogates are invalid. No Unicode normalization,
+identifier trimming, media-type normalization or implicit defaults occur.
+Text is nonempty String without leading/trailing U+0009–000D, U+001C–001F,
+U+0020, U+0085, U+00A0, U+1680, U+2000–200A, U+2028–2029, U+202F, U+205F or
+U+3000. ID matches [A-Za-z0-9_.:-]+. Nat and PosInt are exact integers >=0 and
+>0 respectively; Boolean is never integer. Currency matches [A-Z]{3}. Hash is
+64 lowercase hexadecimal digits. Time is valid UTC
+YYYY-MM-DDTHH:MM:SS.ffffffZ, exactly six fractional digits, year 0001–9999 and
+no leap second. Money matches -?(0|[1-9][0-9]*)(\.[0-9]*[1-9])? except -0,
+with arbitrary precision and no exponent, plus or trailing fractional zeroes.
+
+Strict JSON allows String-keyed objects, arrays, strings, exact integers,
+Booleans and null. Floats, nonfinite numbers and duplicate decoded JSON keys
+are invalid. Canonical JSON C(x) sorts object keys by Unicode scalar value,
+preserves arrays, uses no insignificant whitespace, ASCII escaping equivalent
+to json.dumps(ensure_ascii=True), and ordinary arbitrary-precision integer
+notation. H(x) is lowercase SHA256 of UTF-8 C(x). Boolean false and integer zero
+remain different. No global numeric settings may be changed.
+
+Bytes is canonical standard RFC 4648 base64 with required padding and no
+whitespace; exact decode/re-encode equality is required. Dependency/context
+Bytes decode to strict UTF-8 JSON objects, but the original base64 strings are
+preserved and remain hash operands. Original content is arbitrary byte evidence,
+not automatically parsed JSON. content_sha256 hashes decoded content bytes;
+original_sha256 hashes the whole Original envelope using H.
+
+### Complete sealed grammar
+
+```text
+Owner = C8|C9|C10|C11|C12
+ComparisonOwner = C9|C11
+Relation = BELOW|EQUAL|ABOVE
+PermittedComparator = GREATER_THAN_OR_EQUAL|GREATER_THAN|UNKNOWN
+Condition = BREACH_CONDITION_MET|BREACH_CONDITION_NOT_MET
+Target = ACCOUNT_AND_RULE_BINDING|INSTANTANEOUS_TRIGGER|MEASURE_EQUIVALENCE|
+         OBSERVATION_APPLICABILITY|SOURCE_VALIDITY
+
+Namespace = {source_id:Text, source_contract:Text, source_contract_version:Text}
+Source = {source_id:Text, source_contract:Text, source_contract_version:Text,
+          source_snapshot_id:Text}
+AccountScope = {namespace:Namespace, account_id:Text, environment:DEMO|LIVE,
+                currency:Currency}
+Scope = {account:AccountScope, provider_namespace:Namespace, provider_id:Text,
+         program_id:Text, account_type_id:Text, phase_id:Text, lifecycle_id:ID}
+Document = {namespace:Namespace, document_id:Text, document_revision:Text|null}
+Original = {evidence_id:ID, source:Source, document:Document, media_type:Text,
+            content:Bytes, content_sha256:Hash, source_available_at:Time|null,
+            observed_at:Time}
+Member = {owner:Owner, evidence_id:ID, original_sha256:Hash}
+Citation = {owner:Owner, evidence_id:ID, start:Nat, end:PosInt}
+Period = {effective_from:Time|null, effective_until:Time|null,
+          end_status:KNOWN|OPEN_ENDED|UNKNOWN}
+
+ComparisonDependency = {owner:ComparisonOwner, request_json:Bytes,
+                        result_json:Bytes}
+UpstreamContexts = {c8_context_json:Bytes|null, c10_context_json:Bytes|null,
+                    comparison_context_json:Bytes|null}
+Roles = {mandatory_trigger:Member|null, account_applicability:Member|null,
+         measure_equivalence:Member|null, source_validity:Member|null}
+Event = {mode:ACCOUNT_EQUITY_OBSERVATION_AT_T|OTHER|UNKNOWN,
+         snapshot_reference_sha256:Hash|null}
+Conditions = {duration:NONE|REQUIRED|UNKNOWN, grace:NONE|REQUIRED|UNKNOWN,
+              confirmation:NONE|REQUIRED|UNKNOWN,
+              provider_decision:NONE|REQUIRED|UNKNOWN}
+SourceReview = {complete_through_cutoff:COMPLETE|UNKNOWN,
+                relevant_revisions:NONE|PRESENT|UNKNOWN,
+                known_relevant_corrections:NONE|PRESENT|UNKNOWN}
+Trigger = {scope:Scope, economic_time:Time, knowledge_boundary:Time,
+           rule_reference_sha256:Hash|null, effective_period:Period,
+           force:MANDATORY|NON_MANDATORY|UNKNOWN,
+           permitted_when:PermittedComparator,
+           measure_equivalence:EXACT|DIFFERENT|UNKNOWN, event:Event,
+           conditions:Conditions, source_review:SourceReview}
+Assertion = {target:Target, trigger_sha256:Hash|null,
+             rule_reference_sha256:Hash|null, citations:[Citation]}
+Receipt = {target:Target, request_sha256:Hash,
+           upstream_contexts_sha256:Hash|null, assertion_sha256:Hash|null,
+           originals:[Member], decision:ADMITTED|UNRESOLVED}
+TrustedContext = {contract:ADMISSION_CONTRACT,
+                  rule_version:ADMISSION_RULE_VERSION, admission_id:ID,
+                  authority_namespace:Namespace, authority_id:Text,
+                  mandate_id:Text, mandate_revision:PosInt,
+                  request_sha256:Hash, upstream_contexts_sha256:Hash|null,
+                  admitted_at:Time, available_at:Time, effective_from:Time,
+                  effective_until:Time|null, receipts:[Receipt]}
+Request = {contract:CONTRACT, rule_version:RULE_VERSION, economic_time:Time,
+           knowledge_boundary:Time, source_information_cutoff:Time, scope:Scope,
+           comparison:ComparisonDependency|null, trigger:Trigger|null,
+           originals:[Original], roles:Roles, support_assertions:[Assertion]}
+
+ComparisonReference = {owner:ComparisonOwner, assessment_identity:Text,
+                       outcome:ESTABLISHED|UNKNOWN, bundle_sha256:Hash}
+SnapshotReference = {snapshot_id:Text, bundle_sha256:Hash}
+Session = {reset_boundary:Time, next_reset_boundary:Time}
+RuleReference = {comparison_owner:ComparisonOwner,
+                 comparison_assessment_identity:Text,
+                 comparison_bundle_sha256:Hash, threshold_owner:C8|C10,
+                 threshold_assessment_identity:Text,
+                 threshold_bundle_sha256:Hash, regime_bundle_sha256:Hash,
+                 assignment_id:String, package_index:Nat, package_id:String,
+                 package_revision:String, rule_index:Nat, rule_id:String,
+                 native_rule_sha256:Hash, model_binding_sha256:Hash,
+                 equity_declaration_sha256:Hash,
+                 native_measure_sha256:Hash|null, reset_session:Session|null}
+NativeReferences = {comparison:ComparisonReference|null,
+                    account_snapshot:SnapshotReference|null}
+Subject = {root:REQUEST|C8_REQUEST|C9_REQUEST|C10_REQUEST|C11_REQUEST|
+                TRUSTED_CONTEXT, pointer:String}
+Finding = {reason_code:UnknownReason, subject:Subject}
+State = {as_of:Time, currency:Currency, comparison_assessment_identity:Text,
+         rule_reference_sha256:Hash, relation:Relation, difference:Money,
+         permitted_when:GREATER_THAN_OR_EQUAL|GREATER_THAN,
+         breach_when:LESS_THAN|LESS_THAN_OR_EQUAL, condition:Condition}
+AdmissionBinding = {target:Target, assertion_sha256:Hash|null,
+                    receipt_sha256:Hash|null, originals:[Member]}
+ReconstructionEvidence = {request:Request, request_sha256:Hash,
+                          upstream_contexts_sha256:Hash|null,
+                          trusted_context_sha256:Hash|null}
+Authority = {quantity_selection:false, budget_approval:false,
+             position_effect_compliance:false, margin_capital_approval:false,
+             trade_decision:false, financial_risk:false, execution:false}
+Reason = Condition|UnknownReason
+Result = {contract:CONTRACT, rule_version:RULE_VERSION, assessment_identity:Text,
+          temporal_scope:TEMPORAL_SCOPE, economic_time:Time,
+          knowledge_boundary:Time, source_information_cutoff:Time, scope:Scope,
+          outcome:ESTABLISHED|UNKNOWN, reason_codes:[Reason], findings:[Finding],
+          state:State|null, native_references:NativeReferences,
+          rule_reference:RuleReference|null, required_targets:[Target],
+          admission_bindings:[AdmissionBinding],
+          reconstruction_evidence:ReconstructionEvidence,
+          source_authentication:SOURCE_AUTHENTICATION, limitations:[String],
+          authority:Authority, execution:false}
+```
+
+UnknownReason is exactly the twenty-code ordered table below. trusted_context
+is TrustedContext|null and trusted_upstream_contexts is UpstreamContexts|null.
+Each nonnull context Bytes is the exact sealed existing foreign context accepted
+by the selected public owner at baseline 81c5b5995b45fa46a5ad1797c9fedeafe1aa4449;
+no generic extension fields are admitted. A null envelope supplies three null
+contexts. A nonnull all-null envelope remains a distinct serialized hash operand.
+For C9, c10_context_json must be null. With no comparison all upstream context
+fields must be null, or the envelope itself null. A C12 context is still allowed.
+Request.originals contains 0–4 new C12 originals only.
+
+Period KNOWN requires nonnull end; OPEN_ENDED and UNKNOWN require null end.
+Known start/end require start < end. Applicability is half-open start <= T < end;
+unknown start/end status cannot establish applicability. Trigger scope/T/K equal
+Request exactly. Trigger.rule_reference_sha256 is H(derived RuleReference), null
+iff that reference is null. Event.snapshot_reference_sha256 is H(derived
+SnapshotReference), null iff that reference is null. For every C11 request a
+GREATER_THAN trigger is structurally invalid, including during UNKNOWN handling.
+
+### Genuine public replay and exact reference construction
+
+Decode the selected dependency and independent context Bytes, preserving all
+original strings. Invoke only the selected genuine public detached validator:
+
+```python
+# C9
+validate_as_of_equity_trailing_loss_threshold_comparison(
+    decoded_result, decoded_request,
+    trusted_c8_context=decoded_c8_context,
+    trusted_equity_context=decoded_comparison_context,
+)
+# C11
+validate_as_of_equity_daily_reset_loss_floor_comparison(
+    decoded_result, decoded_request,
+    trusted_c8_context=decoded_c8_context,
+    trusted_c10_context=decoded_c10_context,
+    trusted_context=decoded_comparison_context,
+)
+```
+
+Absent contexts are None. Public owners perform their genuine nested native
+replays; no private helper, copied fingerprint, fabricated successful result or
+alternate snapshot replaces them. Selected request scope/economic_time/
+knowledge_boundary equal C12 exactly. Replay failure is structural, even when
+another missing field would otherwise cause UNKNOWN.
+
+ComparisonReference is null iff comparison is absent. Otherwise copy owner,
+replayed assessment_identity and outcome, and use H(Request.comparison), including
+owner and both original base64 strings. SnapshotReference is the exact copy of
+the selected replayed result.native_references.account_snapshot, including null.
+Both references remain during C12 UNKNOWN. RuleReference is null iff comparison
+is absent or its genuinely replayed outcome is UNKNOWN.
+
+For an established dependency, common RuleReference fields are selected owner,
+replayed comparison identity, H(Request.comparison), and H(selected request.equity).
+For C9 decode the exact embedded C8 request/result. Read C8 history.rule and select
+from original provider_regime input manifest.packages[package_index].rules[
+rule_index]. Copy assignment ID, indexes, package ID/revision, rule ID and native
+rule hash. Set threshold_owner=C8, threshold_assessment_identity=embedded C8
+identity, threshold_bundle_sha256=H(C9 request.c8), regime_bundle_sha256=H(C8
+request.provider_regime), model_binding_sha256=H(C8 history.rule), and both
+native_measure_sha256 and reset_session=null. The native trailing rule remains
+UNSUPPORTED. Independent C12 original admission supplies the comparator and
+instantaneous semantics; it never changes native support.
+
+For C11 use the replayed daily_measure. Copy its assignment/package/rule/index/
+native hash fields. Set threshold_owner=C10, threshold_assessment_identity=
+daily_measure.c10_assessment_identity, threshold_bundle_sha256=
+daily_measure.c10_bundle_sha256, regime_bundle_sha256=
+daily_measure.daily_regime_bundle_sha256, model_binding_sha256=H(daily_measure),
+native_measure_sha256=daily_measure.measure_sha256, and reset_session from the
+replayed C11 state reset_boundary/next_reset_boundary. Definition mappings remain
+bound by the full daily_measure hash and dependency. Never sort original native
+arrays or repeat upstream rule selection. Native identifier Strings are copied
+exactly without imposing a new Text normalization rule.
+
+### Original identity, roles and complete evidence membership
+
+C9 inventory is C8+C9+C12; C11 inventory is C8+C10+C11+C12. Absent ancestors
+contribute no originals. Preserve imported owner-qualified copies even when
+content or capture matches. Member identity is (owner,evidence_id), its hash is
+H(the entire original envelope). Every role, citation and receipt member must
+resolve exactly; wrong hashes, invented identities or duplicate members reject.
+Every new C12 original is used by at least one role. A new C12 original duplicating
+an imported capture rejects; reference the imported Member instead.
+
+Family = (document.namespace,document_id). Version = (family,document_revision).
+Capture = (all four Source fields,family,document_revision). Document namespace
+equals source namespace. content_sha256 hashes raw decoded bytes; local C12
+content is nonempty. Same known version with different bytes or media type is a
+structural contradiction. Same capture with different envelope fields other than
+evidence_id is a structural contradiction. Null revision is not a known version.
+Unknown revisions produce DOCUMENT_REVISION_UNKNOWN. More than one distinct
+known revision in a family produces DOCUMENT_REVISIONS_UNRESOLVED; v1 does not
+choose a replacement. These checks cover all owners before UNKNOWN processing.
+
+Role order is mandatory_trigger, account_applicability, measure_equivalence,
+source_validity. Mandatory-trigger source namespace equals provider namespace;
+applicability and equivalence allow account or provider namespace. Source-validity
+source may have any identified namespace, with authority/relevance independently
+admitted by SOURCE_VALIDITY. Roles may share one Member or use imported originals;
+sharing never bypasses timing, hashes or target-specific semantic support.
+
+### Five independent targets and support algorithm
+
+Targets always exist in this order, independent of receipts or assertions:
+ACCOUNT_AND_RULE_BINDING, INSTANTANEOUS_TRIGGER, MEASURE_EQUIVALENCE,
+OBSERVATION_APPLICABILITY, SOURCE_VALIDITY. Absent roles contribute empty sets.
+When comparison is absent/UNKNOWN, B/M/A/U below are empty; earlier gates prohibit
+establishment. Otherwise derive owner-qualified sets only from original requests:
+
+- B: C9 = all C8 history.rule.citations originals; C11 = daily_measure.rule_original.
+- M: C9 aggregate+definition; C11 aggregate+definition plus every original in
+  daily_measure.definition_bindings.
+- A: selected C9/C11 aggregate original.
+- U: C9 = C8 history coverage report+C9 coverage; C11 = C8 history report+C10
+  coverage+C11 coverage.
+
+| Target | Exact required citation identities |
+| --- | --- |
+| ACCOUNT_AND_RULE_BINDING | mandatory_trigger + account_applicability + B |
+| INSTANTANEOUS_TRIGGER | mandatory_trigger + measure_equivalence + B |
+| MEASURE_EQUIVALENCE | measure_equivalence + M |
+| OBSERVATION_APPLICABILITY | account_applicability + measure_equivalence + A |
+| SOURCE_VALIDITY | all four roles + U |
+
+Citations are byte ranges 0 <= start < end <= decoded content length. Structural
+membership does not prove semantic relevance. Overlap is allowed, exact duplicate
+ranges are not, and no implicit merging occurs. Each assertion binds H(trigger)
+and H(RuleReference), null iff the respective object is null.
+
+Independent ACCOUNT_AND_RULE_BINDING admission establishes exact account,
+lifecycle, provider/program/type/phase, selected rule/model, mandatory force and
+trigger period. INSTANTANEOUS_TRIGGER establishes exact comparator/complement,
+complete clauses and absence of omitted prerequisites/exceptions.
+MEASURE_EQUIVALENCE establishes exact upstream account-wide equity, costs and
+threshold/floor meaning. OBSERVATION_APPLICABILITY establishes that the exact
+native snapshot is a qualifying valuation at T, not a delayed acquisition event.
+SOURCE_VALIDITY establishes original versions, review scope, cutoffs, corrections
+and review of every inventory member/upstream binding for invalidating conflict.
+Declarations or byte membership alone never discharge these obligations.
+
+Context and every receipt bind H(Request) and H(trusted_upstream_contexts), the
+latter null iff the envelope is absent. These root bindings apply with zero
+receipts. Receipt assertion_sha256 is H(its target assertion), null iff missing.
+Receipt identity is (context.contract,authority_namespace,authority_id,mandate_id,
+mandate_revision,admission_id,target). All successful receipts contain the entire
+expected owner-qualified inventory. Proper subsets are structurally valid but
+UNKNOWN; invented/altered/duplicate members reject. No receipt selects its own
+rule, target or required evidence.
+
+### Historical chronology and source review
+
+T=Request.economic_time, K=Request.knowledge_boundary and S12=Request.
+source_information_cutoff satisfy T <= S12 <= K. Selected comparison T/K equal
+C12 exactly. Preserve C8 economic time, native regime R and history source cutoff,
+C9 S9, C10 M/N, R and S10, C11 SE, and native manifest source-information cutoffs.
+For establishment S12 is at least every nonnull upstream source-information
+cutoff. It does not rewrite any cutoff or assert all sources complete through K.
+In the C11 branch C8 economic time is M, not the C12 observation T.
+
+Every inventory original observed_at <= K and known source_available_at <=
+observed_at. Future observation or reversed publication/observation rejects.
+Operational roles (first three) require known availability <= S12 for
+establishment. Source-validity report observation and known availability are >=
+S12; a report before its cutoff rejects. Apply these constraints by capture across
+all appearances. Shared operational/report captures require known availability
+exactly S12 for establishment. Unknown publication yields UNKNOWN, not backdating.
+
+Observation set O contains every inventory observation, every selected-chain
+native account observation, native regime manifest observation, native regime
+evidence-record observation, native approval observation, and available_at of
+every supplied upstream C8/C10/comparison context. Normalize native timestamps;
+never treat future effective/calendar boundaries as observations. For every o in
+O, o <= C12 admitted_at. The quantified rule is true for empty O. Always require
+admitted_at <= available_at. Context known end > start. Establishment additionally
+requires available_at <= K and admitted_at and K both inside the mandate's
+half-open validity period. Missing context skips only its dependent comparisons;
+all supplied contexts and receipts undergo structural validation.
+
+Establishment requires COMPLETE review through S12, relevant_revisions=NONE and
+known_relevant_corrections=NONE. The latter covers invalidating corrections known
+to the admitting host by K, including after S12. The host must not reuse a known
+stale admission. This is not omniscient latest-source coverage at K. Trigger
+period must contain T. Later publication may support reconstruction by K but is
+never represented as knowledge available at T.
+
+### Structural priority, twenty UNKNOWN gates and pointers
+
+Complete every structural phase before selecting UNKNOWN: (1) strict serialized
+types/sealed schemas/constants/order; (2) decode dependency/contexts and enforce
+branch cardinality; (3) genuine selected public replay; (4) joins, references and
+inventory; (5) original identity/provenance/role/member/range checks; (6) trigger
+and assertion bindings including C11 comparator restriction; (7) chronology and
+context shape/root binding; (8) all receipt bindings/members. Array scans follow
+declared order and cross-owner scans follow inventory order. Structural failure
+raises exactly ValueError("INVALID_HISTORICAL_LOSS_LIMIT_WITNESS_INPUT").
+
+Only the first matching UNKNOWN gate is returned; later findings are suppressed.
+Root REQUEST is C12; C8_REQUEST/C9_REQUEST/C10_REQUEST/C11_REQUEST are the exact
+decoded original requests at their fixed dependency positions. TRUSTED_CONTEXT
+is the separate C12 argument, including null. An original location is its owner
+root plus /originals/i using the original array index. All pointers are JSON
+Pointers and refer to existing keys/values, including null parents.
+
+| Priority / UnknownReason | Exact trigger | Subject pointer (REQUEST unless stated) |
+| --- | --- | --- |
+| 1 COMPARISON_MISSING | comparison=null | /comparison |
+| 2 COMPARISON_NOT_ESTABLISHED | genuine replay outcome UNKNOWN | /comparison |
+| 3 TRIGGER_MISSING | trigger=null | /trigger |
+| 4 ORIGINAL_ROLE_MISSING | first null role in role order | /roles/{role} |
+| 5 DOCUMENT_REVISION_UNKNOWN | first inventory null revision | original location + /document/document_revision |
+| 6 DOCUMENT_REVISIONS_UNRESOLVED | first inventory original whose family has >1 distinct known revision | original location + /document |
+| 7 ORIGINAL_AVAILABILITY_UNKNOWN | first inventory null publication | original location + /source_available_at |
+| 8 SOURCE_CUTOFF_INSUFFICIENT | S12 before a known upstream cutoff, or operational capture availability after S12 | /source_information_cutoff |
+| 9 SOURCE_REVIEW_UNRESOLVED | first failure: complete_through_cutoff != COMPLETE, relevant_revisions != NONE, known_relevant_corrections != NONE | /trigger/source_review/{field} |
+| 10 RULE_NOT_APPLICABLE | unknown start, start>T, unknown end status, or known end<=T | /trigger/effective_period |
+| 11 RULE_FORCE_UNRESOLVED | force != MANDATORY | /trigger/force |
+| 12 COMPARATOR_UNDECLARED | permitted_when=UNKNOWN | /trigger/permitted_when |
+| 13 EVENT_SEMANTICS_UNSUPPORTED | unsupported mode, else first condition not NONE in duration/grace/confirmation/provider_decision order | /trigger/event/mode or /trigger/conditions/{field} |
+| 14 MEASURE_EQUIVALENCE_UNRESOLVED | equivalence != EXACT | /trigger/measure_equivalence |
+| 15 SUPPORT_INCOMPLETE | first target missing assertion or required citation membership | /support_assertions |
+| 16 ADMISSION_MISSING | trusted_context=null | TRUSTED_CONTEXT empty pointer |
+| 17 ADMISSION_NOT_CURRENT | first: available_at>K, effective_from>min(admitted_at,K), known effective_until<=max(admitted_at,K) | TRUSTED_CONTEXT /available_at, /effective_from or /effective_until |
+| 18 RECEIPT_MISSING | any target lacks receipt | TRUSTED_CONTEXT /receipts |
+| 19 RECEIPT_UNRESOLVED | first UNRESOLVED receipt | TRUSTED_CONTEXT /receipts/i |
+| 20 RECEIPT_MEMBERSHIP_INCOMPLETE | first receipt not equal to complete expected inventory | TRUSTED_CONTEXT /receipts/i/originals |
+
+Missing comparison suppresses dependent UNKNOWN findings; upstream UNKNOWN
+suppresses C12 semantic/admission UNKNOWN findings. Missing trigger suppresses
+its descendants, missing context suppresses receipts. Supplied structural
+contradictions are never suppressed. There are no extra findings or free-form
+diagnostic messages. Each reason is independently reachable by changing only
+that gate's evidence declaration and rebinding affected hashes/membership; for
+revision conflicts use distinct coherent captures, for partial receipts use a
+proper subset, and for upstream UNKNOWN genuinely reevaluate its public owner.
+
+The empty witness has null comparison/trigger/upstream contexts, originals=[],
+all roles=null and support_assertions=[]. A valid C12 context with receipts=[]
+remains allowed: O is empty, root binding still applies, and result is UNKNOWN /
+COMPARISON_MISSING with state and both native references and RuleReference null.
+
+### Exact decision, result identity and detached validation
+
+| Upstream relation | permitted E>=floor | permitted E>floor |
+| --- | --- | --- |
+| BELOW | BREACH_CONDITION_MET | BREACH_CONDITION_MET |
+| EQUAL | BREACH_CONDITION_NOT_MET | BREACH_CONDITION_MET |
+| ABOVE | BREACH_CONDITION_NOT_MET | BREACH_CONDITION_NOT_MET |
+
+Apply the matrix only after all gates pass. Require force MANDATORY, applicable
+period, known comparator, EXACT measure, ACCOUNT_EQUITY_OBSERVATION_AT_T event,
+all Conditions NONE and all five independently supported admissions. C11 strict
+comparator rejects structurally. C9 comparator needs original admission because
+C8 does not prove it. Any required duration/grace/confirmation/provider decision
+or unsupported event yields UNKNOWN for this bounded instantaneous model.
+
+State copies as_of=T, currency=request account currency, replayed comparison
+identity, H(RuleReference), exact upstream relation/difference, and the admitted
+permitted comparator. breach_when is LESS_THAN for GREATER_THAN_OR_EQUAL and
+LESS_THAN_OR_EQUAL for GREATER_THAN. condition is the matrix result. No new
+monetary subtraction, rounding, conversion or arithmetic engine is used.
+
+Result copies request T/K/cutoff/scope and emits fixed required_targets and five
+AdmissionBindings in target order, with assertion/receipt hashes null iff absent.
+Each binding originals is the complete expected inventory, not an assertion of
+successful admission. ReconstructionEvidence contains an exact detached Request,
+H(Request), H(the original upstream envelope) or null, and H(the C12 context) or
+null. ESTABLISHED has state nonnull, reason_codes=[state.condition], findings=[].
+UNKNOWN has state=null, exactly one code and one matching Finding; valid native
+references are retained. assessment_identity is IDENTITY_PREFIX + H(the complete
+result without assessment_identity); temporal_scope and all returned fields
+participate. No input is mutated and all returned objects are detached copies.
+
+Detached validation calls the public C12 evaluator again with original independent
+contexts, performing genuine dependency replay again. Invalid input keeps the
+invalid-input error. Any other noncanonical or unequal caller result raises
+exactly ValueError("HISTORICAL_LOSS_LIMIT_WITNESS_RESULT_MISMATCH"). Complete
+canonical JSON comparison is type-sensitive, including false versus zero.
+Recomputed caller identities cannot bypass reconstruction.
+
+### Collection identity, authority and future risk boundary
+
+Local originals are unique by evidence_id, sorted lexically; imported arrays
+retain owner order. Inventory and receipt members are unique (owner,evidence_id),
+ordered C8,C9,C10,C11,C12 then evidence_id. Assertions and receipts are unique by
+target, target-ordered, maximum five. Citations are unique by
+(owner,evidence_id,start,end) in that order. Required targets and bindings contain
+all five exactly. Findings count is zero or one; reason_codes count is one.
+Native arrays retain original owner order. Reconstruction retains original Bytes.
+
+All seven Authority values and top-level execution are exact Boolean false.
+limitations is exactly this ordered array:
+
+```text
+AS_OF_ONLY
+POINT_OBSERVATION_ONLY
+SOURCE_REVIEW_CUTOFFS_NOT_LATEST_AT_K
+NO_CONTINUOUS_BREACH_ABSENCE
+NO_PROVIDER_RECORDED_BREACH_STATUS
+NO_DISQUALIFICATION_OR_REINSTATEMENT
+NO_CURRENT_ACCOUNT_ELIGIBILITY
+NO_MARGIN_OR_RISK_BUDGET_APPROVAL
+NO_PRETRADE_STOP_LOSS_APPROVAL
+NO_TRADING_OR_EXECUTION_AUTHORIZATION
+NO_PAYOUT_AUTHORIZATION
+SOURCE_AUTHENTICATION_EXTERNAL
+FROZEN_AWAITING_PAYOUT_VETO_EXTERNAL
+```
+
+Hashes bind content, not external truth or issuer authenticity. Semantic admission
+and original source authentication belong to the independent host, which must
+not forward caller-controlled approval as its own trusted context. Synthetic
+fixtures establish software reachability only, never real FTMO applicability.
+
+The owner's future requirement remains mandatory: never grant positive trade-risk
+approval when the projected account-wide adverse equity path violates a proven
+applicable daily or other mandatory loss constraint. That separate prospective
+branch must include existing positions, pending orders, proposed fills, costs,
+slippage, gaps, rule evolution and account freshness; critical unknowns fail
+closed. A stop-loss is not a guaranteed execution price. C12 implements none of
+that gate, invents no 5% rule and does not alter C10's supported inclusive 3%
+model. FROZEN_AWAITING_PAYOUT remains an independent veto.
+
+The acyclic construction is: original upstream bundles/independent contexts ->
+genuine replay -> references/inventory -> fixed targets/required support ->
+assertions -> request hash -> independent C12 context/receipts -> UNKNOWN or
+established condition -> full result identity. Receipt success cannot choose its
+own rule, targets or support. Implementation scope is this dedicated C12 owner,
+its focused test module and this strictly append-only architecture section.
+Full regression and Git operations require separate explicit authorization.
