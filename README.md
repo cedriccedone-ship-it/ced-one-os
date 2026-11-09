@@ -1,6 +1,7 @@
 # Ced-One OS
 
-A provider-independent Python foundation for governed capability execution, with a deterministic XAUUSD analysis library.
+CED-ONE is a provider-independent AI Operating System foundation. Trading is Proof #1,
+governed through Mission Control; Core and Trading evolve together.
 
 The current implementation provides one local Mission Control pipeline, explicit policies and executors, task lifecycle validation, in-memory audit records, and factual trading analysis. Core, memory, communication, and generic integration packages remain placeholders. There are no live data feeds, broker connections, external AI calls, or trading execution.
 
@@ -17,6 +18,33 @@ python scripts/local_candle_analysis.py
 ```
 
 The example registers a read-only candle executor and a bounded allow policy. It analyzes two completed H1 candles; the third candle is still open at the evaluation time and is excluded. Output includes source identity, causal cutoff, rule version, policy decision and audit reference. Input is synthetic, but the analysis uses the real implementation.
+
+Run a governed multi-analysis mission:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B scripts/local_factual_market_context.py
+```
+
+This explicitly registers the existing `factual_market_context_composition` route
+under a narrow read-only policy. One Mission Control task runs the fixed seven-timeframe,
+ten-analysis profile, producing 70 factual envelopes and 60 adjacent relationships.
+The demonstration aggregates an invented minute-price path into historical OHLC;
+open candles are excluded by the real causal source owner. Output shows routing,
+source identities, separate composition state, validation and Mission Control audit.
+
+The execution input contains exactly `symbol="XAUUSD"`, one timezone-aware historical
+`requested_evaluation_timestamp`, and `timeframe_histories` with D1/H4/H1/M30/M15/M5/M1
+raw OHLC arrays. Configurations and analyzers are fixed by registration. The result
+contains `composition` and `evidence` (full sources, source context, factual envelopes
+and factual context); native artifacts retain their existing contracts and identities.
+Public native validators run before return. Invalid sources or failed analysis validation
+fail the task; valid unavailable evidence remains unavailable even when calculation completes.
+The host supplies authorization before execution; internal analyses are dependencies of
+one approved composite task, without separate Mission Control approvals.
+
+Policy permission and `COMPLETED` concern local analysis execution only. They grant
+no trading, margin, payout or financial-risk approval. C1–C12 retain their authority
+boundaries, deterministic risk gates remain binding, and audit remains in-memory.
 
 ## Execution contract
 
@@ -45,7 +73,7 @@ Market structure rule `market_structure_v2` uses strictly two-sided pivots. Brea
 `Mission Control → Business Division → Specialist / Capability → registered local executor`
 
 - `src/ced_one/mission_control/`: generic orchestration, contracts, policy and task lifecycle.
-- `src/ced_one/business_divisions/trading/`: domain routing, factual analyzers and explicit candle execution composition.
+- `src/ced_one/business_divisions/trading/`: domain routing, factual analyzers and explicit local execution compositions.
 - `tests/`: boundary, regression and producer-to-consumer integration tests.
 - `scripts/`: runnable local example.
 - `docs/`: governing documents and architecture decisions.
