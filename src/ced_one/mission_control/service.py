@@ -20,13 +20,21 @@ from ced_one.mission_control.types import ApprovalState, MissionResult, RequestS
 class MissionControlService:
     """Execute explicitly registered capabilities under an explicitly supplied policy."""
 
-    def __init__(self, division_registry: dict[str, Any] | None = None, *, runtime=None, policy: ExecutionPolicy | None = None):
+    def __init__(self, division_registry: dict[str, Any] | None = None, *, runtime=None, policy: ExecutionPolicy | None = None, archive=None):
         self.division_registry = {} if division_registry is None else division_registry
         self.resolver = RequestResolver(self.division_registry)
         self.runtime = runtime if runtime is not None else LocalExecutionRuntime()
         self.policy = policy if policy is not None else ExecutionPolicy("default_deny", 1)
         self.dispatcher = MissionExecutionDispatcher(self.division_registry, self.runtime)
         self.execution_history: list[MissionResult] = []
+        self.archive = archive
+
+    def get_archived_mission(self, mission_id: str):
+        """Read historical data only; never restore a task or its authorization."""
+        if self.archive is None:
+            from ced_one.memory.mission_store import ArchiveNotConfiguredError
+            raise ArchiveNotConfiguredError()
+        return self.archive.get(mission_id)
 
     def handle_request(self, user_goal: str, *, business_division: str | None = None,
                        request_type: str = "general", priority: str = "normal", source: str = "user",
@@ -52,6 +60,21 @@ class MissionControlService:
                 specialist=specialist_name, capability=capability_name, summary=summary,
                 errors=errors or [], result_payload=payload or {}, approval_state=approval,
                 success=status == RequestStatus.COMPLETED and details["execution_performed"], metadata=details)
+            if self.archive is not None:
+                from ced_one.memory.mission_store import ArchiveError
+                details["archive"] = {"status": "stored"}
+                try:
+                    self.archive.save(request, result, {
+                        "policy_id": self.policy.policy_id,
+                        "policy_version": self.policy.policy_version,
+                        "default_decision": self.policy.default_decision,
+                    })
+                except ArchiveError as exc:
+                    details["archive"] = {"status": "failed", "error_code": exc.code}
+                except Exception:
+                    # An optional store must never turn a finished execution into
+                    # another attempt, or recursively enter finish() on failure.
+                    details["archive"] = {"status": "failed", "error_code": "ARCHIVE_ERROR"}
             self.execution_history.append(result)
             return result
 

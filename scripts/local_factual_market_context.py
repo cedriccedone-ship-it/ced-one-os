@@ -1,11 +1,12 @@
 """Synthetic historical analysis through the official Mission Control pipeline."""
 from datetime import datetime, timedelta, timezone
+import argparse
 import json
+import sys
 
-from ced_one.business_divisions.trading.execution import register_factual_market_context_executor
-from ced_one.business_divisions.trading.resolver import TradingDivisionResolver
 from ced_one.mission_control import LocalExecutionRuntime, MissionControlService
 from ced_one.mission_control.policy import ExecutionPolicy, PolicyDecision, PolicyRule
+from ced_one.memory.mission_store import SQLiteMissionArchive
 
 
 def synthetic_payload():
@@ -38,23 +39,41 @@ def synthetic_payload():
             "timeframe_histories": histories}
 
 
-def main():
-    runtime = LocalExecutionRuntime()
-    register_factual_market_context_executor(runtime)
-    policy = ExecutionPolicy("local_factual_market_context", 1, rules=[PolicyRule(
-        "allow_fixed_read_only_composition", 1, 1, PolicyDecision.ALLOW,
-        division_name="trading", specialist_name="factual_market_context_analyst",
-        capability_name="factual_market_context_composition", permission_scope="read_only",
-        adapter_name="local", execution_mode="local", risk_level="low", impact_level="limited",
-    )])
-    service = MissionControlService({"trading": TradingDivisionResolver()}, runtime=runtime, policy=policy)
-    goal = "Compose factual market context"
-    result = service.handle_request(goal, business_division="trading", context=synthetic_payload())
-    if not result.success:
-        raise RuntimeError(result.errors or result.summary)
+def main(argv=()):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--archive", help="Explicit local SQLite path; use a private directory outside the repository.")
+    parser.add_argument("--read", metavar="MISSION_ID", help="Read a historical mission without execution.")
+    args = parser.parse_args(list(argv))
+    if args.read and not args.archive:
+        parser.error("--read requires --archive")
+    archive = SQLiteMissionArchive(args.archive) if args.archive else None
+    if args.read:
+        # No division, executor or allow policy is registered for this operation.
+        record = MissionControlService(archive=archive).get_archived_mission(args.read)
+        goal, result = record.request.user_goal, record.result
+    else:
+        from ced_one.business_divisions.trading.execution import register_factual_market_context_executor
+        from ced_one.business_divisions.trading.resolver import TradingDivisionResolver
+        runtime = LocalExecutionRuntime()
+        register_factual_market_context_executor(runtime)
+        policy = ExecutionPolicy("local_factual_market_context", 1, rules=[PolicyRule(
+            "allow_fixed_read_only_composition", 1, 1, PolicyDecision.ALLOW,
+            division_name="trading", specialist_name="factual_market_context_analyst",
+            capability_name="factual_market_context_composition", permission_scope="read_only",
+            adapter_name="local", execution_mode="local", risk_level="low", impact_level="limited",
+        )])
+        service = MissionControlService({"trading": TradingDivisionResolver()}, runtime=runtime, policy=policy, archive=archive)
+        goal = "Compose factual market context"
+        result = service.handle_request(goal, business_division="trading", context=synthetic_payload())
+        if not result.success:
+            raise RuntimeError(result.errors or result.summary)
     composition = result.result_payload["composition"]
     evidence = result.result_payload["evidence"]
     print(json.dumps({
+        "operation": "archive_read" if args.read else "execute",
+        "execution_performed_now": not bool(args.read),
+        "temporal_scope": "HISTORICAL_RECORD_ONLY" if args.read else "SYNTHETIC_HISTORICAL_ANALYSIS",
+        "archive": result.metadata.get("archive"),
         "user_request": goal, "input_kind": "synthetic historical OHLC",
         "mission_id": result.request_id, "status": result.status.value, "summary": result.summary,
         "division": result.division, "specialist": result.specialist, "capability": result.capability,
@@ -71,10 +90,11 @@ def main():
         "audit_events": [{key: event[key] for key in (
             "event_type", "task_id", "mission_id", "timestamp",
         )} for event in result.metadata["task_graph"]["audit_events"]],
-        "interpretation": "Analysis execution completed; factual coverage is reported separately. "
+        "interpretation": ("Historical archive read; no execution or renewed authorization. " if args.read else "") +
+                          "Analysis execution completed; factual coverage is reported separately. "
                           "Policy permits local analysis only. No trading or financial-risk approval is granted.",
     }, indent=2))
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

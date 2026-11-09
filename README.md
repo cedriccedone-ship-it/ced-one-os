@@ -3,7 +3,7 @@
 CED-ONE is a provider-independent AI Operating System foundation. Trading is Proof #1,
 governed through Mission Control; Core and Trading evolve together.
 
-The current implementation provides one local Mission Control pipeline, explicit policies and executors, task lifecycle validation, in-memory audit records, and factual trading analysis. Core, memory, communication, and generic integration packages remain placeholders. There are no live data feeds, broker connections, external AI calls, or trading execution.
+The current implementation provides one local Mission Control pipeline, explicit policies and executors, task lifecycle validation, optional durable mission archives, and factual trading analysis. Memory currently stores historical missions only; general context retrieval is not implemented. Core, communication, and generic integration packages remain placeholders. There are no live data feeds, broker connections, external AI calls, or trading execution.
 
 ## Run locally
 
@@ -44,7 +44,36 @@ one approved composite task, without separate Mission Control approvals.
 
 Policy permission and `COMPLETED` concern local analysis execution only. They grant
 no trading, margin, payout or financial-risk approval. C1–C12 retain their authority
-boundaries, deterministic risk gates remain binding, and audit remains in-memory.
+boundaries and deterministic risk gates remain binding. Live audit is in-memory;
+an optional archive retains the finished mission and its complete audit.
+
+Save and recover a mission across separate Python processes:
+
+```sh
+archive_dir="$(mktemp -d "${TMPDIR:-/tmp}/ced-one-missions.XXXXXX")"
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B scripts/local_factual_market_context.py --archive "$archive_dir/missions.sqlite3"
+# Use the mission_id printed above:
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B scripts/local_factual_market_context.py --archive "$archive_dir/missions.sqlite3" --read YOUR_MISSION_ID
+```
+
+Hosts opt in with `MissionControlService(archive=SQLiteMissionArchive(path))` and
+read with `get_archived_mission(mission_id)`. Reads return an `ArchivedMission`
+marked `HISTORICAL_RECORD_ONLY`, retaining typed request/result, source identities,
+original evaluation boundary, policy evidence and audit. No executor is registered
+for the example's read mode. Historical success and `UNAVAILABLE` retain their
+original meaning; reading grants no new authorization and performs no analysis.
+
+Storage is atomic, versioned and checksummed. First publication never replaces an
+existing file. Recovery can repair SQLite rollbackjournals without rerunning a
+mission; existing empty or unknown files are refused. Known credential keys,
+including API secrets and secret access keys, refuse saving. This field-name
+filter is not a complete secretscanner; keep secrets out of inputs and text.
+`metadata.archive.status` reports
+`stored` or `failed` with a fixed error code. A storage failure preserves the
+execution outcome and never retries analysis. Checksums provide content integrity,
+not protection against a writer who can also replace the checksum. Archive paths
+are host-selected; use a private directory outside the repository. See the
+[v1 storage contract](docs/system_architecture.md#durable-mission-archive-v1).
 
 ## Execution contract
 
@@ -58,7 +87,7 @@ Register executors with `LocalExecutionRuntime.register(contract, executor)`. Ea
 - `COMPLETED` and `success=True`: execution occurred and the output passed validation.
 - Runtime exceptions and invalid output: structured failure results.
 
-Mocks must be registered explicitly. Historical routing examples no longer report successful execution merely because a plan exists. Approval resumption, automatic retry scheduling, persistent audit storage and hard interruption of synchronous Python code are not implemented.
+Mocks must be registered explicitly. Historical routing examples no longer report successful execution merely because a plan exists. Approval resumption, automatic retry scheduling, in-flight crash recovery and hard interruption of synchronous Python code are not implemented.
 
 ## Trading analysis
 
