@@ -56,6 +56,7 @@ class TradingDivisionResolver(BusinessDivision):
             "premium_discount_intelligence",
             "factual_market_context_composition",
             "archived_market_state_synthesis",
+            "governed_strategy_candidate_replay",
         ]
 
     def describe(self) -> dict[str, Any]:
@@ -95,7 +96,10 @@ class TradingDivisionResolver(BusinessDivision):
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
         specialist_name = "market_analyst"
         capability_name = "market_observation"
-        if "archived market state synthesis" in text or "archived_market_state_synthesis" in text:
+        if "governed strategy candidate replay" in text or "governed_strategy_candidate_replay" in text:
+            specialist_name = "factual_market_context_analyst"
+            capability_name = "governed_strategy_candidate_replay"
+        elif "archived market state synthesis" in text or "archived_market_state_synthesis" in text:
             specialist_name = "factual_market_context_analyst"
             capability_name = "archived_market_state_synthesis"
         elif any(term in text for term in ["factual market context", "factual context composition", "compose factual market context"]):
@@ -145,6 +149,9 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_specialist(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if "governed strategy candidate replay" in text or "governed_strategy_candidate_replay" in text:
+            return {"name": "factual_market_context_analyst", "division_name": self.name,
+                    "permission_scope": "read_only", "rationale": "Reuse the specialist for historical technical candidate reconstruction."}
         if "archived market state synthesis" in text or "archived_market_state_synthesis" in text:
             return {"name": "factual_market_context_analyst", "division_name": self.name,
                     "permission_scope": "read_only", "rationale": "Reuse the factual specialist for archived evidence synthesis."}
@@ -234,6 +241,10 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_capability(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if "governed strategy candidate replay" in text or "governed_strategy_candidate_replay" in text:
+            return {"name": "governed_strategy_candidate_replay", "division_name": self.name,
+                    "contract": "trading.governed_strategy_candidate_replay.v1", "permission_scope": "read_only",
+                    "rationale": "Reconstruct historical strategy and technical candidate from one explicitly selected archive record."}
         if "archived market state synthesis" in text or "archived_market_state_synthesis" in text:
             return {"name": "archived_market_state_synthesis", "division_name": self.name,
                     "contract": "trading.archived_market_state_synthesis.v1", "permission_scope": "read_only",

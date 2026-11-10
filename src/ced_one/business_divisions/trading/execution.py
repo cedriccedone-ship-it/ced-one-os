@@ -191,8 +191,8 @@ ARCHIVED_SYNTHESIS_CONTRACT = "trading.archived_market_state_synthesis.v1"
 ARCHIVED_SYNTHESIS_RULE = "archived_market_state_synthesis_v1"
 
 
-def execute_archived_market_state_synthesis(request):
-    """Validate the original as-of bundle, then run two existing factual owners."""
+def _validated_archived_composition(payload):
+    """Shared original-evidence validation for governed archive consumers."""
     from ced_one.mission_control.service import validate_archived_context_projection
     from ced_one.business_divisions.trading.causal_snapshot_availability import validate_source
     from ced_one.business_divisions.trading.causal_multi_timeframe_context import validate_source_context
@@ -203,15 +203,9 @@ def execute_archived_market_state_synthesis(request):
     from ced_one.business_divisions.trading.factual_market_context_composition import (
         CONTRACT, RULE_VERSION as COMPOSITION_RULE, validate_factual_composition,
     )
-    from ced_one.business_divisions.trading.causal_factual_event_chronology import (
-        CAUSAL_FACTUAL_EVENT_CHRONOLOGY, validate_factual_chronology,
-    )
-    from ced_one.business_divisions.trading.causal_market_state_synthesis import (
-        CAUSAL_MARKET_STATE_SYNTHESIS, validate_market_state_synthesis,
-    )
     from ced_one.business_divisions.trading.validation import parse_timestamp
 
-    projection = validate_archived_context_projection(request.input_payload)
+    projection = validate_archived_context_projection(payload)
     ref, original = projection["selection"], projection["original_payload"]
     if (ref["division"], ref["capability"], ref["contract_id"], ref["rule_version"]) != (
             "trading", "factual_market_context_composition", CONTRACT, COMPOSITION_RULE):
@@ -261,6 +255,27 @@ def execute_archived_market_state_synthesis(request):
                 raise ValueError("Original envelope source context mismatch.")
     composition = validate_factual_composition(original["composition"], context)
     bound(composition)
+    return ref, sources, source_context, context, matrix, composition
+
+
+def execute_archived_market_state_synthesis(request):
+    """Validate the original as-of bundle, then run two existing factual owners."""
+    from ced_one.business_divisions.trading.causal_factual_multi_timeframe_context import TIMEFRAME_ORDER
+    from ced_one.business_divisions.trading.causal_factual_event_chronology import (
+        CAUSAL_FACTUAL_EVENT_CHRONOLOGY, validate_factual_chronology,
+    )
+    from ced_one.business_divisions.trading.causal_market_state_synthesis import (
+        CAUSAL_MARKET_STATE_SYNTHESIS, validate_market_state_synthesis,
+    )
+    from ced_one.business_divisions.trading.validation import parse_timestamp
+
+    ref, sources, source_context, context, matrix, composition = _validated_archived_composition(request.input_payload)
+
+    def bound(artifact):
+        _observation_only(artifact)
+        if artifact["symbol"] != "XAUUSD" or parse_timestamp(artifact["requested_evaluation_timestamp"]) != parse_timestamp(ref["evaluation_time"]):
+            raise ValueError("Original economic boundary or symbol mismatch.")
+
     chronology = CAUSAL_FACTUAL_EVENT_CHRONOLOGY.analyze({
         "factual_context": context, "factual_envelopes": matrix, "composition": composition,
     }).to_dict()
@@ -301,3 +316,135 @@ def register_archived_market_state_synthesis_executor(runtime: LocalExecutionRun
         metadata={"risk_level": "low", "impact_level": "limited", "rule_version": ARCHIVED_SYNTHESIS_RULE,
                   "requires_archived_context": True, "configuration": "native_defaults"},
     ), execute_archived_market_state_synthesis)
+
+
+STRATEGY_REPLAY_CAPABILITY = "governed_strategy_candidate_replay"
+STRATEGY_REPLAY_CONTRACT = "trading.governed_strategy_candidate_replay.v1"
+STRATEGY_REPLAY_RULE = "governed_strategy_candidate_replay_v1"
+
+
+def _strategy_replay_versions():
+    from ced_one.business_divisions.trading import (
+        causal_snapshot_availability as source, causal_multi_timeframe_context as context,
+        causal_factual_intelligence_envelope as envelope, causal_factual_multi_timeframe_context as factual,
+        factual_market_context_composition as composition, xauusd_causal_liquidity_reversal as strategy,
+        causal_trading_policy_strategy_action_formulation as action, xauusd_technical_trade_candidate as candidate,
+    )
+    return {
+        "source": {"contract": source.CONTRACT, "rule_version": source.RULE_VERSION},
+        "source_context": {"contract": context.CONTRACT, "rule_version": context.RULE_VERSION},
+        "envelope": {"contract": envelope.CONTRACT, "rule_version": envelope.RULE_VERSION},
+        "factual_context": {"contract": "trading.causal_factual_multi_timeframe_context.v1", "rule_version": factual.RULE_VERSION},
+        "composition": {"contract": composition.CONTRACT, "rule_version": composition.RULE_VERSION},
+        "strategy": {"contract": strategy.CONTRACT, "rule_version": strategy.RULE_VERSION,
+                     "strategy_version": strategy.STRATEGY_VERSION, "factual_rules": dict(strategy.FACTUAL_RULES)},
+        "action": {"contract": action.CONTRACT, "rule_version": action.RULE_VERSION},
+        "candidate": {"contract": candidate.CONTRACT, "rule_version": candidate.RULE_VERSION},
+    }
+
+
+def _strategy_replay_profile(strategy_definition, setup_ordinal, entry_validity_duration_seconds):
+    from datetime import timedelta
+    from ced_one.business_divisions.trading.xauusd_causal_liquidity_reversal import normalize_strategy_definition
+    from ced_one.mission_control.policy import validate_context_data
+
+    if type(setup_ordinal) is not int or setup_ordinal < 0:
+        raise ValueError("setup_ordinal must be an explicit nonnegative integer.")
+    if type(entry_validity_duration_seconds) is not int or entry_validity_duration_seconds <= 0:
+        raise ValueError("Entry validity must be explicit positive integer elapsed seconds.")
+    try:
+        timedelta(seconds=entry_validity_duration_seconds)
+    except OverflowError as exc:
+        raise ValueError("Entry validity duration is not representable.") from exc
+    definition = normalize_strategy_definition(strategy_definition)
+    if (definition["strategy_version"], definition["rule_version"]) != ("0.2", "revision_2.1"):
+        raise ValueError("Only Strategy #1 v0.2 revision_2.1 is supported.")
+    profile = {"strategy_definition": definition, "setup_ordinal": setup_ordinal,
+               "entry_validity_duration_seconds": entry_validity_duration_seconds,
+               "native_versions": _strategy_replay_versions()}
+    if validate_context_data(profile):
+        raise ValueError("Replay profile must contain supported finite JSON data only.")
+    return profile
+
+
+def execute_governed_strategy_candidate_replay(request):
+    """Reconstruct historical technical references; never authorize a trade."""
+    from copy import deepcopy
+    from ced_one.business_divisions.trading import xauusd_causal_liquidity_reversal as strategy
+    from ced_one.business_divisions.trading import causal_trading_policy_strategy_action_formulation as actions
+    from ced_one.business_divisions.trading import xauusd_technical_trade_candidate as candidates
+
+    contract = request.metadata["capability_contract"]
+    if (contract["name"], contract["contract_id"], contract["permission_scope"]) != (
+            STRATEGY_REPLAY_CAPABILITY, STRATEGY_REPLAY_CONTRACT, "read_only"):
+        raise ValueError("Replay execution contract mismatch.")
+    metadata = contract["metadata"]
+    profile = metadata["replay_profile"]
+    strategy.exact(profile, {"strategy_definition", "setup_ordinal", "entry_validity_duration_seconds", "native_versions"}, "Replay profile")
+    expected = _strategy_replay_profile(profile["strategy_definition"], profile["setup_ordinal"], profile["entry_validity_duration_seconds"])
+    if (strategy.identity("", profile) != strategy.identity("", expected) or
+            metadata["profile_sha256"] != strategy.identity("", expected) or metadata["rule_version"] != STRATEGY_REPLAY_RULE):
+        raise ValueError("Replay profile or native version mismatch.")
+    ref, sources, _, _, _, _ = _validated_archived_composition(request.input_payload)
+    for tf in strategy.TIMEFRAMES:
+        source = sources[tf]
+        if {k: source["metadata"][k] for k in ("contract", "rule_version")} != profile["native_versions"]["source"]:
+            raise ValueError("Unsupported strategy source version.")
+    assessment_input = {"strategy_definition": deepcopy(profile["strategy_definition"]), "as_of": ref["evaluation_time"],
+                        "sources": {tf: deepcopy(sources[tf]) for tf in strategy.TIMEFRAMES}, "setup_ordinal": profile["setup_ordinal"]}
+    assessment = strategy.XAUUSD_CAUSAL_LIQUIDITY_REVERSAL.analyze(assessment_input).to_dict()
+    assessment = strategy.validate_strategy_assessment(assessment, assessment_input)
+    action_policy = {
+        "contract": actions.DEFINITION_CONTRACT, "policy_id": STRATEGY_REPLAY_CAPABILITY + ".intent", "policy_version": 1,
+        "strategy_definition": deepcopy(profile["strategy_definition"]),
+        "configuration_fingerprint": strategy.identity("configuration_", profile["strategy_definition"]["configuration"]),
+        "declared_action": {"action_type": "DIRECTIONAL_ENTRY_INTENT", "direction": profile["strategy_definition"]["direction"]},
+    }
+    action_input = {"action_policy_definition": action_policy, "strategy_assessment": assessment, "assessment_input": assessment_input}
+    # The public action analyzer itself reconstructs through the strategy validator.
+    action = actions.STRATEGY_ACTION_FORMULATION.analyze(action_input).to_dict()
+    candidate_input = formulation = candidate = None
+    outcome = "UNAVAILABLE" if any(sources[tf]["source_availability"] == "UNAVAILABLE" for tf in strategy.TIMEFRAMES) else assessment["status"]
+    if assessment["status"] == "COMPLETE" and outcome != "UNAVAILABLE":
+        candidate_input = {
+            "candidate_policy_definition": {"contract": candidates.POLICY_CONTRACT,
+                "policy_id": STRATEGY_REPLAY_CAPABILITY + ".candidate", "policy_version": 1,
+                "configuration": {"entry_validity_duration_seconds": profile["entry_validity_duration_seconds"]}},
+            "strategy_assessment": assessment, "action_formulation": action, "action_formulation_input": action_input,
+        }
+        formulation = candidates.XAUUSD_TECHNICAL_TRADE_CANDIDATE.analyze(candidate_input).to_dict()
+        formulation = candidates.validate_technical_candidate_formulation(formulation, candidate_input)
+        candidate = formulation["candidate"]
+        outcome = "CANDIDATE_FORMULATED" if candidate is not None else "NOT_FORMULATED"
+    return {
+        "outcome": outcome, "strategy_assessment": assessment, "action_formulation": action,
+        "candidate_formulation": formulation, "candidate": candidate,
+        "reconstruction": {"assessment_input": assessment_input, "action_input": action_input, "candidate_input": candidate_input},
+        "provenance": {"source_selection": ref, "new_mission_id": request.mission_id, "evaluation_time": ref["evaluation_time"],
+            "source_snapshot_ids": {tf: source["source_snapshot_id"] for tf, source in sources.items()},
+            "strategy_source_snapshot_ids": {tf: sources[tf]["source_snapshot_id"] for tf in strategy.TIMEFRAMES},
+            "replay_profile": deepcopy(profile), "profile_sha256": metadata["profile_sha256"]},
+        "metadata": {"contract": STRATEGY_REPLAY_CONTRACT, "rule_version": STRATEGY_REPLAY_RULE,
+                     "authority_scope": "read_only", "candidate_scope": "HISTORICAL_TECHNICAL_REFERENCE_ONLY",
+                     "source_authentication": "NOT_VERIFIED", "execution_output": False},
+        "authority": dict.fromkeys(("quantity_selection", "budget_approval", "position_effect_compliance",
+                                    "margin_capital_approval", "trade_decision", "financial_risk", "execution"), False),
+        "execution": False,
+    }
+
+
+def register_governed_strategy_candidate_replay_executor(runtime: LocalExecutionRuntime, *, strategy_definition,
+                                                        setup_ordinal, entry_validity_duration_seconds) -> None:
+    """Host-selected profile, isolated and bound by the existing authorization snapshot."""
+    from ced_one.business_divisions.trading.xauusd_causal_liquidity_reversal import identity
+
+    profile = _strategy_replay_profile(strategy_definition, setup_ordinal, entry_validity_duration_seconds)
+    runtime.register(CapabilityExecutionContract(
+        name=STRATEGY_REPLAY_CAPABILITY, division_name="trading", contract_id=STRATEGY_REPLAY_CONTRACT,
+        permission_scope="read_only", retryable=False,
+        input_schema={"required_fields": ["selection", "original_payload"]},
+        output_schema={"required_fields": ["outcome", "strategy_assessment", "action_formulation", "candidate_formulation",
+                                          "candidate", "reconstruction", "provenance", "metadata", "authority", "execution"]},
+        metadata={"risk_level": "low", "impact_level": "limited", "rule_version": STRATEGY_REPLAY_RULE,
+                  "requires_archived_context": True, "replay_profile": profile, "profile_sha256": identity("", profile)},
+    ), execute_governed_strategy_candidate_replay)

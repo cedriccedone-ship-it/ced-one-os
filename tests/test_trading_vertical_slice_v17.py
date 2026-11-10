@@ -29,6 +29,7 @@ OPERATIONAL_CAPABILITIES = [
     "premium_discount_intelligence",
     "factual_market_context_composition",
     "archived_market_state_synthesis",
+    "governed_strategy_candidate_replay",
 ]
 
 OPERATIONAL_SPECIALISTS = [

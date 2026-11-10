@@ -104,6 +104,28 @@ historical archive availability. Selection never restores historical approval.
 UNAVAILABLE, UNKNOWN, scoped absence and unproven event ordering remain native
 facts; successful analysis grants no trading or financial authority.
 
+Replay Strategy #1 against exactly one archived composition with the read-only
+`governed_strategy_candidate_replay` capability. The host registers
+`register_governed_strategy_candidate_replay_executor(runtime,
+strategy_definition=definition, setup_ordinal=0,
+entry_validity_duration_seconds=120)` from the Trading execution module.
+`definition` is an explicit native XAUUSD Causal Liquidity Reversal v0.2 /
+revision_2.1 definition, including its historical domain and configuration; the
+example ordinal and duration are host choices, not trading defaults. The complete
+normalized profile and native versions are bound into current authorization.
+
+With a matching read-only policy and archive configured, call
+`service.handle_request("Governed strategy candidate replay",
+business_division="trading", archive_selection=selection)` using the same explicit
+composition selection described above. The five original H4/H1/M15/M5/M1 sources
+must share T; all seven source slots and the original composition are validated.
+The executor reconstructs strategy, directional intent and a technical candidate.
+WAITING/UNKNOWN/UNAVAILABLE return no candidate. A returned entry/stop is a frozen
+historical technical reference, never a fill or a claim of present validity or
+trading permission. Results include native reconstruction inputs, source IDs,
+profile hash, audit and a separately archived mission. Reading remains data-only.
+See the [execution contract](docs/system_architecture.md#governed-strategy-candidate-replay-v1).
+
 ## Execution contract
 
 `MissionControlService` is the official entrypoint. `MissionControlFlow` and `MissionControlOrchestrator` are compatibility wrappers around the same service. Their `handle_request(...)` signature is retained; constructors accept optional `runtime` and `policy` dependencies.

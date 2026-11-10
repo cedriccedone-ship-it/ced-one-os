@@ -134,6 +134,14 @@ ARCHIVED_MARKET_STATE_SYNTHESIS = TradingCapability(
     division_name="trading",
 )
 
+GOVERNED_STRATEGY_CANDIDATE_REPLAY = TradingCapability(
+    name="governed_strategy_candidate_replay",
+    contract="trading.governed_strategy_candidate_replay.v1",
+    responsibility="Reconstruct historical Strategy #1 technical candidates from explicitly selected archived evidence.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 __all__ = [
     "TradingCapability",
     "COORDINATION",
@@ -151,4 +159,5 @@ __all__ = [
     "PREMIUM_DISCOUNT_INTELLIGENCE",
     "FACTUAL_MARKET_CONTEXT_COMPOSITION",
     "ARCHIVED_MARKET_STATE_SYNTHESIS",
+    "GOVERNED_STRATEGY_CANDIDATE_REPLAY",
 ]

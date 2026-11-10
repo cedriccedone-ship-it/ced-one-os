@@ -205,3 +205,53 @@ Analysis completion grants no trading, margin, financial-risk or payout authorit
 The existing complete execution-result, task and audit representations are
 retained. Larger records still fail explicitly at the unchanged 64 MiB archive
 boundary; evidence is never truncated or rerun to make storage succeed.
+
+## Governed Strategy Candidate Replay v1
+
+`governed_strategy_candidate_replay` is a read-only Trading route through the
+existing factual market context specialist and MissionControlService. Its contract
+is `trading.governed_strategy_candidate_replay.v1`, rule
+`governed_strategy_candidate_replay_v1`. The host explicitly registers a normalized
+Strategy #1 definition, nonnegative integer setup ordinal and positive integer
+candidate entry-validity duration. No strategy/domain/duration defaults are added.
+The complete profile, SHA-256 and native version manifest belong to the registered
+capability metadata and therefore the current authorization fingerprint. Changing
+registration or execution data invalidates existing dispatch authorization.
+
+Input is exactly the existing archive projection (`selection`, `original_payload`),
+selected by Core from one explicitly pinned factual-composition mission. The
+original seven-source/70-envelope bundle is validated through the same public
+owners used by archived synthesis. Its T and source identities are preserved;
+no later snapshot is filtered back to T. Strategy #1 uses exactly H4/H1/M15/M5/M1.
+Unavailable D1/M30 evidence alone does not preclude that strategy. The pinned native
+profile includes Strategy v0.2/revision_2.1 and its factual rules, source/context/
+envelope/composition versions, strategy-action v1 and technical-candidate v1.
+
+The executor constructs and publicly reconstructs the strategy assessment, runs
+the existing public strategy-action analyzer, and, only for COMPLETE, constructs
+and publicly validates the technical candidate formulation. Candidate policy and
+directional intent are generated from the registered profile; callers supply no
+artifacts, approval, alternate executors or native configuration. Native failures
+fail the mission. Missing evidence is not fabricated or converted to a signal.
+
+Output keys are `outcome`, `strategy_assessment`, `action_formulation`,
+`candidate_formulation`, `candidate`, `reconstruction`, `provenance`, `metadata`,
+`authority`, `execution`. Reconstruction contains `assessment_input`,
+`action_input`, `candidate_input` (null unless strategy COMPLETE). The two
+formulation/candidate fields are null for non-COMPLETE strategy states. Outcome
+is UNAVAILABLE if any required source is unavailable; otherwise it preserves
+WAITING/UNKNOWN/INVALIDATED/EXPIRED. COMPLETE yields CANDIDATE_FORMULATED or
+NOT_FORMULATED according to the native candidate geometry. Entry/stop/direction,
+valid_from/valid_until and native identities are preserved exactly. A candidate
+is a frozen historical formulation, not an assertion of validity at T or now.
+Current candidate validity remains the separate existing native owner.
+
+Provenance binds the complete source selection, new mission ID, original seven
+source IDs, five strategy source IDs, economic T, profile/hash and native version
+manifest. The wrapper's seven authority fields (quantity_selection,
+budget_approval, position_effect_compliance, margin_capital_approval,
+trade_decision, financial_risk, execution) and top-level execution are exact false.
+Native false flags are retained. No fill, size, financial P&L, provider compliance
+or permission is implied; FROZEN_AWAITING_PAYOUT remains a separate mandatory veto.
+Existing selection/audit/archive behavior is reused without schema or runtime
+changes. Archive availability is not backdated and reading never re-executes.
