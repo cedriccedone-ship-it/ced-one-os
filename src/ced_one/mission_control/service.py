@@ -3,18 +3,83 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from copy import deepcopy
+from datetime import datetime, timezone
+import hashlib
+import json
 from typing import Any
 
 from ced_one.mission_control.classifier import RequestClassifier
 from ced_one.mission_control.execution import ExecutionPlanStep, MissionExecutionPlan
 from ced_one.mission_control.governance import AuthorizationSnapshot, ExecutionGovernanceGate, PolicyEvaluationContext
 from ced_one.mission_control.guards import MissionGuard
-from ced_one.mission_control.policy import ExecutionPolicy, PolicyDecision, RiskImpactClassification
+from ced_one.mission_control.policy import ExecutionPolicy, PolicyDecision, RiskImpactClassification, validate_context_data
 from ced_one.mission_control.request import MissionRequestBuilder
 from ced_one.mission_control.resolver import RequestResolver
 from ced_one.mission_control.runtime import LocalExecutionRuntime, MissionExecutionDispatcher, ExecutionOutcome
 from ced_one.mission_control.tasks import MissionTask, MissionTaskGraph, TaskLifecycleState as S
 from ced_one.mission_control.types import ApprovalState, MissionResult, RequestStatus
+
+
+class ArchivedContextError(ValueError):
+    """Fixed public selection failures; never include archived payload values."""
+
+
+_SELECTION_FIELDS = {"mission_id", "record_sha256", "division", "capability", "contract_id",
+                     "rule_version", "evaluation_time", "created_not_after"}
+_PROJECTION_FIELDS = {"schema_version", "source_mission_id", "record_sha256", "division", "capability",
+                      "contract_id", "rule_version", "evaluation_time", "source_request_created_at",
+                      "created_not_after", "selected_at", "payload_sha256", "temporal_scope"}
+
+
+def _context_time(value):
+    try:
+        if type(value) is not str:
+            raise ValueError()
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.utcoffset() is None:
+            raise ValueError()
+        return parsed.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        raise ArchivedContextError("INVALID_CONTEXT_TIME") from None
+
+
+def _time_text(value):
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def _digest(value):
+    if validate_context_data(value):
+        raise ArchivedContextError("INVALID_PROJECTION")
+    try:
+        encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    except (ValueError, TypeError, RecursionError):
+        raise ArchivedContextError("INVALID_PROJECTION") from None
+
+
+def _sha256(value):
+    return type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def validate_archived_context_projection(value):
+    """Check the isolated data contract; this does not authenticate or authorize it."""
+    if type(value) is not dict or set(value) != {"selection", "original_payload"}:
+        raise ArchivedContextError("INVALID_PROJECTION")
+    ref = value["selection"]
+    if (type(ref) is not dict or set(ref) != _PROJECTION_FIELDS or
+            any(type(v) is not str or not v.strip() for v in ref.values()) or
+            ref["schema_version"] != "mission_control.archived_context.v1" or
+            ref["temporal_scope"] != "HISTORICAL_RECORD_ONLY" or
+            not _sha256(ref["record_sha256"]) or not _sha256(ref["payload_sha256"]) or
+            type(value["original_payload"]) is not dict):
+        raise ArchivedContextError("INVALID_PROJECTION")
+    times = [_context_time(ref[k]) for k in (
+        "evaluation_time", "source_request_created_at", "created_not_after", "selected_at")]
+    if times != sorted(times) or times[-1] > datetime.now(timezone.utc):
+        raise ArchivedContextError("SOURCE_TIME_MISMATCH")
+    if _digest(value["original_payload"]) != ref["payload_sha256"]:
+        raise ArchivedContextError("PROJECTION_CONTENT_MISMATCH")
+    return deepcopy(value)
 
 
 class MissionControlService:
@@ -36,13 +101,56 @@ class MissionControlService:
             raise ArchiveNotConfiguredError()
         return self.archive.get(mission_id)
 
+    def select_archived_context(self, selection: dict):
+        """Explicit read only. Request time is not historical archive availability."""
+        if (type(selection) is not dict or set(selection) != _SELECTION_FIELDS or
+                any(type(v) is not str or not v.strip() for v in selection.values()) or
+                not _sha256(selection["record_sha256"])):
+            raise ArchivedContextError("INVALID_SELECTION")
+        criteria = deepcopy(selection)
+        boundary = _context_time(criteria["evaluation_time"])
+        latest = _context_time(criteria["created_not_after"])
+        record = self.get_archived_mission(criteria["mission_id"])
+        if (record.mission_id != criteria["mission_id"] or record.record_sha256 != criteria["record_sha256"] or
+                record.request.request_id != record.mission_id or record.result.request_id != record.mission_id):
+            raise ArchivedContextError("SOURCE_IDENTITY_MISMATCH")
+        source = record.result
+        contract = source.metadata.get("capability_contract", {})
+        if (source.status is not RequestStatus.COMPLETED or source.success is not True or
+                source.metadata.get("execution_performed") is not True):
+            raise ArchivedContextError("SOURCE_NOT_COMPLETED")
+        if (record.request.business_division != criteria["division"] or source.division != criteria["division"] or
+                source.capability != criteria["capability"] or type(contract) is not dict or
+                contract.get("name") != criteria["capability"] or contract.get("division_name") != criteria["division"] or
+                contract.get("contract_id") != criteria["contract_id"] or contract.get("permission_scope") != "read_only" or
+                type(contract.get("metadata")) is not dict or
+                contract.get("metadata", {}).get("rule_version") != criteria["rule_version"]):
+            raise ArchivedContextError("SOURCE_ORIGIN_MISMATCH")
+        if _context_time(record.request.context.get("requested_evaluation_timestamp")) != boundary:
+            raise ArchivedContextError("SOURCE_TIME_MISMATCH")
+        selected_at = datetime.now(timezone.utc)
+        created_at = record.request.created_at.astimezone(timezone.utc)
+        if not boundary <= created_at <= latest <= selected_at:
+            raise ArchivedContextError("SOURCE_TIME_MISMATCH")
+        projection = {"selection": {
+            "schema_version": "mission_control.archived_context.v1", "source_mission_id": record.mission_id,
+            "record_sha256": record.record_sha256, "division": criteria["division"], "capability": criteria["capability"],
+            "contract_id": criteria["contract_id"], "rule_version": criteria["rule_version"],
+            "evaluation_time": _time_text(boundary), "source_request_created_at": _time_text(created_at),
+            "created_not_after": _time_text(latest), "selected_at": _time_text(selected_at),
+            "payload_sha256": _digest(source.result_payload), "temporal_scope": "HISTORICAL_RECORD_ONLY",
+        }, "original_payload": deepcopy(source.result_payload)}
+        return validate_archived_context_projection(projection)
+
     def handle_request(self, user_goal: str, *, business_division: str | None = None,
                        request_type: str = "general", priority: str = "normal", source: str = "user",
                        context: dict[str, Any] | None = None, metadata: dict[str, Any] | None = None,
-                       constraints: list[str] | None = None) -> MissionResult:
+                       constraints: list[str] | None = None, archive_selection: dict | None = None) -> MissionResult:
         request = MissionRequestBuilder.from_user_goal(user_goal, business_division=business_division,
             request_type=request_type, priority=priority, source=source, context=deepcopy(context),
             metadata=deepcopy(metadata), constraints=deepcopy(constraints))
+        if archive_selection is not None and context is None:
+            request.context = {"archive_selection": deepcopy(archive_selection)}
         details = {"execution_performed": False}
         graph = MissionTaskGraph(request.request_id, f"plan_{request.request_id}")
         graph.audit_log.record("REQUEST_RECEIVED", mission_id=request.request_id)
@@ -128,7 +236,17 @@ class MissionControlService:
                 return finish(RequestStatus.UNSUPPORTED, "No capability executor is registered.", errors=["Missing capability executor."])
             if (contract.name, contract.division_name, contract.permission_scope, contract.contract_id) != (capability_name, division_name, permission, capability.get("contract")):
                 return finish(RequestStatus.FAILED, "Registered contract does not match assignment.", errors=["Capability contract binding mismatch."])
-            payload = deepcopy(request.context)
+            if type(contract.metadata) is dict and contract.metadata.get("requires_archived_context") is True:
+                if archive_selection is None or context is not None:
+                    return finish(RequestStatus.FAILED, "Explicit archive selection is required.", errors=["INVALID_SELECTION_INPUT"])
+                payload = validate_archived_context_projection(self.select_archived_context(archive_selection))
+                request.context = deepcopy(payload)
+                details["archived_context_selection"] = deepcopy(payload["selection"])
+                graph.audit_log.record("ARCHIVED_CONTEXT_SELECTED", mission_id=request.request_id, **payload["selection"])
+            else:
+                if archive_selection is not None:
+                    return finish(RequestStatus.FAILED, "Capability does not accept archived context.", errors=["UNSUPPORTED_ARCHIVE_INPUT"])
+                payload = deepcopy(request.context)
             errors = contract.validate_input(payload)
             if errors:
                 return finish(RequestStatus.FAILED, "Invalid capability input.", errors=errors)
@@ -160,6 +278,16 @@ class MissionControlService:
                 graph.transition_task(task.task_id, S.REJECTED, reason=decision.reason)
                 plan.steps[-1].status = "rejected"
                 return finish(RequestStatus.REJECTED, decision.reason, errors=[decision.reason])
+            if "archived_context_selection" in details:
+                try:
+                    validate_archived_context_projection(payload)
+                    if payload["selection"] != details["archived_context_selection"]:
+                        raise ArchivedContextError("STALE_ARCHIVED_CONTEXT")
+                except ArchivedContextError:
+                    graph.transition_task(task.task_id, S.REJECTED, reason="STALE_ARCHIVED_CONTEXT")
+                    plan.steps[-1].status = "rejected"
+                    return finish(RequestStatus.REJECTED, "Archived context changed after selection.",
+                                  errors=["STALE_ARCHIVED_CONTEXT"])
             graph.transition_task(task.task_id, S.READY)
             graph.transition_task(task.task_id, S.ASSIGNED)
             current = evaluation_context()
@@ -169,6 +297,9 @@ class MissionControlService:
                 capability_contract=contract, input_payload=payload, policy=self.policy,
                 authorization_context=current, authorization_snapshot=authorization, audit_log=graph.audit_log)
             details["execution_performed"] = result.runtime_metadata.get("execution_performed", False)
+            if details["execution_performed"] and "archived_context_selection" in details:
+                graph.audit_log.record("ARCHIVED_CONTEXT_USED", task_id=task.task_id, mission_id=request.request_id,
+                                       **details["archived_context_selection"])
             details["execution_result"] = result.to_dict()
             details["capability_contract"] = contract.to_dict()
             graph.audit_log.record("EXECUTION_RESULT", task_id=task.task_id, mission_id=request.request_id, execution_result=result.to_dict())

@@ -75,6 +75,35 @@ not protection against a writer who can also replace the checksum. Archive paths
 are host-selected; use a private directory outside the repository. See the
 [v1 storage contract](docs/system_architecture.md#durable-mission-archive-v1).
 
+Reuse one archived composition in a new governed synthesis mission. First run the
+archive command above and let that process exit. Copy its printed mission ID and
+record hash into a second command:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B scripts/local_factual_market_context.py \
+  --archive "$archive_dir/missions.sqlite3" \
+  --synthesize SOURCE_MISSION_ID --record-sha256 SOURCE_RECORD_SHA256 \
+  --evaluation-time 2026-09-01T00:00:00Z \
+  --created-not-after "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```
+
+This selects exactly that record, checks its origin/version/time bindings, and
+starts a fresh Mission Control request under current policy. The existing factual
+specialist validates the original seven-source/70-envelope evidence, builds native
+chronology v2 and synthesis v1, and validates both complete results. The original
+mission is not rerun. Both missions remain separately archived; output reports
+their IDs, hashes, economic boundary, source identities and native validation.
+`--read NEW_MISSION_ID` retrieves the synthesis without execution.
+
+Core callers use `select_archived_context(selection)` for data only, or
+`handle_request(..., archive_selection=selection)` for a newly governed request.
+No caller-supplied `context` may accompany that selection. The explicit reference
+pins mission ID, record SHA-256, division, capability, contract/rule versions, T
+and the source request's `created_not_after` limit. That limit is not proof of
+historical archive availability. Selection never restores historical approval.
+UNAVAILABLE, UNKNOWN, scoped absence and unproven event ordering remain native
+facts; successful analysis grants no trading or financial authority.
+
 ## Execution contract
 
 `MissionControlService` is the official entrypoint. `MissionControlFlow` and `MissionControlOrchestrator` are compatibility wrappers around the same service. Their `handle_request(...)` signature is retained; constructors accept optional `runtime` and `policy` dependencies.

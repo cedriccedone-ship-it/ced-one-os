@@ -55,6 +55,7 @@ class TradingDivisionResolver(BusinessDivision):
             "structural_dealing_range_intelligence",
             "premium_discount_intelligence",
             "factual_market_context_composition",
+            "archived_market_state_synthesis",
         ]
 
     def describe(self) -> dict[str, Any]:
@@ -94,7 +95,10 @@ class TradingDivisionResolver(BusinessDivision):
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
         specialist_name = "market_analyst"
         capability_name = "market_observation"
-        if any(term in text for term in ["factual market context", "factual context composition", "compose factual market context"]):
+        if "archived market state synthesis" in text or "archived_market_state_synthesis" in text:
+            specialist_name = "factual_market_context_analyst"
+            capability_name = "archived_market_state_synthesis"
+        elif any(term in text for term in ["factual market context", "factual context composition", "compose factual market context"]):
             specialist_name = "factual_market_context_analyst"
             capability_name = "factual_market_context_composition"
         elif any(term in text for term in ["market structure intelligence", "swing structure"]):
@@ -141,6 +145,9 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_specialist(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if "archived market state synthesis" in text or "archived_market_state_synthesis" in text:
+            return {"name": "factual_market_context_analyst", "division_name": self.name,
+                    "permission_scope": "read_only", "rationale": "Reuse the factual specialist for archived evidence synthesis."}
         if any(term in text for term in ["factual market context", "factual context composition", "compose factual market context"]):
             return {
                 "name": "factual_market_context_analyst",
@@ -227,6 +234,10 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_capability(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if "archived market state synthesis" in text or "archived_market_state_synthesis" in text:
+            return {"name": "archived_market_state_synthesis", "division_name": self.name,
+                    "contract": "trading.archived_market_state_synthesis.v1", "permission_scope": "read_only",
+                    "rationale": "Construct chronology and synthesis from one explicitly selected archive record."}
         if any(term in text for term in ["factual market context", "factual context composition", "compose factual market context"]):
             return {
                 "name": "factual_market_context_composition",

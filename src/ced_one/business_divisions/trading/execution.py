@@ -185,3 +185,119 @@ def register_factual_market_context_executor(runtime: LocalExecutionRuntime) -> 
             "configuration": "native_defaults", "execution_envelope_version": 1,
         },
     ), execute_factual_market_context_composition)
+
+
+ARCHIVED_SYNTHESIS_CONTRACT = "trading.archived_market_state_synthesis.v1"
+ARCHIVED_SYNTHESIS_RULE = "archived_market_state_synthesis_v1"
+
+
+def execute_archived_market_state_synthesis(request):
+    """Validate the original as-of bundle, then run two existing factual owners."""
+    from ced_one.mission_control.service import validate_archived_context_projection
+    from ced_one.business_divisions.trading.causal_snapshot_availability import validate_source
+    from ced_one.business_divisions.trading.causal_multi_timeframe_context import validate_source_context
+    from ced_one.business_divisions.trading.causal_factual_intelligence_envelope import validate_factual_envelope
+    from ced_one.business_divisions.trading.causal_factual_multi_timeframe_context import (
+        CAPABILITY_ORDER, TIMEFRAME_ORDER, validate_factual_context,
+    )
+    from ced_one.business_divisions.trading.factual_market_context_composition import (
+        CONTRACT, RULE_VERSION as COMPOSITION_RULE, validate_factual_composition,
+    )
+    from ced_one.business_divisions.trading.causal_factual_event_chronology import (
+        CAUSAL_FACTUAL_EVENT_CHRONOLOGY, validate_factual_chronology,
+    )
+    from ced_one.business_divisions.trading.causal_market_state_synthesis import (
+        CAUSAL_MARKET_STATE_SYNTHESIS, validate_market_state_synthesis,
+    )
+    from ced_one.business_divisions.trading.validation import parse_timestamp
+
+    projection = validate_archived_context_projection(request.input_payload)
+    ref, original = projection["selection"], projection["original_payload"]
+    if (ref["division"], ref["capability"], ref["contract_id"], ref["rule_version"]) != (
+            "trading", "factual_market_context_composition", CONTRACT, COMPOSITION_RULE):
+        raise ValueError("Unsupported archived source contract/rule.")
+    if set(original) != {"composition", "evidence"} or type(original["evidence"]) is not dict or set(original["evidence"]) != {
+            "sources", "source_context", "factual_envelopes", "factual_context"}:
+        raise ValueError("Expected the complete original factual composition bundle.")
+    evidence = original["evidence"]
+    sources, matrix = evidence["sources"], evidence["factual_envelopes"]
+    if (type(sources) is not dict or set(sources) != set(TIMEFRAME_ORDER) or
+            type(matrix) is not dict or set(matrix) != set(TIMEFRAME_ORDER)):
+        raise ValueError("Exactly seven original source and envelope slots are required.")
+    boundary = parse_timestamp(ref["evaluation_time"])
+
+    def bound(artifact):
+        _observation_only(artifact)
+        if artifact["symbol"] != "XAUUSD" or parse_timestamp(artifact["requested_evaluation_timestamp"]) != boundary:
+            raise ValueError("Original economic boundary or symbol mismatch.")
+
+    source_context = validate_source_context(evidence["source_context"])
+    context = validate_factual_context(evidence["factual_context"])
+    bound(source_context)
+    bound(context)
+    if context["source_context_id"] != source_context["context_id"]:
+        raise ValueError("Original source/factual context mismatch.")
+    source_fields = ("timeframe", "requested_evaluation_timestamp", "effective_causal_cutoff",
+                     "source_snapshot_id", "source_availability", "availability_reason", "completion_state")
+    for tf in TIMEFRAME_ORDER:
+        source = validate_source(sources[tf])
+        bound(source)
+        if source["source_availability"] == "INVALID" or source["timeframe"] != tf:
+            raise ValueError("Invalid original source slot.")
+        if source_context["timeframes"][tf] != {key: source[key] for key in source_fields}:
+            raise ValueError("Original source/context descriptor mismatch.")
+        slot = context["timeframes"][tf]
+        if any(slot[k] != source[k] for k in ("source_snapshot_id", "effective_causal_cutoff", "source_availability")) or slot["source_completion_state"] != source["completion_state"]:
+            raise ValueError("Original factual source identity mismatch.")
+        cutoff = source["effective_causal_cutoff"]
+        if cutoff is not None and parse_timestamp(cutoff) > boundary:
+            raise ValueError("Original source cutoff exceeds T.")
+        if type(matrix[tf]) is not dict or set(matrix[tf]) != set(CAPABILITY_ORDER):
+            raise ValueError("Exactly ten original factual envelopes are required per timeframe.")
+        for name in CAPABILITY_ORDER:
+            envelope = validate_factual_envelope(matrix[tf][name], source_context["timeframes"][tf])
+            bound(envelope)
+            if envelope["context_id"] != source_context["context_id"] or envelope["factual_availability"] == "INVALID":
+                raise ValueError("Original envelope source context mismatch.")
+    composition = validate_factual_composition(original["composition"], context)
+    bound(composition)
+    chronology = CAUSAL_FACTUAL_EVENT_CHRONOLOGY.analyze({
+        "factual_context": context, "factual_envelopes": matrix, "composition": composition,
+    }).to_dict()
+    # The owner's Python manifest uses tuples; its supported JSON wire form uses
+    # arrays. Normalize this newly produced field before detached validation/storage.
+    chronology["evidence"]["event_source_manifest"] = {
+        name: list(families) for name, families in chronology["evidence"]["event_source_manifest"].items()
+    }
+    validate_factual_chronology(chronology, context, matrix, composition)
+    bound(chronology)
+    upstream = {"factual_context": context, "factual_envelopes": matrix, "composition": composition,
+                "chronology": chronology, "configuration": {}}
+    synthesis = CAUSAL_MARKET_STATE_SYNTHESIS.analyze(upstream).to_dict()
+    validate_market_state_synthesis(synthesis, upstream)
+    bound(synthesis)
+    return {
+        "synthesis": synthesis, "upstream_bundle": upstream,
+        "source_evidence": {"sources": sources, "source_context": source_context},
+        "provenance": {
+            "source_selection": ref, "new_mission_id": request.mission_id,
+            "source_snapshot_ids": {tf: sources[tf]["source_snapshot_id"] for tf in TIMEFRAME_ORDER},
+            "source_context_id": source_context["context_id"], "factual_context_id": context["factual_context_id"],
+            "composition_id": composition["composition_id"], "chronology_id": chronology["chronology_id"],
+            "synthesis_id": synthesis["synthesis_id"],
+        },
+        "metadata": {"contract": ARCHIVED_SYNTHESIS_CONTRACT, "rule_version": ARCHIVED_SYNTHESIS_RULE,
+                     "observation_only": True, "authority_scope": "read_only", "advisory_output": False,
+                     "strategy_output": False, "execution_output": False},
+    }
+
+
+def register_archived_market_state_synthesis_executor(runtime: LocalExecutionRuntime) -> None:
+    runtime.register(CapabilityExecutionContract(
+        name="archived_market_state_synthesis", division_name="trading", contract_id=ARCHIVED_SYNTHESIS_CONTRACT,
+        permission_scope="read_only", retryable=False,
+        input_schema={"required_fields": ["selection", "original_payload"]},
+        output_schema={"required_fields": ["synthesis", "upstream_bundle", "source_evidence", "provenance", "metadata"]},
+        metadata={"risk_level": "low", "impact_level": "limited", "rule_version": ARCHIVED_SYNTHESIS_RULE,
+                  "requires_archived_context": True, "configuration": "native_defaults"},
+    ), execute_archived_market_state_synthesis)

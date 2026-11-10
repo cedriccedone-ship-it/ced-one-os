@@ -126,6 +126,14 @@ FACTUAL_MARKET_CONTEXT_COMPOSITION = TradingCapability(
     division_name="trading",
 )
 
+ARCHIVED_MARKET_STATE_SYNTHESIS = TradingCapability(
+    name="archived_market_state_synthesis",
+    contract="trading.archived_market_state_synthesis.v1",
+    responsibility="Validate explicitly selected archived factual evidence and construct native chronology and synthesis.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 __all__ = [
     "TradingCapability",
     "COORDINATION",
@@ -142,4 +150,5 @@ __all__ = [
     "STRUCTURAL_DEALING_RANGE_INTELLIGENCE",
     "PREMIUM_DISCOUNT_INTELLIGENCE",
     "FACTUAL_MARKET_CONTEXT_COMPOSITION",
+    "ARCHIVED_MARKET_STATE_SYNTHESIS",
 ]

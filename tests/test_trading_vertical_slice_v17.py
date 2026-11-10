@@ -28,6 +28,7 @@ OPERATIONAL_CAPABILITIES = [
     "structural_dealing_range_intelligence",
     "premium_discount_intelligence",
     "factual_market_context_composition",
+    "archived_market_state_synthesis",
 ]
 
 OPERATIONAL_SPECIALISTS = [

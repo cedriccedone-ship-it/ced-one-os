@@ -127,3 +127,81 @@ hostile writer who can replace content and checksum. Retrieval preserves native
 artifacts without executing their producers or granting cached approval. A new
 mission always requires current policy and registration. Financial owners,
 UNKNOWN/unavailable semantics and the separate payout veto remain unchanged.
+
+## Explicit archived context and governed synthesis v1
+
+`MissionControlService.select_archived_context(selection)` reads exactly one ID;
+it never executes, searches, falls back or restores live history. The sealed
+selection has eight required nonempty string fields: `mission_id`, `record_sha256`
+(64 lowercase hexadecimal characters), `division`, `capability`, `contract_id`,
+`rule_version`, `evaluation_time`, and `created_not_after`. Times are aware
+ISO-8601 strings, compared as instants and returned in UTC. The source request,
+result and registered source contract must agree on origin; the source must be a
+successfully completed read-only calculation. Completion is source eligibility,
+never permission for a new execution. Its native factual availability may be
+UNAVAILABLE. The requested source contract/rule must equal the archived descriptor.
+
+The source input must contain `requested_evaluation_timestamp` equal to T.
+Require T <= source request.created_at <= created_not_after <= selected_at (host
+UTC time after reading). These are request-time and current selection constraints:
+neither request.created_at nor selected_at proves when the record was committed
+or available historically. This API makes no as-of-knowledge or live-state claim.
+
+The isolated projection has exactly `selection` and `original_payload` (a detached
+copy of the source result_payload, with no historical policies or approvals).
+`selection` has exactly `schema_version=mission_control.archived_context.v1`,
+`source_mission_id`, `record_sha256`, `division`, `capability`, `contract_id`,
+`rule_version`, `evaluation_time`, `source_request_created_at`, `created_not_after`,
+`selected_at`, `payload_sha256`, and `temporal_scope=HISTORICAL_RECORD_ONLY`.
+All are strings. The payload digest is SHA-256 of compact ASCII JSON, preserving
+dictionary insertion order and disallowing NaN/Infinity. Only exact built-in JSON
+types accepted by the existing authorization-data validator may occur in this
+projection; enum/dataclass payloads are not coerced to JSON values. It is a consistency
+binding, not a signature. Unsupported projections fail with a fixed
+`ArchivedContextError` code. No archive schema or migration is introduced.
+
+A new request supplies `archive_selection=selection`, with no `context` argument.
+The registered contract must require archived context; caller-supplied projected
+evidence cannot substitute for this path. Core selects from its own archive before
+policy evaluation, archives the actual projected input, and fingerprints all of it
+under the existing governance/dispatcher checks. After an allow decision, it
+rechecks payload integrity and the independently captured selection reference
+before creating authorization. Policy-time changes, including a recomputed
+payload digest or a replaced source-record hash, reject as STALE_ARCHIVED_CONTEXT.
+Subsequent mutations remain subject to the existing dispatcher snapshot checks.
+Selection errors fail the new
+mission without executing. `ARCHIVED_CONTEXT_SELECTED` records the source reference;
+`ARCHIVED_CONTEXT_USED` is recorded only when the new executor actually ran. Both
+events carry the new mission ID. Old decisions and execution status are never
+copied into current authorization. Mutating a standalone projection cannot alter
+the archive or a later selection.
+
+The single `archived_market_state_synthesis` executor uses the existing factual
+market context specialist, contract `trading.archived_market_state_synthesis.v1`,
+rule `archived_market_state_synthesis_v1`, read_only, retryable=false. Only original
+`trading.factual_market_context_composition.v1` / rule
+`factual_market_context_composition_v1` evidence is accepted. Its exact composition
+and evidence bundle is validated through public source, envelope, context and
+composition owners, including all seven source slots and the 70-envelope profile.
+Null native source identities remain null when their owner reports unavailability.
+All native boundaries must equal T; cutoffs must not exceed T. Nothing is retimed.
+
+After validation it constructs native chronology v2, then synthesis v1 with the
+fixed native configuration `{}`. Public detached validators check both complete
+results. The newly created chronology's Python tuple-valued event-source manifest
+is represented as JSON arrays, as accepted by its public serialized validator;
+original archived source artifacts and native identities are unchanged.
+Output contains exactly `synthesis`, `upstream_bundle` (the native five
+fields), `source_evidence` (sources and source_context), `provenance`, and
+`metadata`. Provenance retains the selection, seven source IDs, source/factual
+context, composition, chronology and synthesis IDs. Metadata retains the wrapper
+contract/rule and exact observation_only/read_only boundaries with advisory,
+strategy and execution outputs false. UNKNOWN, scoped absence, truncation,
+UNAVAILABLE and ORDER_UNPROVEN remain owned by the native analyzers. No source
+mission or candle detector is rerun; native proof reconstruction is allowed.
+The new mission and its result are independently archived by existing handling.
+Analysis completion grants no trading, margin, financial-risk or payout authority.
+
+The existing complete execution-result, task and audit representations are
+retained. Larger records still fail explicitly at the unchanged 64 MiB archive
+boundary; evidence is never truncated or rerun to make storage succeed.

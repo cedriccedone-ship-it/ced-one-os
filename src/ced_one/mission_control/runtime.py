@@ -480,6 +480,14 @@ class MissionExecutionDispatcher:
                 errors.append("Current policy does not authorize execution.")
             if errors:
                 return reject(errors)
+            # Policy evaluation must not change the authorized context.
+            if not snapshot.is_still_valid(current):
+                return reject(["Execution authorization is stale after policy evaluation."])
+            # Check the actual execution data even if policy replaced its own view.
+            current.task_context["input_payload"] = payload
+            current.task_context["execution_context"] = captured_context
+            if not snapshot.is_still_valid(current):
+                return reject(["Execution authorization is stale after policy evaluation."])
             execution_contract = SpecialistExecutionContract(
                 task_id=task.task_id,
                 mission_id=task.mission_id,
