@@ -328,3 +328,78 @@ Existing audit, snapshot mutation checks, default-deny and archive failure behav
 are reused. A storage failure stays visible as archive.status=failed after a
 completed calculation and causes no automatic retry. Recovery reads historical
 data without execution. No SQLite schema, runtime or native owner is changed.
+
+## Local historical XAUUSD import and causal replay v1
+
+`scripts/local_historical_replay.py` feeds three existing independently governed
+missions: factual composition, strategy candidate replay, reference backtest A.
+There is no new capability. Each consumer explicitly selects its predecessor's
+archived mission ID and record SHA256. A failed archive or absent candidate stops
+the chain, without retry. Completed research may still be ambiguous or censored.
+
+The bounded input contract is `trading.historical_market_data.v1`. The UTF-8 CSV
+has exactly `timeframe,timestamp,open,high,low,close`, in that column order.
+Groups use D1,H4,H1,M30,M15,M5,M1 order; timestamps within each are strictly
+increasing. Timestamps label openings and require explicit UTC offsets, normalized
+to UTC. Every duplicate UTC opening rejects the export, including equal prices.
+Prices are positive finite decimal text, converted to native binary floats and
+validated by existing OHLC rules. Original bytes remain hash-bound; arbitrary
+decimal precision and source authenticity are not claimed. No sorting, filling,
+resampling, symbol mapping or broker-timezone inference takes place.
+
+The JSON manifest has exactly: `contract`, `symbol` (XAUUSD), `source_namespace`,
+`dataset_id`, `dataset_revision`, `price_basis` (BID/ASK/MID/LAST), `csv_sha256`
+(lowercase SHA256), `timeframes`, `sessions`, `dataset_end`. Nonempty identifiers
+are strings. `timeframes` maps supplied native timeframe names to exactly `anchor`,
+`coverage_start`, `coverage_end` (offset-aware times). Native fixed durations and
+the supplied grid anchor govern each row. Coverage is half-open and contains each
+whole supplied candle; it does not assert missing rows exist. Missing timeframe
+slots stay empty. The strategy needs H4/H1/M15/M5/M1; D1 and M30 can be unavailable.
+`sessions` is an ordered disjoint array of exact `{open,close}` UTC intervals.
+Every M1 interval must lie inside one session. Higher-timeframe bars keep their
+fixed durations and may span session closures. `dataset_end` is null or an
+explicit M1 completion endpoint. Duplicate JSON keys and extra keys are rejected.
+Each local file is limited to 16 MiB; archive records retain their existing limit.
+
+Session declarations are research input, not a market-calendar authority. Neither
+closures nor data gaps waive the native contiguous-history requirement. Thus a
+real weekend or daily maintenance break may cause UNKNOWN or censoring. No
+shortened D1 candle, DST adjustment or compressed time is introduced.
+
+The JSON run has exactly `contract`, `T`, `K`, `strategy_definition`,
+`setup_ordinal`, `entry_validity_duration_seconds`, `relationship_available_at`.
+The strategy profile uses the existing native schema/version. T/H/K are explicit:
+C=T, H=T+24 hours, H<=K<=now. Candidate histories start at their configured native
+history domains and contain only candles whose opening plus duration is <=T.
+Other supplied timeframe domains start at their declared coverage start.
+Observation M1 contains the [T-1 minute,T) anchor and rows opening in [T,H).
+Later candles never enter candidate replay. No automatic search for a favorable
+T or change of strategy configuration occurs.
+
+Native dataset relationship bindings are computed from the actual validated
+candidate/formulation and observation artifacts. `relationship_available_at` is
+copied from run input, never inferred from T or the import time. Availability
+after the first required completion causes native censoring; after K rejects.
+Early synthetic timestamps remain explicit research assumptions. Candle closure
+does not prove historical receipt or publication, and importing now does not
+establish archive availability at T.
+
+Import provenance contains complete CSV and manifest-byte hashes, original
+manifest JSON and actual import time. Factual and observation input hashes are
+stored in registered capability metadata, bound by current authorization and
+checked before native analysis. The candidate mission binds its complete selected
+projection and strategy profile through existing governance; its source record
+links to the import provenance. Native sealed output schemas are unchanged.
+Post-T export changes can change archive hashes and R outcomes while native
+candidate identity, input, entry and stop remain identical. All native false
+authority fields, current default-deny, approval and post-policy mutation checks
+remain mandatory. Recovery is historical data retrieval without execution.
+
+Normal local command (paths explicitly supplied by the user):
+`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B scripts/local_historical_replay.py --dataset /tmp/xauusd/candles.csv --manifest /tmp/xauusd/manifest.json --run /tmp/xauusd/replay.json --archive /tmp/xauusd/missions.sqlite3`.
+`--demo DIRECTORY` instead generates labelled synthetic existing producerfixtures
+outside the repository and executes LONG/SHORT target/stop runs. Only demo mode
+imports test fixtures. It asserts identical candidates under changed post-T data.
+Real use requires a licensed export with known price basis, native grids, session
+boundaries and sufficient warm-up/observation data. An M1-only feed requires a
+separate resampling contract; this importer does not synthesize other timeframes.

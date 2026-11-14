@@ -1,5 +1,6 @@
 """Explicit local trading composition; Mission Control contains no trading logic."""
 from datetime import datetime, timezone
+from copy import deepcopy
 
 from ced_one.business_divisions.trading.causal_snapshot_availability import CAUSAL_SNAPSHOT_AVAILABILITY
 from ced_one.business_divisions.trading.candle_intelligence import CandleIntelligenceAnalyzer, CandleIntelligenceCapability, RULE_VERSION
@@ -79,6 +80,13 @@ def _observation_only(artifact):
         raise ValueError("Factual analysis must retain exact read-only authority boundaries.")
 
 
+def _import_binding(binding, payload):
+    if binding is None:
+        return None
+    from ced_one.business_divisions.trading.historical_market_data import validate_binding
+    return validate_binding(binding, payload)
+
+
 def execute_factual_market_context_composition(request):
     """One governed execution; the fixed native dependencies are not separate missions.
 
@@ -102,6 +110,7 @@ def execute_factual_market_context_composition(request):
     )
 
     payload = request.input_payload
+    _import_binding(request.metadata["capability_contract"]["metadata"].get("import_binding"), payload)
     boundary = _factual_mission_input(payload)
     sources = {}
     for timeframe in TIMEFRAME_ORDER:
@@ -167,7 +176,7 @@ def execute_factual_market_context_composition(request):
     }
 
 
-def register_factual_market_context_executor(runtime: LocalExecutionRuntime) -> None:
+def register_factual_market_context_executor(runtime: LocalExecutionRuntime, *, import_binding=None) -> None:
     """Register analysis execution only; the host must separately supply policy."""
     from ced_one.business_divisions.trading.causal_factual_multi_timeframe_context import (
         CAPABILITY_ORDER, TIMEFRAME_ORDER,
@@ -183,6 +192,7 @@ def register_factual_market_context_executor(runtime: LocalExecutionRuntime) -> 
             "risk_level": "low", "impact_level": "limited", "rule_version": RULE_VERSION,
             "timeframe_order": list(TIMEFRAME_ORDER), "capability_order": list(CAPABILITY_ORDER),
             "configuration": "native_defaults", "execution_envelope_version": 1,
+            **({"import_binding": deepcopy(import_binding)} if import_binding is not None else {}),
         },
     ), execute_factual_market_context_composition)
 
@@ -595,6 +605,7 @@ def execute_governed_reference_backtest(request):
     metadata = contract["metadata"]
     profile = metadata["observation_profile"]
     exact(profile, {"research_boundary", "m1", "declarations", "native_versions"}, "Registered observation profile")
+    _import_binding(metadata.get("import_binding"), {k: profile[k] for k in ("research_boundary", "m1", "declarations")})
     expected = _reference_profile({k: profile[k] for k in ("research_boundary", "m1", "declarations")})
     if (_reference_hash(profile) != _reference_hash(expected) or metadata["profile_sha256"] != _reference_hash(expected) or
             metadata["rule_version"] != REFERENCE_BACKTEST_RULE or metadata["variant"] != "A"):
@@ -626,7 +637,7 @@ def execute_governed_reference_backtest(request):
         "authority": dict.fromkeys(_REFERENCE_AUTHORITY_FIELDS, False), "execution": False}
 
 
-def register_governed_reference_backtest_executor(runtime: LocalExecutionRuntime, *, observation_profile) -> None:
+def register_governed_reference_backtest_executor(runtime: LocalExecutionRuntime, *, observation_profile, import_binding=None) -> None:
     profile = _reference_profile(observation_profile)
     runtime.register(CapabilityExecutionContract(
         name=REFERENCE_BACKTEST_CAPABILITY, division_name="trading", contract_id=REFERENCE_BACKTEST_CONTRACT,
@@ -635,5 +646,6 @@ def register_governed_reference_backtest_executor(runtime: LocalExecutionRuntime
         output_schema={"required_fields": ["outcome", "scenario", "reconstruction", "provenance", "metadata", "authority", "execution"]},
         metadata={"risk_level": "low", "impact_level": "limited", "requires_archived_context": True,
             "rule_version": REFERENCE_BACKTEST_RULE, "variant": "A", "observation_profile": profile,
-            "profile_sha256": _reference_hash(profile)},
+            "profile_sha256": _reference_hash(profile),
+            **({"import_binding": _import_binding(import_binding, observation_profile)} if import_binding is not None else {})},
     ), execute_governed_reference_backtest)
