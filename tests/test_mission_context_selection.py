@@ -150,3 +150,22 @@ def test_projection_never_coerces_archive_types_into_json_values(archived_source
     projection["original_payload"]["extra"] = value
     with pytest.raises(ArchivedContextError, match="INVALID_PROJECTION"):
         validate_archived_context_projection(projection)
+
+
+@pytest.mark.parametrize("native_contract", ["trading.governed_strategy_candidate_replay.v1", "trading.other.v1"])
+def test_candidate_time_extension_requires_exact_contract_and_original_projection(tmp_path, source_record, native_contract):
+    request, result = deepcopy(source_record.request), deepcopy(source_record.result)
+    result.capability = "governed_strategy_candidate_replay"
+    contract = result.metadata["capability_contract"]
+    contract.update(name=result.capability, contract_id=native_contract)
+    contract["metadata"]["rule_version"] = "governed_strategy_candidate_replay_v1"
+    # A raw factual context must never be accepted as a strategy replay input.
+    del request.context["requested_evaluation_timestamp"]
+    store = SQLiteMissionArchive(tmp_path / "wrong-shape.sqlite3")
+    store.save(request, result, source_record.policy)
+    record = store.get(source_record.mission_id)
+    criteria = selection(source_record)
+    criteria.update(record_sha256=record.record_sha256, capability=result.capability,
+                    contract_id=native_contract, rule_version=contract["metadata"]["rule_version"])
+    with pytest.raises(ArchivedContextError):
+        MissionControlService(archive=store).select_archived_context(criteria)

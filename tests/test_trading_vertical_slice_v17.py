@@ -30,6 +30,7 @@ OPERATIONAL_CAPABILITIES = [
     "factual_market_context_composition",
     "archived_market_state_synthesis",
     "governed_strategy_candidate_replay",
+    "governed_reference_backtest",
 ]
 
 OPERATIONAL_SPECIALISTS = [

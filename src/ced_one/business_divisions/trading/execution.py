@@ -448,3 +448,192 @@ def register_governed_strategy_candidate_replay_executor(runtime: LocalExecution
         metadata={"risk_level": "low", "impact_level": "limited", "rule_version": STRATEGY_REPLAY_RULE,
                   "requires_archived_context": True, "replay_profile": profile, "profile_sha256": identity("", profile)},
     ), execute_governed_strategy_candidate_replay)
+
+
+REFERENCE_BACKTEST_CAPABILITY = "governed_reference_backtest"
+REFERENCE_BACKTEST_CONTRACT = "trading.governed_reference_backtest.v1"
+REFERENCE_BACKTEST_RULE = "governed_reference_backtest_v1"
+_REFERENCE_AUTHORITY_FIELDS = ("quantity_selection", "budget_approval", "position_effect_compliance",
+                             "margin_capital_approval", "trade_decision", "financial_risk", "execution")
+
+
+def _reference_hash(value):
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+
+
+def _reference_time(value):
+    from ced_one.business_divisions.trading.validation import parse_timestamp
+    if type(value) is not str:
+        raise ValueError("Reference time must be canonical UTC text.")
+    at = parse_timestamp(value)
+    if value != at.isoformat().replace("+00:00", "Z"):
+        raise ValueError("Reference time must be canonical UTC text.")
+    return at
+
+
+def _reference_profile(observation_profile):
+    from copy import deepcopy
+    from ced_one.business_divisions.trading import xauusd_reference_trade_management_experiment as reference
+    from ced_one.business_divisions.trading.xauusd_causal_liquidity_reversal import exact
+    from ced_one.mission_control.policy import validate_context_data
+    exact(observation_profile, {"research_boundary", "m1", "declarations"}, "Observation profile")
+    if validate_context_data(observation_profile) or type(observation_profile["m1"]) is not dict or type(observation_profile["declarations"]) is not list:
+        raise ValueError("Observation profile must contain finite JSON evidence.")
+    if _reference_time(observation_profile["research_boundary"]) > datetime.now(timezone.utc):
+        raise ValueError("Research boundary is in the future.")
+    # Registration binds data only. Public owner replay remains behind governance.
+    profile = deepcopy(observation_profile)
+    profile["native_versions"] = {"candidate_replay": _strategy_replay_versions(),
+        "reference": {"scenario_contract": reference.SCENARIO_CONTRACT, "policy_contract": reference.POLICY_CONTRACT,
+            "rule_version": reference.RULE_VERSION, "relationship_contract": reference.DATASET_RELATIONSHIP_CONTRACT,
+            "relationship_rule_version": reference.RELATIONSHIP_RULE_VERSION}}
+    return profile
+
+
+def _validated_reference_candidate(payload):
+    from copy import deepcopy
+    from ced_one.mission_control.service import validate_archived_context_projection
+    from ced_one.business_divisions.trading import xauusd_causal_liquidity_reversal as strategy
+    from ced_one.business_divisions.trading import xauusd_technical_trade_candidate as candidates
+    from ced_one.business_divisions.trading import factual_market_context_composition as composition
+    from ced_one.business_divisions.trading.causal_factual_multi_timeframe_context import TIMEFRAME_ORDER
+
+    projection = validate_archived_context_projection(payload)
+    ref, body = projection["selection"], projection["original_payload"]
+    if (ref["division"], ref["capability"], ref["contract_id"], ref["rule_version"]) != (
+            "trading", STRATEGY_REPLAY_CAPABILITY, STRATEGY_REPLAY_CONTRACT, STRATEGY_REPLAY_RULE):
+        raise ValueError("Unsupported archived candidate contract/rule.")
+    strategy.exact(body, {"outcome", "strategy_assessment", "action_formulation", "candidate_formulation", "candidate",
+                         "reconstruction", "provenance", "metadata", "authority", "execution"}, "Candidate replay")
+    expected_metadata = {"contract": STRATEGY_REPLAY_CONTRACT, "rule_version": STRATEGY_REPLAY_RULE,
+        "authority_scope": "read_only", "candidate_scope": "HISTORICAL_TECHNICAL_REFERENCE_ONLY",
+        "source_authentication": "NOT_VERIFIED", "execution_output": False}
+    if _reference_hash(body["metadata"]) != _reference_hash(expected_metadata):
+        raise ValueError("Candidate replay metadata mismatch.")
+    strategy.exact(body["authority"], _REFERENCE_AUTHORITY_FIELDS, "Candidate replay authority")
+    if body["execution"] is not False or any(v is not False for v in body["authority"].values()):
+        raise ValueError("Candidate replay cannot grant authority.")
+    if body["outcome"] != "CANDIDATE_FORMULATED" or body["candidate"] is None:
+        raise ValueError("NO_CANDIDATE")
+    provenance = body["provenance"]
+    strategy.exact(provenance, {"source_selection", "new_mission_id", "evaluation_time", "source_snapshot_ids",
+                              "strategy_source_snapshot_ids", "replay_profile", "profile_sha256"}, "Candidate provenance")
+    profile = provenance["replay_profile"]
+    strategy.exact(profile, {"strategy_definition", "setup_ordinal", "entry_validity_duration_seconds", "native_versions"}, "Candidate profile")
+    expected = _strategy_replay_profile(profile["strategy_definition"], profile["setup_ordinal"], profile["entry_validity_duration_seconds"])
+    if _reference_hash(profile) != _reference_hash(expected) or provenance["profile_sha256"] != strategy.identity("", expected):
+        raise ValueError("Candidate profile or native version mismatch.")
+    reconstruction = body["reconstruction"]
+    strategy.exact(reconstruction, {"assessment_input", "action_input", "candidate_input"}, "Candidate reconstruction")
+    assessment = strategy.validate_strategy_assessment(body["strategy_assessment"], reconstruction["assessment_input"])
+    formulation = candidates.validate_technical_candidate_formulation(body["candidate_formulation"], reconstruction["candidate_input"])
+    action = formulation["upstream_formulation"]
+    same_pairs = [(body["candidate"], formulation["candidate"]), (body["action_formulation"], action),
+        (assessment, action["strategy_assessment"]),
+        (reconstruction["action_input"], reconstruction["candidate_input"]["action_formulation_input"]),
+        (reconstruction["assessment_input"], reconstruction["action_input"]["assessment_input"]),
+        (assessment["strategy_definition"], profile["strategy_definition"]),
+        (assessment["setup_ordinal"], profile["setup_ordinal"])]
+    for supplied, native in same_pairs:
+        if _reference_hash(supplied) != _reference_hash(native):
+            raise ValueError("Candidate replay differs from native reconstruction.")
+    if formulation["candidate"] is None:
+        raise ValueError("NO_CANDIDATE")
+    from ced_one.business_divisions.trading import causal_trading_policy_strategy_action_formulation as actions
+    expected_action_policy = {"contract": actions.DEFINITION_CONTRACT, "policy_id": STRATEGY_REPLAY_CAPABILITY + ".intent",
+        "policy_version": 1, "strategy_definition": profile["strategy_definition"],
+        "configuration_fingerprint": strategy.identity("configuration_", profile["strategy_definition"]["configuration"]),
+        "declared_action": {"action_type": "DIRECTIONAL_ENTRY_INTENT", "direction": profile["strategy_definition"]["direction"]}}
+    expected_policy = {"contract": candidates.POLICY_CONTRACT, "policy_id": STRATEGY_REPLAY_CAPABILITY + ".candidate",
+        "policy_version": 1, "configuration": {"entry_validity_duration_seconds": profile["entry_validity_duration_seconds"]}}
+    if (_reference_hash(formulation["candidate_policy_definition"]) != _reference_hash(expected_policy) or
+            _reference_hash(action["action_policy_definition"]) != _reference_hash(expected_action_policy)):
+        raise ValueError("Candidate policy differs from original replay profile.")
+    strategy.exact(provenance["source_snapshot_ids"], TIMEFRAME_ORDER, "Original source identities")
+    strategy.exact(provenance["strategy_source_snapshot_ids"], strategy.TIMEFRAMES, "Strategy source identities")
+    if any(v is not None and (type(v) is not str or not v) for v in provenance["source_snapshot_ids"].values()):
+        raise ValueError("Malformed original source identity.")
+    for tf, source in reconstruction["assessment_input"]["sources"].items():
+        if source["source_snapshot_id"] != provenance["source_snapshot_ids"][tf] or source["source_snapshot_id"] != provenance["strategy_source_snapshot_ids"][tf]:
+            raise ValueError("Original candidate source identity mismatch.")
+    parent = provenance["source_selection"]
+    strategy.exact(parent, set(ref), "Original factual selection")
+    if any(type(v) is not str or not v for v in parent.values()):
+        raise ValueError("Malformed original factual selection.")
+    if (parent["schema_version"], parent["division"], parent["capability"], parent["contract_id"], parent["rule_version"], parent["temporal_scope"]) != (
+            "mission_control.archived_context.v1", "trading", "factual_market_context_composition", composition.CONTRACT,
+            composition.RULE_VERSION, "HISTORICAL_RECORD_ONLY"):
+        raise ValueError("Original factual selection contract mismatch.")
+    for key in ("record_sha256", "payload_sha256"):
+        if len(parent[key]) != 64 or any(c not in "0123456789abcdef" for c in parent[key]):
+            raise ValueError("Malformed original factual hash.")
+    times = [_reference_time(parent[k]) for k in ("evaluation_time", "source_request_created_at", "created_not_after", "selected_at")]
+    if times != sorted(times) or times[-1] > _reference_time(ref["selected_at"]):
+        raise ValueError("Original factual selection chronology mismatch.")
+    t = _reference_time(ref["evaluation_time"])
+    if (provenance["new_mission_id"] != ref["source_mission_id"] or parent["source_mission_id"] == ref["source_mission_id"] or
+            any(_reference_time(v) != t for v in (provenance["evaluation_time"], parent["evaluation_time"],
+                assessment["evaluation_boundary"], action["knowledge_boundary"], formulation["candidate"]["valid_from"]))):
+        raise ValueError("Candidate origin or C = T boundary mismatch.")
+    return ref, deepcopy(body), formulation
+
+
+def execute_governed_reference_backtest(request):
+    """Variant A descriptive reference research; never fills or trade eligibility."""
+    from copy import deepcopy
+    from datetime import timedelta
+    from ced_one.business_divisions.trading import xauusd_reference_trade_management_experiment as reference
+    from ced_one.business_divisions.trading.causal_snapshot_availability import validate_source
+    from ced_one.business_divisions.trading.xauusd_causal_liquidity_reversal import exact
+
+    contract = request.metadata["capability_contract"]
+    if (contract["name"], contract["contract_id"], contract["permission_scope"]) != (
+            REFERENCE_BACKTEST_CAPABILITY, REFERENCE_BACKTEST_CONTRACT, "read_only"):
+        raise ValueError("Reference execution contract mismatch.")
+    metadata = contract["metadata"]
+    profile = metadata["observation_profile"]
+    exact(profile, {"research_boundary", "m1", "declarations", "native_versions"}, "Registered observation profile")
+    expected = _reference_profile({k: profile[k] for k in ("research_boundary", "m1", "declarations")})
+    if (_reference_hash(profile) != _reference_hash(expected) or metadata["profile_sha256"] != _reference_hash(expected) or
+            metadata["rule_version"] != REFERENCE_BACKTEST_RULE or metadata["variant"] != "A"):
+        raise ValueError("Reference profile or native version mismatch.")
+    ref, body, formulation = _validated_reference_candidate(request.input_payload)
+    start = _reference_time(formulation["candidate"]["valid_from"])
+    horizon = start + timedelta(minutes=1440)
+    boundary = _reference_time(profile["research_boundary"])
+    if boundary < horizon:
+        raise ValueError("Research boundary precedes 24-hour horizon.")
+    source = validate_source(deepcopy(profile["m1"]))
+    if source["symbol"] != "XAUUSD" or source["timeframe"] != "M1" or _reference_time(source["requested_evaluation_timestamp"]) != boundary:
+        raise ValueError("Observation source must be XAUUSD M1 at K.")
+    native_request = {"contract": reference.SCENARIO_CONTRACT, "rule_version": reference.RULE_VERSION, "variant": "A",
+        "candidate_formulation": formulation, "formulation_input": body["reconstruction"]["candidate_input"],
+        "research_boundary": profile["research_boundary"],
+        "evidence": {"m1": source, "m5": None, "declarations": deepcopy(profile["declarations"])}}
+    scenario = reference.evaluate_reference_scenario(native_request)
+    scenario = reference.validate_reference_scenario(scenario, native_request)
+    return {"outcome": scenario["completion_status"], "scenario": scenario, "reconstruction": native_request,
+        "provenance": {"source_selection": ref, "new_mission_id": request.mission_id,
+            "candidate_provenance": body["provenance"], "candidate_identity": formulation["candidate"]["candidate_identity"],
+            "evaluation_time": ref["evaluation_time"], "candidate_start": formulation["candidate"]["valid_from"],
+            "observation_horizon": horizon.isoformat().replace("+00:00", "Z"), "research_boundary": profile["research_boundary"],
+            "observation_profile_sha256": metadata["profile_sha256"], "native_versions": deepcopy(profile["native_versions"])},
+        "metadata": {"contract": REFERENCE_BACKTEST_CONTRACT, "rule_version": REFERENCE_BACKTEST_RULE,
+            "authority_scope": "read_only", "research_scope": "RETROSPECTIVE_REFERENCE_RESEARCH",
+            "source_authentication": "NOT_VERIFIED", "execution_output": False},
+        "authority": dict.fromkeys(_REFERENCE_AUTHORITY_FIELDS, False), "execution": False}
+
+
+def register_governed_reference_backtest_executor(runtime: LocalExecutionRuntime, *, observation_profile) -> None:
+    profile = _reference_profile(observation_profile)
+    runtime.register(CapabilityExecutionContract(
+        name=REFERENCE_BACKTEST_CAPABILITY, division_name="trading", contract_id=REFERENCE_BACKTEST_CONTRACT,
+        permission_scope="read_only", retryable=False,
+        input_schema={"required_fields": ["selection", "original_payload"]},
+        output_schema={"required_fields": ["outcome", "scenario", "reconstruction", "provenance", "metadata", "authority", "execution"]},
+        metadata={"risk_level": "low", "impact_level": "limited", "requires_archived_context": True,
+            "rule_version": REFERENCE_BACKTEST_RULE, "variant": "A", "observation_profile": profile,
+            "profile_sha256": _reference_hash(profile)},
+    ), execute_governed_reference_backtest)

@@ -255,3 +255,76 @@ Native false flags are retained. No fill, size, financial P&L, provider complian
 or permission is implied; FROZEN_AWAITING_PAYOUT remains a separate mandatory veto.
 Existing selection/audit/archive behavior is reused without schema or runtime
 changes. Archive availability is not backdated and reading never re-executes.
+
+## Governed Reference Backtest v1
+
+`governed_reference_backtest` is one read-only Mission Control capability using
+`factual_market_context_analyst`. Contract `trading.governed_reference_backtest.v1`,
+rule `governed_reference_backtest_v1`. It runs only the existing native reference
+scenario variant A: initial reference stop, fixed +3R target, 1440 elapsed minutes.
+It supplies no fills, quantity, monetary P&L, current eligibility or trading rights.
+
+The host explicitly calls `register_governed_reference_backtest_executor(runtime,
+observation_profile=profile)`. Profile input has exactly `research_boundary`, `m1`
+(the complete native observation source) and `declarations` (the original native
+research relationships). Registration isolates this JSON data and adds the native
+version manifest. The complete registered profile, its SHA256, variant A and
+registration identity enter the existing authorization snapshot. SHA256 uses UTF-8
+JSON with sorted keys, compact separators and `allow_nan=False`; array order is
+preserved. Another profile requires another registration and fresh authorization.
+No analyzer runs at registration; native replay follows current governance.
+
+Call `MissionControlService.handle_request("Governed reference backtest",
+business_division="trading", archive_selection=selection)`. The existing eight
+selection fields pin exactly one `governed_strategy_candidate_replay` source with
+contract `trading.governed_strategy_candidate_replay.v1` and rule
+`governed_strategy_candidate_replay_v1`. Direct payloads/extra context are rejected.
+Only this exact source contract may obtain its economic T from the validated
+archived input projection. Raw factual source selection retains its old rules.
+Source creation/selection times do not prove historical archive availability.
+
+The source must contain CANDIDATE_FORMULATED and complete native reconstruction
+inputs; otherwise the mission fails explicitly with NO_CANDIDATE. The executor
+reconstructs the original assessment and candidate, compares the original action,
+profile, setup ordinal, duration, false authority, identities and economic boundary.
+The five native strategy source identities are checked against both original
+identity maps. All seven archived source references remain parent provenance;
+this wrapper does not independently rerun the original 70 factual envelopes or
+claim external feed authentication. The original record hash binds the selected
+parent result; hashes do not authenticate its provider.
+
+V1 requires C = candidate.valid_from = original assessment T. H = C + 1440
+minutes; H <= K = research_boundary <= current UTC time. Observation M1 has exactly
+K as its requested boundary. No observation data enters the candidate replay.
+The native scenario excludes the T1-producing interval and scans openings C <= t
+< H, requiring the T1 anchor and unchanged overlapping original M1 candles. Entry
+validity duration never extends or truncates the reference observation horizon.
+Missing intervals are not filled, skipped or repaired with later observations.
+
+Declarations are explicit, unauthenticated research assumptions, including their
+available_at, dataset identity/revision, price domain, grids and coverage. They
+bind the full original candidate/formulation input and observation artifact.
+They are never generated or backdated by the executor. A relationship available
+after the first required interval causes native MISSING_DATA_CENSORED, even if
+later data exist. An early timestamp in a synthetic fixture is an assumption,
+not proof that its completed future dataset was available then. Actual historical
+source availability and provider identity remain outside this research result.
+
+Output has exactly `outcome`, `scenario`, `reconstruction`, `provenance`,
+`metadata`, `authority`, `execution`. The scenario and reconstruction are native;
+`validate_reference_scenario` completely replays them before return. Outcome is
+native completion_status: RESOLVED, AMBIGUOUS, HORIZON_CENSORED,
+MISSING_DATA_CENSORED or END_OF_DATA_UNRESOLVED. Exact reduced rational result
+bounds and nulls are retained. Opening gaps use native reference marks; intrabar
+stop/target ambiguity retains both alternatives. Neither becomes a fill claim.
+Provenance includes both missions, selected hash, candidate identity, original
+candidate provenance, T/C/H/K, observation profile hash and native versions.
+Metadata scope is RETROSPECTIVE_REFERENCE_RESEARCH, source_authentication is
+NOT_VERIFIED. The seven existing authority flags and top-level execution are
+exact false. Historical policies grant no new authorization. The independent
+FROZEN_AWAITING_PAYOUT veto remains mandatory.
+
+Existing audit, snapshot mutation checks, default-deny and archive failure behavior
+are reused. A storage failure stays visible as archive.status=failed after a
+completed calculation and causes no automatic retry. Recovery reads historical
+data without execution. No SQLite schema, runtime or native owner is changed.

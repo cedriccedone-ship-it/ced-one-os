@@ -126,7 +126,20 @@ class MissionControlService:
                 type(contract.get("metadata")) is not dict or
                 contract.get("metadata", {}).get("rule_version") != criteria["rule_version"]):
             raise ArchivedContextError("SOURCE_ORIGIN_MISMATCH")
-        if _context_time(record.request.context.get("requested_evaluation_timestamp")) != boundary:
+        if (criteria["division"], criteria["capability"], criteria["contract_id"], criteria["rule_version"]) == (
+                "trading", "governed_strategy_candidate_replay", "trading.governed_strategy_candidate_replay.v1",
+                "governed_strategy_candidate_replay_v1"):
+            # This source contract archives its original input as an isolated
+            # projection, not a raw market-data request. Do not infer other shapes.
+            original_input = validate_archived_context_projection(record.request.context)
+            provenance = source.result_payload.get("provenance")
+            if (type(provenance) is not dict or
+                    _digest(provenance.get("source_selection")) != _digest(original_input["selection"])):
+                raise ArchivedContextError("SOURCE_ORIGIN_MISMATCH")
+            source_time = original_input["selection"]["evaluation_time"]
+        else:
+            source_time = record.request.context.get("requested_evaluation_timestamp")
+        if _context_time(source_time) != boundary:
             raise ArchivedContextError("SOURCE_TIME_MISMATCH")
         selected_at = datetime.now(timezone.utc)
         created_at = record.request.created_at.astimezone(timezone.utc)

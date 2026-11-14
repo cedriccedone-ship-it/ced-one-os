@@ -57,6 +57,7 @@ class TradingDivisionResolver(BusinessDivision):
             "factual_market_context_composition",
             "archived_market_state_synthesis",
             "governed_strategy_candidate_replay",
+            "governed_reference_backtest",
         ]
 
     def describe(self) -> dict[str, Any]:
@@ -96,7 +97,10 @@ class TradingDivisionResolver(BusinessDivision):
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
         specialist_name = "market_analyst"
         capability_name = "market_observation"
-        if "governed strategy candidate replay" in text or "governed_strategy_candidate_replay" in text:
+        if "governed reference backtest" in text or "governed_reference_backtest" in text:
+            specialist_name = "factual_market_context_analyst"
+            capability_name = "governed_reference_backtest"
+        elif "governed strategy candidate replay" in text or "governed_strategy_candidate_replay" in text:
             specialist_name = "factual_market_context_analyst"
             capability_name = "governed_strategy_candidate_replay"
         elif "archived market state synthesis" in text or "archived_market_state_synthesis" in text:
@@ -149,6 +153,9 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_specialist(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if "governed reference backtest" in text or "governed_reference_backtest" in text:
+            return {"name": "factual_market_context_analyst", "division_name": self.name,
+                    "permission_scope": "read_only", "rationale": "Reuse the specialist for variant A reference research."}
         if "governed strategy candidate replay" in text or "governed_strategy_candidate_replay" in text:
             return {"name": "factual_market_context_analyst", "division_name": self.name,
                     "permission_scope": "read_only", "rationale": "Reuse the specialist for historical technical candidate reconstruction."}
@@ -241,6 +248,10 @@ class TradingDivisionResolver(BusinessDivision):
 
     def resolve_capability(self, request: MissionRequest) -> dict[str, Any]:
         text = f"{request.user_goal} {request.request_type} {request.business_division or ''}".lower()
+        if "governed reference backtest" in text or "governed_reference_backtest" in text:
+            return {"name": "governed_reference_backtest", "division_name": self.name,
+                    "contract": "trading.governed_reference_backtest.v1", "permission_scope": "read_only",
+                    "rationale": "Evaluate variant A using an archived candidate and independently pinned observation evidence."}
         if "governed strategy candidate replay" in text or "governed_strategy_candidate_replay" in text:
             return {"name": "governed_strategy_candidate_replay", "division_name": self.name,
                     "contract": "trading.governed_strategy_candidate_replay.v1", "permission_scope": "read_only",

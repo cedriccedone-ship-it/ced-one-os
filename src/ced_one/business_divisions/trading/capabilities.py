@@ -142,6 +142,14 @@ GOVERNED_STRATEGY_CANDIDATE_REPLAY = TradingCapability(
     division_name="trading",
 )
 
+GOVERNED_REFERENCE_BACKTEST = TradingCapability(
+    name="governed_reference_backtest",
+    contract="trading.governed_reference_backtest.v1",
+    responsibility="Evaluate variant A reference research from one archived technical candidate and separate observations.",
+    permission_scope="read_only",
+    division_name="trading",
+)
+
 __all__ = [
     "TradingCapability",
     "COORDINATION",
@@ -160,4 +168,5 @@ __all__ = [
     "FACTUAL_MARKET_CONTEXT_COMPOSITION",
     "ARCHIVED_MARKET_STATE_SYNTHESIS",
     "GOVERNED_STRATEGY_CANDIDATE_REPLAY",
+    "GOVERNED_REFERENCE_BACKTEST",
 ]
