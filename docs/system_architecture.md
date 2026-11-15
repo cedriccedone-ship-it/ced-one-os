@@ -481,3 +481,57 @@ before exclusive atomic publication; schedule input is protected from overwrite.
 Without `--schedule`, the original 30-point generator and output are unchanged.
 The option is accepted only during preparation, executes no missions and changes
 neither the batch engine nor Mission Control/native ownership or trading authority.
+
+## Local historical candidate scan v1
+
+`scripts/local_historical_candidate_scan.py --prepare PLAN --dataset CSV
+--manifest JSON --run replay.json` seals a `trading.historical_candidate_scan.v1`
+plan without analysis or execution. It wraps the existing batch plan (original
+profile bytes/hash, CSV/manifest hashes, native versions and exact point inputs),
+the diagnostic contract and explicit control point IDs in one canonical SHA256.
+The first scan fixes 18 September 12:00, 23 September 16:00 and 25 September 20:00
+UTC, each through +30 minutes inclusive, LONG then SHORT: 186 independent points.
+Founding end is fixed at +30 for every point in a block; the existing fixed
+warmup counts, ordinal zero, 120-second validity, K and declaration availability
+are preserved. Start, midpoint and endpoint for both directions are the 18
+controls, chosen before calculation. Validation requires those controls for each
+block/direction; their label never asserts that they will actually be negative.
+
+`--scan PLAN --dataset CSV --manifest JSON --report REPORT --archive DB` validates
+the complete sealed input, exclusively publishes every planned report row, then
+constructs and publicly validates the same seven causal sources without factual
+envelopes. Each T has its own native replay and detached strategy validation;
+only candles closed by T are supplied. No cross-point state, lookahead or retry
+is introduced. Native UNKNOWN, WAITING, terminal states, source UNAVAILABLE and
+technical errors remain separate. Reports retain full assessments and traces,
+input hashes and all seven source IDs/hashes; original datasets are required for
+reconstruction. Transition summaries identify changes per block/direction, while
+the complete native trace retains intermediate boundaries and early termination.
+
+`analyze_with_diagnostics()` is an optional public strategy method. Its separate
+`trading.xauusd_causal_liquidity_reversal.diagnostics.v1` trace observes the same
+founding/progression/terminal control flow and evidence. It changes no assessment
+field, identity, rule version or strategy condition. Trace reasons are diagnostic
+labels, not additional native strategy outcomes or authority. Simultaneously open
+progression prerequisites are reported as absent bindings, not an invented order.
+
+Every COMPLETE with T1 available exactly at T is a possible completion, not a
+candidate approval. Every possible completion and every control is independently
+reconstructed again, then sent through the existing fresh-governed factual,
+archived candidate-replay and, where applicable, variant-A reference missions.
+Full assessment/input hash, seven sources, setup/completion/T1, predecessor
+identity/hash and exact false authority are compared against archived results.
+Reports retain plan/point hashes, comparisons and original mission IDs/record
+hashes. Denial/approval pending is not a match. Mismatch, storage failure or
+verification failure stops further verifications without retry, preserving all
+scan rows and marking required remaining verifications NOT_RUN_ABORTED. Failed
+report publication raises an error; there is no automatic resume or reexecution.
+
+`--demo NEW_DIRECTORY` uses genuine existing LONG/SHORT producer fixtures at the
+completion minute and both neighboring minutes, verifying all six points through
+Mission Control and archiving results outside the repository. Scan reports grant
+no authority: all seven flags and execution are false. Archive schema, exact
+64-MiB per-record limit and native reference semantics remain unchanged. In
+particular late declarations and missing M1 still censor R; no broker execution,
+financial return claim, source authentication or retrospective time rewrite is
+introduced. Real 186-point execution and full regression are separate operations.

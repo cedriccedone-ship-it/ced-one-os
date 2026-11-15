@@ -571,3 +571,31 @@ def test_policy_fingerprint_must_describe_its_own_canonical_configuration():
     p["action_policy_definition"]["strategy_definition"]["configuration"]["displacement"]["minimum_range_expansion_ratio"]=2.0
     with pytest.raises(ValueError,match="own effective configuration"):
         actions.STRATEGY_ACTION_FORMULATION.analyze(p)
+
+
+@pytest.mark.parametrize("case", ["LONG", "SHORT", "waiting", "unknown", "invalidated", "expired", "direction", "no_l1"])
+def test_diagnostic_trace_preserves_exact_native_assessment(case):
+    d,h = scenario("SHORT" if case == "SHORT" else "LONG")
+    at = 31
+    if case == "waiting": at = 14
+    elif case == "unknown": del h["H4"][0]
+    elif case == "invalidated": h["M5"][2]["high"] = 114.0
+    elif case == "expired": d["configuration"]["windows_seconds"]["T1"] = 59
+    elif case == "direction": d["direction"] = "SHORT"
+    elif case == "no_l1":
+        for c in h["M15"]: c["low"] = 112.0
+    payload = request(d,h,at)
+    before = deepcopy(payload)
+    plain = strategy.XAUUSD_CAUSAL_LIQUIDITY_REVERSAL.analyze(payload).to_dict()
+    traced = strategy.XAUUSD_CAUSAL_LIQUIDITY_REVERSAL.analyze_with_diagnostics(payload)
+    assert traced["assessment"] == plain == strategy.validate_strategy_assessment(traced["assessment"],payload)
+    assert payload == before
+    trace = traced["diagnostics"]
+    assert trace["contract"] == strategy.DIAGNOSTIC_CONTRACT
+    assert trace["assessment_identity"] == plain["assessment_identity"]
+    assert trace["events"][-1]["boundary"] == plain["status_boundary"]
+    assert trace["events"][-1]["reason"] == plain["reason"]
+    assert all(strategy.parse_timestamp(e["boundary"]) <= strategy.parse_timestamp(plain["status_boundary"]) for e in trace["events"])
+    if case == "direction": assert trace["events"][0]["reason"] == "H4_DIRECTION_MISMATCH"
+    if case == "no_l1": assert trace["events"][0]["reason"] == "NO_QUALIFYING_L1"
+    assert trace["execution"] is False and all(v is False for v in trace["authority"].values())

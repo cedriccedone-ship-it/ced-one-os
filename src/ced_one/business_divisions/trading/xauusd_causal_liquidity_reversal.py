@@ -28,6 +28,7 @@ DEFINITION_CONTRACT = "trading.xauusd_causal_liquidity_reversal.definition.v0.2"
 STRATEGY_ID = "xauusd_causal_liquidity_reversal"
 STRATEGY_VERSION = "0.2"
 RULE_VERSION = "revision_2.1"
+DIAGNOSTIC_CONTRACT = "trading.xauusd_causal_liquidity_reversal.diagnostics.v1"
 TIMEFRAMES = ("H4", "H1", "M15", "M5", "M1")
 AUTHORITY = {"trade_decision": False, "financial_risk": False, "execution": False}
 FACTUAL_RULES = {module.__name__.rsplit(".", 1)[-1]: module.RULE_VERSION for module in
@@ -108,7 +109,7 @@ class _Unknown(Exception):
 
 
 class _Replay:
-    def __init__(self, payload):
+    def __init__(self, payload, *, diagnostics=False):
         exact(payload, {"strategy_definition", "as_of", "sources", "setup_ordinal"}, "Assessment input")
         self.definition = normalize_strategy_definition(payload["strategy_definition"])
         self.config = self.definition["configuration"]
@@ -140,6 +141,12 @@ class _Replay:
         self.seen = set()
         self.exhausted = []
         self.current_ordinal = -1
+        self.trace = [] if diagnostics else None
+
+    def note(self, at, phase, reason, evidence=None):
+        if self.trace is not None:
+            self.trace.append(dict(boundary=stamp(at), phase=phase, reason=reason,
+                                   evidence=deepcopy(evidence or {})))
 
     def end(self, candle, tf):
         return parse_timestamp(candle["timestamp"]) + VALID_TIMEFRAME_DURATIONS[tf]
@@ -219,12 +226,14 @@ class _Replay:
         if context == "unresolved_structure":
             raise _Unknown("UNRESOLVED_H4")
         if context != self.direction + "_structure":
+            self.note(at, "FOUNDING", "H4_DIRECTION_MISMATCH", dict(structure_state=context))
             return False
         anchors = self.pivots("H1", at, self.long)
         if not anchors:
             raise _Unknown("NO_CONFIRMED_CA1")
         if any(self.through(c["close"], anchors[-1]["price"]) for c in self.history("H1", at)
                if self.end(c, "H1") > parse_timestamp(anchors[-1]["available_at"])):
+            self.note(at, "FOUNDING", "CA1_ALREADY_BROKEN", dict(anchor=anchors[-1]))
             return False
         if len(self.history("H1", at)) <= self.config["order_block"]["displacement_config"]["baseline_window"]:
             raise _Unknown("INSUFFICIENT_P1_BASELINE")
@@ -233,6 +242,7 @@ class _Replay:
             raise _Unknown("TRUNCATED_P1_CANDIDATES")
         blocks = [b for b in blocks_result["order_blocks"] if b["direction"] == self.direction and b["current_state"] == "unvisited"]
         if not blocks:
+            self.note(at, "FOUNDING", "NO_MATCHING_UNVISITED_P1")
             return False
         latest = max(b["confirmed_at"] for b in blocks)
         blocks = [b for b in blocks if b["confirmed_at"] == latest]
@@ -246,6 +256,7 @@ class _Replay:
         if len(levels) > 1:
             raise _Unknown("AMBIGUOUS_L1")
         if not levels:
+            self.note(at, "FOUNDING", "NO_QUALIFYING_L1", dict(block=block))
             return False
         selected_boundary = self.boundary(levels[0]["causal_boundary"])
         available = parse_timestamp(selected_boundary["available_at"])
@@ -258,6 +269,7 @@ class _Replay:
             if not prior:
                 raise _Unknown("L1_PRIOR_CONTINUITY_UNPROVEN")
             if prior[0]["current_status"] not in ("active", "touched"):
+                self.note(at, "FOUNDING", "L1_PRIOR_STATUS_REJECTED", dict(level=prior[0]))
                 return False
         h1 = {c["timestamp"]: c for c in self.history("H1", at)}
         p1 = {k: block[k] for k in ("direction", "range_low", "range_high", "body_low", "body_high")}
@@ -266,6 +278,7 @@ class _Replay:
         bindings = {"CA1": anchors[-1], "P1": p1, "L1": self.boundary(levels[0]["causal_boundary"])}
         tuple_id = identity("founding_", [self.definition, FACTUAL_RULES, bindings])
         if tuple_id in self.seen:
+            self.note(at, "FOUNDING", "TUPLE_ALREADY_SEEN", dict(tuple_identity=tuple_id))
             return False
         self.seen.add(tuple_id)
         self.bound = {"C1": {"structure_state": context,
@@ -274,6 +287,7 @@ class _Replay:
         self.birth = at
         self.setup_id = identity("setup_", [tuple_id, stamp(at)])
         self.current_ordinal += 1
+        self.note(at, "FOUNDING", "TUPLE_FOUNDED", dict(setup_identity=self.setup_id, bindings=self.bound))
         return True
 
     def deadline(self):
@@ -385,12 +399,15 @@ class _Replay:
             return "INVALIDATED", invalid[0]
         if "T1" in b:
             return "COMPLETE", "FIRST_CANONICAL_COMPLETION"
+        self.note(at, "PROGRESSION", "OPEN_PREREQUISITES", dict(setup_identity=self.setup_id,
+            absent_bindings=[key for key in ("E1", "B1", "R1", "K1", "Q1", "RT1", "T1") if key not in b]))
         return None
 
     def through(self, price, boundary, reverse=False):
         return price < boundary if self.long != reverse else price > boundary
 
     def result(self, status, reason, at):
+        self.note(at, "OUTCOME", reason, dict(status=status))
         selected = self.current_ordinal == self.ordinal
         payload = {"contract": CONTRACT, "rule_version": RULE_VERSION,
                    "factual_rules": dict(FACTUAL_RULES),
@@ -486,6 +503,15 @@ class _Replay:
 class XAUUSDCausalLiquidityReversalAssessor:
     def analyze(self, payload):
         return _Replay(payload).run()
+
+    def analyze_with_diagnostics(self, payload):
+        """A separate trace of the same replay; assessment identity is unchanged."""
+        owner = _Replay(payload, diagnostics=True)
+        assessment = owner.run().to_dict()
+        trace = dict(contract=DIAGNOSTIC_CONTRACT, rule_version=RULE_VERSION,
+                     assessment_identity=assessment["assessment_identity"], events=owner.trace,
+                     authority=dict(AUTHORITY), execution=False)
+        return dict(assessment=assessment, diagnostics=trace)
 
 
 def validate_strategy_assessment(assessment, assessment_input):
