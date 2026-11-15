@@ -131,14 +131,32 @@ class HistoricalDataset:
             manifest_sha256=hashlib.sha256(self.manifest_json.encode()).hexdigest(), manifest_json=self.manifest_json,
             imported_at=self.imported_at, input_sha256=digest(payload)), payload)
 
-    def factual_input(self, at, definition):
+    def factual_input(self, at, definition, *, timeframe_starts=None):
         at = parse_timestamp(at)
         original = self.histories
+        if timeframe_starts is not None:
+            exact(timeframe_starts, ORDER, "Timeframe starts")
+            for tf, left in timeframe_starts.items():
+                if left is None:
+                    if tf in definition["configuration"]["history_starts"]:
+                        raise ValueError("Required strategy timeframe cannot be absent")
+                    continue
+                start = parse_timestamp(left)
+                spec = self.manifest["timeframes"].get(tf)
+                if start > at or start.second or start.microsecond or (spec and (start-parse_timestamp(spec["anchor"])) % VALID_TIMEFRAME_DURATIONS[tf]):
+                    raise ValueError("Invalid timeframe window/grid")
+                if tf in definition["configuration"]["history_starts"] and start != parse_timestamp(definition["configuration"]["history_starts"][tf]):
+                    raise ValueError("Window must match strategy history start")
         histories = {}
         for tf in ORDER:
             # Explicit strategy evidence domains; other slots retain export coverage.
             spec = self.manifest["timeframes"].get(tf)
             left = definition["configuration"]["history_starts"].get(tf, spec["coverage_start"] if spec else stamp(at))
+            if timeframe_starts is not None:
+                left = timeframe_starts[tf]
+                if left is None:
+                    histories[tf] = []
+                    continue
             histories[tf] = [deepcopy(c) for c in original[tf]
                              if parse_timestamp(left) <= parse_timestamp(c["timestamp"]) and
                              parse_timestamp(c["timestamp"]) + VALID_TIMEFRAME_DURATIONS[tf] <= at]

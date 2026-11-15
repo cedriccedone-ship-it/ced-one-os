@@ -141,3 +141,31 @@ def test_explicit_non_utc_offset_normalizes_to_same_economic_time(export):
         return "\n".join(lines)+"\n"
     change_csv(export, offset_csv)
     assert load_dataset(*export[:2]).histories == dataset.histories
+
+
+def test_explicit_seven_timeframe_windows_preserve_identity_and_exclude_d1(export):
+    from ced_one.business_divisions.trading.historical_market_data import ORDER
+    dataset = load_dataset(*export[:2])
+    run = json.loads(export[2].read_text())
+    definition = run["strategy_definition"]
+    starts = {tf: definition["configuration"]["history_starts"].get(tf) for tf in ORDER}
+    payload = dataset.factual_input(run["T"], definition, timeframe_starts=starts)
+    assert payload["timeframe_histories"]["D1"] == payload["timeframe_histories"]["M30"] == []
+    assert payload["timeframe_histories"]["M1"] == dataset.factual_input(run["T"], definition)["timeframe_histories"]["M1"]
+    assert dataset.binding(payload)["dataset_sha256"] == dataset.dataset_sha256
+    assert dataset.observation_rows(run["T"])[-1]["timestamp"] == run["T"]
+
+
+@pytest.mark.parametrize("change", ["missing", "required_absent", "misbound", "off_grid", "future"])
+def test_invalid_window_never_rebases_strategy_evidence(export, change):
+    from ced_one.business_divisions.trading.historical_market_data import ORDER
+    dataset = load_dataset(*export[:2])
+    run = json.loads(export[2].read_text())
+    starts = {tf: run["strategy_definition"]["configuration"]["history_starts"].get(tf) for tf in ORDER}
+    if change == "missing": starts.pop("D1")
+    elif change == "required_absent": starts["H1"] = None
+    elif change == "misbound": starts["H1"] = run["T"]
+    elif change == "off_grid": starts["M30"] = "2026-01-02T00:00:01Z"
+    else: starts["M30"] = "2026-01-03T00:00:00Z"
+    with pytest.raises(ValueError):
+        dataset.factual_input(run["T"], run["strategy_definition"], timeframe_starts=starts)

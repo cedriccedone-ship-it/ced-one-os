@@ -34,6 +34,9 @@ def completed(tmp_path_factory):
 def test_real_chain_native_validation_and_archive_identities(completed, direction, case, r):
     paths, report = completed[direction, case]
     assert len(report["missions"]) == 3
+    assert report["backtest_status"] == "RESOLVED"
+    assert report["assessment"]["status"] == "COMPLETE"
+    assert all(0 < step["record_bytes"] <= 64*1024*1024 for step in report["missions"])
     store = SQLiteMissionArchive(paths[3])
     records = [store.get(m["mission_id"]) for m in report["missions"]]
     for i, record in enumerate(records):

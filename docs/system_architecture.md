@@ -403,3 +403,64 @@ imports test fixtures. It asserts identical candidates under changed post-T data
 Real use requires a licensed export with known price basis, native grids, session
 boundaries and sufficient warm-up/observation data. An M1-only feed requires a
 separate resampling contract; this importer does not synthesize other timeframes.
+
+## Historical batch replay v1
+
+The existing local historical CLI accepts `--prepare-batch PLAN` with `--dataset`,
+`--manifest` and the original `--run replay.json`. Preparation executes no mission.
+It publishes a closed `trading.historical_batch_replay.v1` plan, plus its canonical
+SHA256, before execution. Raw profile text and its byte SHA256, full dataset and
+manifest hashes, native versions and every ordered point are included. The fixed
+first plan uses 16, 17 and 24 September 2026, 13:00 through 13:04 UTC, LONG then
+SHORT, ordinal zero and 120-second validity. Founding is 12:00 through 13:04 per
+day. Starts are fixed per session: 12 H4, 12 H1, 8 M30, 32 M15, 30 M5 and 60 M1
+periods before founding; D1 is explicitly absent. The original profile's other
+strategy settings, K and relationship availability remain unchanged. Selection
+uses explicit dates, timestamps, session declarations and coverage, never setups
+or outcomes. Missing coverage is reported, never repaired by selecting other data.
+
+`--batch PLAN --dataset CSV --manifest JSON --archive DB --report REPORT` validates
+the complete plan and source hashes before creating an exclusive external report.
+That report durably contains every planned point before the first mission. The
+runner sequentially invokes the existing three independently governed missions;
+there is no new capability or scheduler. The actual bounded inputs and strategy
+profiles retain existing current authorization binding. Plan/report hashes provide
+research traceability, not new authorization or independent preregistration proof.
+Each consumer selects its exact archived predecessor ID/hash. Native sources,
+envelopes, composition, assessment, action, candidate and reference scenario keep
+their existing public validation. Native authorities and execution remain false.
+
+All seven factual windows have explicit starts (null means intentionally absent
+for a non-strategy timeframe). Candles must close by T. Original M1 observations
+retain the [T-1 minute,T) anchor and [T,T+24 hours) openings. No source history is
+sorted, filled, compressed or resampled. Closures remain gaps under native rules.
+CA1 requires a confirmed H1 pivot and a closed right-hand neighbour; more candles
+do not guarantee confirmation, H4 structure or a setup. Replay may stop UNKNOWN
+at its first founding boundary. This slice does not reinterpret that outcome.
+
+Each row retains assessment reason, identities, candidate, reference status/R or
+uncertainty, mission IDs, record hashes and actual serialized record byte sizes.
+Reports checkpoint after each mission and point. A completed candidate with C!=T
+is retained with `SKIPPED_C_NE_T`; it never enters reference execution. WAITING,
+UNKNOWN and UNAVAILABLE remain observations. Unique setups/completions are counted
+by native identities; observation multiplicities remain visible, and repeated
+completions do not inflate unique-backtest counts. Technical errors are explicit;
+an archive or IO failure aborts without retry, marking remaining points
+`NOT_RUN_ABORTED`. If external report storage itself fails, the command fails and
+the last published report remains evidence; automatic resume is unsupported.
+
+The archive's exact 67,108,864-byte record limit is unchanged. Bounded candle
+windows reduce duplication, but no candle-count estimate guarantees record size;
+the existing serializer remains authoritative. Oversize storage aborts the batch,
+without shrinking windows, discarding evidence or rerunning an executor. Each
+input file retains its existing 16-MiB limit. Existing reports/plans are never
+silently overwritten; reruns require a new report path and fresh governance.
+
+Dataset declaration availability is never inferred from T or rewritten. Late
+availability may produce `MISSING_DATA_CENSORED` at the first required observation;
+K does not retroactively make a declaration available. Real source authentication
+is not established by CSV hashes or provider labels. The standalone
+`--demo-batch NEW_DIRECTORY` uses one labelled synthetic native producer fixture
+and verifies all three archived missions with the +3R reference outcome. It does
+not execute the 30-point real-data plan. No broker, financial P&L or trading
+permission is introduced.
