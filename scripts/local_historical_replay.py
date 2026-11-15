@@ -180,6 +180,7 @@ def replay_loaded(dataset, run, archive_path, *, policy=None, timeframe_starts=N
 
 
 BATCH_CONTRACT = "trading.historical_batch_replay.v1"
+SCHEDULE_CONTRACT = "trading.historical_batch_schedule.v1"
 FIRST_DATES = ("2026-09-16", "2026-09-17", "2026-09-24")
 WARMUP = {"H4": 12, "H1": 12, "M30": 8, "M15": 32, "M5": 30, "M1": 60}
 
@@ -223,6 +224,34 @@ def first_batch_plan(dataset, profile_text):
                 definition["configuration"].update(history_starts={tf: starts[tf] for tf in strategy.TIMEFRAMES},
                     founding_start=stamp(founding), founding_end=date+"T13:04:00Z")
                 points.append(dict(session_id=date, run=run, timeframe_starts=deepcopy(starts)))
+    plan = batch_plan(dataset, profile_text, points)
+    validate_batch_plan(plan, dataset)
+    return plan
+
+
+def scheduled_batch_plan(dataset, profile_text, schedule):
+    """Expand explicit start/T pairs into fixed LONG/SHORT research domains."""
+    exact(schedule, {"contract", "sessions"}, "Batch schedule")
+    if schedule["contract"] != SCHEDULE_CONTRACT or type(schedule["sessions"]) is not list or not 1 <= len(schedule["sessions"]) <= 500:
+        raise ValueError("Schedule requires a supported contract and 1..500 sessions")
+    profile = validate_run(json_text(profile_text))
+    points, previous = [], None
+    for session in schedule["sessions"]:
+        exact(session, {"founding_start", "T"}, "Scheduled session")
+        founding, at = (parse_timestamp(session[key]) for key in ("founding_start", "T"))
+        if (founding.second or founding.microsecond or at.second or at.microsecond or
+                founding > at or (previous is not None and founding <= previous)):
+            raise ValueError("Schedule requires ordered distinct starts and minute-aligned start <= T")
+        previous = founding
+        starts = {"D1": None, **{tf: stamp(founding-n*execution_duration(tf)) for tf, n in WARMUP.items()}}
+        for direction in ("LONG", "SHORT"):
+            run = deepcopy(profile)
+            run.update(T=stamp(at), setup_ordinal=0, entry_validity_duration_seconds=120)
+            definition = run["strategy_definition"]
+            definition["direction"] = direction
+            definition["configuration"].update(history_starts={tf: starts[tf] for tf in strategy.TIMEFRAMES},
+                founding_start=stamp(founding), founding_end=stamp(at))
+            points.append(dict(session_id=stamp(founding), run=run, timeframe_starts=deepcopy(starts)))
     plan = batch_plan(dataset, profile_text, points)
     validate_batch_plan(plan, dataset)
     return plan
@@ -437,13 +466,16 @@ def main():
     parser.add_argument("--manifest")
     parser.add_argument("--run")
     parser.add_argument("--archive")
-    parser.add_argument("--prepare-batch", metavar="PLAN", help="Seal the fixed September 30-point plan without executing missions")
+    parser.add_argument("--prepare-batch", metavar="PLAN", help="Seal a plan without executing missions; defaults to the September 30-point plan")
+    parser.add_argument("--schedule", metavar="JSON", help="Explicit UTC start/T pairs; only with --prepare-batch")
     parser.add_argument("--batch", metavar="PLAN", help="Execute an explicit sealed batch plan")
     parser.add_argument("--report", help="New external JSON report; never overwrite a previous run")
     parser.add_argument("--demo-batch", metavar="DIRECTORY", help="One positive synthetic batch point, outside the repository")
     parser.add_argument("--demo", metavar="DIRECTORY", help="Generate and execute labelled synthetic LONG/SHORT fixtures outside the repository")
     args = parser.parse_args()
     try:
+        if args.schedule and not args.prepare_batch:
+            parser.error("--schedule requires --prepare-batch")
         if sum(bool(v) for v in (args.demo, args.demo_batch, args.prepare_batch, args.batch)) > 1:
             parser.error("Select only one demo/prepare/batch mode")
         if args.demo_batch:
@@ -474,10 +506,13 @@ def main():
         elif args.prepare_batch:
             if not all((args.dataset, args.manifest, args.run)) or args.archive or args.report:
                 parser.error("--prepare-batch requires only --dataset, --manifest and --run")
-            if Path(args.prepare_batch).resolve() in {Path(p).resolve() for p in (args.dataset, args.manifest, args.run)}:
+            inputs = [args.dataset, args.manifest, args.run] + ([args.schedule] if args.schedule else [])
+            if Path(args.prepare_batch).resolve() in {Path(p).resolve() for p in inputs}:
                 parser.error("Plan must not overwrite an input")
             dataset = load_dataset(args.dataset, args.manifest)
-            plan = first_batch_plan(dataset, read_bytes(args.run).decode("utf-8"))
+            profile_text = read_bytes(args.run).decode("utf-8")
+            plan = (scheduled_batch_plan(dataset, profile_text, json_text(read_bytes(args.schedule).decode("utf-8")))
+                    if args.schedule else first_batch_plan(dataset, profile_text))
             atomic_json(args.prepare_batch, dict(plan=plan, plan_sha256=digest(plan)), create=True)
             print(json.dumps(dict(plan=str(args.prepare_batch), plan_sha256=digest(plan), points=len(plan["points"]),
                 profile_sha256=plan["profile_sha256"], missions_executed=0,

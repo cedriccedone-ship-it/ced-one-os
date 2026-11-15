@@ -464,3 +464,20 @@ is not established by CSV hashes or provider labels. The standalone
 and verifies all three archived missions with the +3R reference outcome. It does
 not execute the 30-point real-data plan. No broker, financial P&L or trading
 permission is introduced.
+
+### Explicit batch schedules
+
+`--prepare-batch PLAN --schedule JSON` optionally replaces the fixed first plan's
+dates with explicit founding-start/evaluation pairs. The schedule has exactly
+`{"contract":"trading.historical_batch_schedule.v1","sessions":[{"founding_start":"2026-09-16T12:00:00Z","T":"2026-09-16T12:30:00Z"}]}`.
+It requires 1..500 sessions, distinct increasing starts, timezone-aware timestamps
+normalized to UTC, whole minutes and start <= T. Existing source-grid, native
+definition and T/H/K checks still apply. Each pair generates LONG then SHORT,
+ordinal zero, 120-second candidate validity, founding_end=T and the same fixed
+warmup counts described above; the normalized founding timestamp is session_id.
+The original profile text/hash, K and declaration availability are retained.
+Expanded ordered points are included in the existing plan hash and validated
+before exclusive atomic publication; schedule input is protected from overwrite.
+Without `--schedule`, the original 30-point generator and output are unchanged.
+The option is accepted only during preparation, executes no missions and changes
+neither the batch engine nor Mission Control/native ownership or trading authority.

@@ -58,6 +58,8 @@ def test_first_plan_pins_thirty_points_profile_hash_and_fixed_domains(tmp_path, 
         raise AssertionError("Plan preparation executed a mission")
     monkeypatch.setattr(LocalExecutionRuntime, "execute", forbidden)
     plan = replay.first_batch_plan(data, raw)
+    # Captured from the unchanged db4c3e0 generator before the schedule extension.
+    assert digest(plan) == "7fb96a4b416e5f768100229fafcdb125383aec53ab53bc0df12e9e0f15644dec"
     assert len(plan["points"]) == 30
     assert plan["profile_sha256"] == hashlib.sha256(raw.encode()).hexdigest()
     for date in replay.FIRST_DATES:
@@ -73,6 +75,151 @@ def test_first_plan_pins_thirty_points_profile_hash_and_fixed_domains(tmp_path, 
             for tf, n in replay.WARMUP.items():
                 assert parse_timestamp(point["timeframe_starts"][tf]) == parse_timestamp(date+"T12:00:00Z")-n*replay.execution_duration(tf)
         assert len({digest(p["timeframe_starts"]) for p in points}) == 1
+
+
+@pytest.fixture
+def scheduled_inputs(tmp_path):
+    paths = replay.write_demo_dataset(tmp_path)
+    profile = json.loads(paths[2].read_text())
+    profile["K"] = "2026-11-01T00:00:00Z"
+    profile["relationship_available_at"] = profile["K"]
+    paths[2].write_text(json.dumps(profile, indent=2)+"\n")
+    schedule = dict(contract=replay.SCHEDULE_CONTRACT, sessions=[
+        dict(founding_start="2026-09-16T12:00:00Z", T="2026-09-16T12:30:00Z"),
+        dict(founding_start="2026-09-17T16:00:00Z", T="2026-09-17T16:30:00Z"),
+        dict(founding_start="2026-09-24T20:00:00Z", T="2026-09-24T20:30:00Z"),
+    ])
+    return paths, schedule
+
+
+def test_scheduled_six_points_bind_profile_windows_and_sources(scheduled_inputs, monkeypatch):
+    paths, schedule = scheduled_inputs
+    data, raw = load_dataset(*paths[:2]), paths[2].read_text()
+    profile, original_schedule = json.loads(raw), deepcopy(schedule)
+    def forbidden(*a, **k):
+        raise AssertionError("Preparation executed a mission")
+    monkeypatch.setattr(LocalExecutionRuntime, "execute", forbidden)
+    plan = replay.scheduled_batch_plan(data, raw, schedule)
+    assert schedule == original_schedule
+    assert len(plan["points"]) == 6
+    assert plan["profile_json"] == raw
+    assert plan["profile_sha256"] == hashlib.sha256(raw.encode()).hexdigest()
+    assert plan["dataset_sha256"] == data.dataset_sha256
+    assert plan["manifest_sha256"] == hashlib.sha256(paths[1].read_bytes()).hexdigest()
+    assert replay.validate_batch_plan(plan, data) == plan
+    for i, session in enumerate(schedule["sessions"]):
+        for j, direction in enumerate(("LONG", "SHORT")):
+            point = plan["points"][2*i+j]
+            run = point["run"]
+            assert point["session_id"] == session["founding_start"]
+            assert run["T"] == session["T"]
+            assert run["K"] == profile["K"]
+            assert run["relationship_available_at"] == profile["relationship_available_at"]
+            assert run["setup_ordinal"] == 0 and run["entry_validity_duration_seconds"] == 120
+            config = run["strategy_definition"]["configuration"]
+            assert config["founding_start"] == session["founding_start"]
+            assert config["founding_end"] == session["T"]
+            expected = replay.strategy.normalize_strategy_definition(profile["strategy_definition"])
+            expected["direction"] = direction
+            expected["configuration"].update(history_starts=deepcopy(config["history_starts"]),
+                founding_start=session["founding_start"], founding_end=session["T"])
+            assert run["strategy_definition"] == expected
+            assert point["timeframe_starts"]["D1"] is None
+            for tf, count in replay.WARMUP.items():
+                assert parse_timestamp(point["timeframe_starts"][tf]) == parse_timestamp(session["founding_start"])-count*replay.execution_duration(tf)
+                if tf in replay.strategy.TIMEFRAMES:
+                    assert config["history_starts"][tf] == point["timeframe_starts"][tf]
+    changed = deepcopy(schedule)
+    changed["sessions"][-1]["T"] = "2026-09-24T20:31:00Z"
+    assert digest(replay.scheduled_batch_plan(data, raw, changed)) != digest(plan)
+    plan["points"][0]["timeframe_starts"]["M1"] = "tampered"
+    assert plan["points"][1]["timeframe_starts"]["M1"] != "tampered"
+
+
+@pytest.mark.parametrize("change", ["contract", "extra", "empty", "too_many", "not_list", "missing_T", "extra_session",
+    "reversed_time", "duplicate_start", "unordered", "naive", "seconds", "off_grid", "after_K"])
+def test_invalid_schedule_is_rejected(scheduled_inputs, change):
+    paths, schedule = scheduled_inputs
+    if change == "contract": schedule["contract"] = "unknown"
+    elif change == "extra": schedule["approval"] = True
+    elif change == "empty": schedule["sessions"] = []
+    elif change == "too_many": schedule["sessions"] *= 167
+    elif change == "not_list": schedule["sessions"] = {}
+    elif change == "missing_T": schedule["sessions"][0].pop("T")
+    elif change == "extra_session": schedule["sessions"][0]["direction"] = "LONG"
+    elif change == "reversed_time": schedule["sessions"][0]["T"] = "2026-09-16T11:59:00Z"
+    elif change == "duplicate_start": schedule["sessions"][1] = deepcopy(schedule["sessions"][0])
+    elif change == "unordered": schedule["sessions"].reverse()
+    elif change == "naive": schedule["sessions"][0]["T"] = "2026-09-16T12:30:00"
+    elif change == "seconds": schedule["sessions"][0]["T"] = "2026-09-16T12:30:01Z"
+    elif change == "off_grid": schedule["sessions"][0]["founding_start"] = "2026-09-16T12:01:00Z"
+    elif change == "after_K": schedule["sessions"] = [dict(founding_start="2026-11-01T12:00:00Z", T="2026-11-01T12:30:00Z")]
+    with pytest.raises(ValueError):
+        replay.scheduled_batch_plan(load_dataset(*paths[:2]), paths[2].read_text(), schedule)
+
+
+@pytest.mark.parametrize("scheduled", [False, True])
+def test_prepare_cli_and_batch_dispatch_without_execution(scheduled_inputs, monkeypatch, capsys, scheduled):
+    paths, schedule = scheduled_inputs
+    root = paths[0].parent
+    schedule_path, plan_path = root/"schedule.json", root/"prepared.json"
+    schedule_path.write_text(json.dumps(schedule))
+    argv = ["local_historical_replay.py", "--prepare-batch", str(plan_path), "--dataset", str(paths[0]),
+            "--manifest", str(paths[1]), "--run", str(paths[2])]
+    if scheduled:
+        argv += ["--schedule", str(schedule_path)]
+    def forbidden(*a, **k):
+        raise AssertionError("CLI preparation executed a mission")
+    monkeypatch.setattr(LocalExecutionRuntime, "execute", forbidden)
+    monkeypatch.setattr(replay.sys, "argv", argv)
+    assert replay.main() == 0
+    summary = json.loads(capsys.readouterr().out)
+    sealed = json.loads(plan_path.read_text())
+    assert summary["missions_executed"] == 0
+    assert summary["points"] == (6 if scheduled else 30)
+    assert summary["plan_sha256"] == sealed["plan_sha256"] == digest(sealed["plan"])
+    if not scheduled:
+        assert sealed["plan_sha256"] == "7fb96a4b416e5f768100229fafcdb125383aec53ab53bc0df12e9e0f15644dec"
+    assert not paths[3].exists()
+    assert not list(root.glob("report*.json"))
+    original = plan_path.read_bytes()
+    assert replay.main() == 1  # Exclusive publication must preserve an existing sealed plan.
+    assert plan_path.read_bytes() == original
+    calls = []
+    def dispatch(*args):
+        calls.append(args)
+        return dict(status="FINISHED", plan_sha256=sealed["plan_sha256"], counts={}, rows=[])
+    monkeypatch.setattr(replay, "run_batch", dispatch)
+    report_path = root/"report.json"
+    monkeypatch.setattr(replay.sys, "argv", ["local_historical_replay.py", "--batch", str(plan_path),
+        "--dataset", str(paths[0]), "--manifest", str(paths[1]), "--archive", str(paths[3]), "--report", str(report_path)])
+    assert replay.main() == 0
+    assert calls == [(str(paths[0]), str(paths[1]), str(plan_path), str(paths[3]), str(report_path))]
+
+
+def test_schedule_cli_restricts_mode_and_protects_input(scheduled_inputs, monkeypatch):
+    paths, schedule = scheduled_inputs
+    path = paths[0].parent/"schedule.json"
+    path.write_text(json.dumps(schedule))
+    original = path.read_bytes()
+    monkeypatch.setattr(replay.sys, "argv", ["replay", "--schedule", str(path)])
+    with pytest.raises(SystemExit) as error:
+        replay.main()
+    assert error.value.code == 2
+    monkeypatch.setattr(replay.sys, "argv", ["replay", "--prepare-batch", str(path), "--schedule", str(path),
+        "--dataset", str(paths[0]), "--manifest", str(paths[1]), "--run", str(paths[2])])
+    with pytest.raises(SystemExit) as error:
+        replay.main()
+    assert error.value.code == 2 and path.read_bytes() == original
+
+
+def test_schedule_normalizes_explicit_offsets_and_distinguishes_same_day_domains(scheduled_inputs):
+    paths, schedule = scheduled_inputs
+    schedule["sessions"] = [dict(founding_start="2026-09-16T14:00:00+02:00", T="2026-09-16T14:30:00+02:00"),
+                            dict(founding_start="2026-09-16T16:00:00Z", T="2026-09-16T16:30:00Z")]
+    plan = replay.scheduled_batch_plan(load_dataset(*paths[:2]), paths[2].read_text(), schedule)
+    assert [p["session_id"] for p in plan["points"]] == ["2026-09-16T12:00:00Z"]*2+["2026-09-16T16:00:00Z"]*2
+    assert plan["points"][0]["run"]["T"] == "2026-09-16T12:30:00Z"
 
 
 @pytest.mark.parametrize("change", ["dataset", "manifest", "profile", "version", "duplicate", "moving_window", "changed_strategy", "backdated", "boolean_ordinal"])
