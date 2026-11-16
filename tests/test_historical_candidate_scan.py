@@ -1,6 +1,8 @@
 """Native discovery must agree with independently governed archived replay."""
 from copy import deepcopy
+import csv
 from datetime import timedelta
+import hashlib
 import json
 
 import pytest
@@ -64,13 +66,14 @@ def test_preparation_seals_186_points_and_18_controls_before_any_execution(tmp_p
                 assert parse_timestamp(point["timeframe_starts"][tf]) == parse_timestamp(start)-n*replay.execution_duration(tf)
             assert (digest(point) in plan["negative_control_point_ids"]) == ((parse_timestamp(current["T"])-parse_timestamp(start)).seconds//60 in (0,15,30))
     assert not paths[3].exists()
+    diagnostics = scan.preparation_h4_diagnostics(data, plan["batch_plan"])
+    assert diagnostics["counts"] == {"UNKNOWN": 3}
+    assert all(row["reason"] == "MISSING_CONTIGUOUS_H4" for row in diagnostics["blocks"])
 
 
 @pytest.fixture
 def schedule_inputs(tmp_path, monkeypatch):
     """Continuous synthetic grid for preparation only; no market setup selection."""
-    import csv
-    import hashlib
     paths = replay.write_demo_dataset(tmp_path)
     profile = json.loads(paths[2].read_text())
     profile["K"] = profile["relationship_available_at"] = "2026-11-01T00:00:00Z"
@@ -133,6 +136,80 @@ def test_schedule_multiple_blocks_determinism_windows_and_observations(schedule_
     changed["blocks"][-1].update(founding_end="2026-01-03T04:04:00Z",control_offsets_minutes=[0,2,4])
     assert scan.prepare_plan(data,raw,schedule=changed)["plan_sha256"] != sealed["plan_sha256"]
     assert not paths[3].exists()
+
+
+def test_prepare_h4_diagnostics_preserves_plan_and_uses_closed_candles(
+    schedule_inputs, tmp_path, monkeypatch, capsys,
+):
+    paths, _, _, schedule, schedule_path = schedule_inputs
+    schedule["blocks"][1].update(
+        founding_start="2026-01-03T00:00:00Z", founding_end="2026-01-03T00:03:00Z",
+    )
+    schedule_path.write_text(json.dumps(schedule))
+    second_start = parse_timestamp(schedule["blocks"][1]["founding_start"])
+    h4_duration = replay.execution_duration("H4")
+    with paths[0].open() as stream:
+        reader = csv.DictReader(stream)
+        fields, rows = reader.fieldnames, list(reader)
+    closed = [(101, 99), (105, 101), (103, 98), (106, 102), (104, 100), (108, 104), (106, 102)]
+    for row in rows:
+        if row["timeframe"] != "H4":
+            continue
+        position = (parse_timestamp(row["timestamp"]) - second_start) // h4_duration
+        if -len(closed) <= position < 0:
+            high, low = closed[position]
+        elif position == 0:
+            high, low = 1000, 1
+        else:
+            continue
+        midpoint = (high + low) / 2
+        row.update(high=high, low=low, open=midpoint, close=midpoint)
+    with paths[0].open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+    manifest = json.loads(paths[1].read_text())
+    manifest["csv_sha256"] = hashlib.sha256(paths[0].read_bytes()).hexdigest()
+    paths[1].write_text(json.dumps(manifest))
+
+    analyzer = scan.MARKET_STRUCTURE.analyze
+    calls = []
+
+    def capture(payload):
+        calls.append(payload)
+        return analyzer(payload)
+
+    monkeypatch.setattr(scan.MARKET_STRUCTURE, "analyze", capture)
+    inputs = ["--dataset", str(paths[0]), "--manifest", str(paths[1]),
+              "--run", str(paths[2]), "--schedule", str(schedule_path)]
+    plain_path, diagnostic_path = tmp_path / "plain.json", tmp_path / "diagnostic.json"
+    monkeypatch.setattr(scan.sys, "argv", ["scan", "--prepare", str(plain_path), *inputs])
+    assert scan.main() == 0
+    assert "h4_diagnostics" not in json.loads(capsys.readouterr().out)
+    assert calls == []
+    monkeypatch.setattr(scan.sys, "argv", ["scan", "--prepare", str(diagnostic_path), *inputs, "--h4-diagnostics"])
+    assert scan.main() == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["points"] == 14
+    assert output["controls"] == 12
+    assert output["missions_executed"] == 0
+    assert plain_path.read_bytes() == diagnostic_path.read_bytes()
+    assert not paths[3].exists()
+
+    assert len(calls) == 2
+    for payload, block in zip(calls, schedule["blocks"]):
+        assert payload["evaluation_time"] == block["founding_start"]
+        assert len(payload["candle_history"]) == 12
+        assert all(candle["high"] < 1000 for candle in payload["candle_history"])
+        assert parse_timestamp(payload["candle_history"][-1]["timestamp"]) + h4_duration == parse_timestamp(
+            block["founding_start"]
+        )
+    diagnostics = output["h4_diagnostics"]
+    assert diagnostics["counts"] == {"UNKNOWN": 1, "CLASSIFIED": 1}
+    first, second = diagnostics["blocks"]
+    assert first["reason"] == "UNRESOLVED_H4" and first["h4_direction"] is None
+    assert second["structure_state"] == "bullish_structure" and second["h4_direction"] == "LONG"
+    assert (second["latest_high_relationship"], second["latest_low_relationship"]) == ("HH", "HL")
 
 
 @pytest.mark.parametrize("rule", ["old", "new", "mixed", "wrong", "duplicate", "foreign"])
@@ -207,8 +284,6 @@ def test_schedule_invalid_inputs_fail(schedule_inputs,change):
 
 @pytest.mark.parametrize("tf,open_time", [("H4","2025-12-31T00:00:00Z"),("M1","2026-01-02T00:01:00Z")])
 def test_schedule_missing_candidate_reports_exact_open_before_publication(schedule_inputs,tmp_path,monkeypatch,capsys,tf,open_time):
-    import csv
-    import hashlib
     paths,_,_,_,schedule_path = schedule_inputs
     with paths[0].open() as stream:
         reader = csv.DictReader(stream)
@@ -257,9 +332,10 @@ def test_schedule_cli_input_and_output_protection(schedule_inputs,tmp_path,monke
 
 
 @pytest.mark.parametrize("mode", ["--scan","--demo"])
-def test_schedule_only_allowed_for_preparation(schedule_inputs,monkeypatch,mode):
-    *_,schedule_path = schedule_inputs
-    monkeypatch.setattr(scan.sys,"argv",["scan",mode,"unused","--schedule",str(schedule_path)])
+@pytest.mark.parametrize("option", ["--schedule", "--h4-diagnostics"])
+def test_preparation_options_rejected_in_other_modes(monkeypatch, mode, option):
+    option_args = ["unused-schedule.json"] if option == "--schedule" else []
+    monkeypatch.setattr(scan.sys, "argv", ["scan", mode, "unused", option, *option_args])
     with pytest.raises(SystemExit) as exc: scan.main()
     assert exc.value.code == 2
 

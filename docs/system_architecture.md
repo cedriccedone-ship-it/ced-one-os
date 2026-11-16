@@ -566,10 +566,26 @@ Late declarations and observation gaps retain native reference censorship.
 
 `--schedule` is rejected with scan/demo execution and is protected from output
 overwrite, as are CSV, manifest and profile. Existing output plans cannot be
-overwritten. Preparation invokes no analyzers, executors or archive operations.
+overwritten. Preparation normally invokes no analyzers and always skips executors
+and archive operations.
 Without `--schedule`, the original 186-point/18-control generator and hash remain
 unchanged, including its existing handling of incomplete research evidence. The
 scan control validator uses the lower middle point for even-length point arrays;
 its selection for the existing odd-length/default arrays is unchanged. Native
 strategy, scan execution, current governance, authority flags, 64-MiB record limit
 and reference semantics are unchanged.
+
+### H4 diagnostics at planned starts
+
+Add `--h4-diagnostics` to `--prepare` to include a read-only `h4_diagnostics`
+section in the CLI JSON. It covers every planned block once. The native market
+structure analyzer receives only H4 candles in the configured history window
+whose close is at or before the block's founding start. The section counts
+`CLASSIFIED` and `UNKNOWN` blocks and reports each block's observed/expected
+candle count, structure, H4 direction when available, confirmed swing counts
+and latest swing relationships. A gap in a legacy plan's H4 history reports
+`MISSING_CONTIGUOUS_H4`. Contiguous history with unresolved structure reports
+`UNRESOLVED_H4`. Explicit schedule coverage validation still runs first.
+The diagnosis describes H4 structure at founding. Full candidate evaluation
+also requires other timeframes and subsequent evidence. All points and controls
+are kept, and the same inputs produce the same sealed plan with either setting.

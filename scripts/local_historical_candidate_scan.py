@@ -15,6 +15,7 @@ from ced_one.business_divisions.trading.causal_snapshot_availability import CAUS
 from ced_one.business_divisions.trading.historical_market_data import (
     ORDER, digest, exact, json_text, load_dataset, parse_timestamp, read_bytes, stamp,
 )
+from ced_one.business_divisions.trading.market_structure import MARKET_STRUCTURE
 from ced_one.memory.mission_store import ArchiveError, SQLiteMissionArchive, MAX_RECORD_BYTES
 
 CONTRACT = "trading.historical_candidate_scan.v1"
@@ -82,6 +83,44 @@ def preparation_coverage(dataset, batch):
             observation_M1=dict(union_start=stamp(start-timedelta(minutes=1)), union_end=stamp(end+timedelta(hours=24)),
                 **coverage("M1", start-timedelta(minutes=1), end+timedelta(hours=24)))))
     return result
+
+
+def preparation_h4_diagnostics(dataset, batch):
+    """Describe the H4 context of each fixed block at its founding boundary."""
+    blocks, counts = {}, Counter()
+    duration = replay.execution_duration("H4")
+    for point in batch["points"]:
+        session_id = point["session_id"]
+        if session_id in blocks:
+            continue
+        definition = point["run"]["strategy_definition"]
+        start = definition["configuration"]["founding_start"]
+        windows = point["timeframe_starts"]
+        factual = dataset.factual_input(start, definition, timeframe_starts=windows)
+        history = factual["timeframe_histories"]["H4"]
+        expected = (parse_timestamp(start) - parse_timestamp(windows["H4"])) // duration
+        row = dict(block=session_id, founding_start=start, h4_history_start=windows["H4"],
+                   closed_h4_candles=len(history), expected_h4_candles=expected,
+                   status="UNKNOWN", reason=None, structure_state=None, h4_direction=None)
+        if len(history) != expected:
+            row["reason"] = "MISSING_CONTIGUOUS_H4"
+        else:
+            structure = MARKET_STRUCTURE.analyze(dict(
+                symbol=factual["symbol"], timeframe="H4", evaluation_time=start, candle_history=history,
+            )).to_dict()
+            evidence = structure["evidence"]
+            direction = {"bullish_structure": "LONG", "bearish_structure": "SHORT"}.get(structure["structure_state"])
+            row.update(
+                status="CLASSIFIED" if direction else "UNKNOWN",
+                reason=None if direction else "UNRESOLVED_H4",
+                structure_state=structure["structure_state"], h4_direction=direction,
+                confirmed_highs=len(evidence["swing_highs"]), confirmed_lows=len(evidence["swing_lows"]),
+                latest_high_relationship=structure["latest_high_relationship"],
+                latest_low_relationship=structure["latest_low_relationship"],
+            )
+        blocks[session_id] = row
+        counts[row["status"]] += 1
+    return dict(counts=dict(counts), blocks=list(blocks.values()))
 
 
 def prepare_scheduled_plan(dataset, profile_text, schedule):
@@ -359,12 +398,16 @@ def main():
     modes.add_argument("--prepare", metavar="PLAN")
     modes.add_argument("--scan", metavar="PLAN")
     modes.add_argument("--demo", metavar="NEW_DIRECTORY")
+    parser.add_argument("--h4-diagnostics", action="store_true",
+                        help="Report causal H4 structure at each fixed block start with --prepare")
     for name in ("dataset", "manifest", "run", "report", "archive", "schedule"):
         parser.add_argument("--"+name)
     args = parser.parse_args()
     try:
         if args.schedule and not args.prepare:
             parser.error("--schedule is only valid with --prepare")
+        if args.h4_diagnostics and not args.prepare:
+            parser.error("--h4-diagnostics is only valid with --prepare")
         if args.demo:
             if any((args.dataset, args.manifest, args.run, args.report, args.archive)):
                 parser.error("--demo requires no file inputs")
@@ -380,12 +423,16 @@ def main():
             if args.schedule and schedule is None:
                 raise ValueError("Scan schedule must be an object")
             sealed = prepare_plan(dataset, read_bytes(args.run).decode("utf-8"), schedule=schedule)
-            coverage = preparation_coverage(dataset, sealed["plan"]["batch_plan"]) if args.schedule else None
+            batch = sealed["plan"]["batch_plan"]
+            coverage = preparation_coverage(dataset, batch) if args.schedule else None
+            h4_diagnostics = preparation_h4_diagnostics(dataset, batch) if args.h4_diagnostics else None
             replay.atomic_json(args.prepare, sealed, create=True)
-            result = dict(plan=args.prepare, plan_sha256=sealed["plan_sha256"], points=len(sealed["plan"]["batch_plan"]["points"]),
+            result = dict(plan=args.prepare, plan_sha256=sealed["plan_sha256"], points=len(batch["points"]),
                           controls=len(sealed["plan"]["negative_control_point_ids"]), missions_executed=0)
             if coverage is not None:
                 result["coverage"] = coverage
+            if h4_diagnostics is not None:
+                result["h4_diagnostics"] = h4_diagnostics
         else:
             if not all((args.dataset, args.manifest, args.report, args.archive)) or args.run:
                 parser.error("--scan requires --dataset, --manifest, --report, --archive; no --run")
