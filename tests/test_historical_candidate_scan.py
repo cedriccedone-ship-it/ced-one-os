@@ -41,6 +41,8 @@ def test_preparation_seals_186_points_and_18_controls_before_any_execution(tmp_p
     monkeypatch.setattr(LocalExecutionRuntime, "execute", forbidden)
     monkeypatch.setattr(scan.CAUSAL_SNAPSHOT_AVAILABILITY, "analyze", forbidden)
     sealed = scan.prepare_plan(data, raw)
+    # Captured from the unchanged f7509d9 generator before --schedule.
+    assert sealed["plan_sha256"] == "c30f0442354daa860ae2322970417a7111b793492b67af69d7e2bf596aef07e7"
     assert sealed["plan_sha256"] == digest(sealed["plan"])
     plan = sealed["plan"]
     assert len(plan["batch_plan"]["points"]) == 186
@@ -62,6 +64,204 @@ def test_preparation_seals_186_points_and_18_controls_before_any_execution(tmp_p
                 assert parse_timestamp(point["timeframe_starts"][tf]) == parse_timestamp(start)-n*replay.execution_duration(tf)
             assert (digest(point) in plan["negative_control_point_ids"]) == ((parse_timestamp(current["T"])-parse_timestamp(start)).seconds//60 in (0,15,30))
     assert not paths[3].exists()
+
+
+@pytest.fixture
+def schedule_inputs(tmp_path, monkeypatch):
+    """Continuous synthetic grid for preparation only; no market setup selection."""
+    import csv
+    import hashlib
+    paths = replay.write_demo_dataset(tmp_path)
+    profile = json.loads(paths[2].read_text())
+    profile["K"] = profile["relationship_available_at"] = "2026-11-01T00:00:00Z"
+    paths[2].write_text(json.dumps(profile))
+    left, right = parse_timestamp("2025-12-31T00:00:00Z"), parse_timestamp("2026-01-03T05:00:00Z")
+    with paths[0].open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=["timeframe", "timestamp", "open", "high", "low", "close"])
+        writer.writeheader()
+        for tf in replay.WARMUP:
+            tick = left
+            while tick+replay.execution_duration(tf) <= right:
+                writer.writerow(dict(timeframe=tf, timestamp=stamp(tick), open=100, high=101, low=99, close=100))
+                tick += replay.execution_duration(tf)
+    manifest = json.loads(paths[1].read_text())
+    manifest.update(csv_sha256=hashlib.sha256(paths[0].read_bytes()).hexdigest(),
+        timeframes={tf: dict(anchor=stamp(left), coverage_start=stamp(left), coverage_end=stamp(right)) for tf in replay.WARMUP},
+        sessions=[dict(open=stamp(left), close=stamp(right))])
+    paths[1].write_text(json.dumps(manifest))
+    schedule = dict(contract=scan.SCHEDULE_CONTRACT, blocks=[dict(
+        founding_start=start, founding_end=stamp(parse_timestamp(start)+timedelta(minutes=n)),
+        measurement_step_seconds=60, directions=["LONG", "SHORT"], control_offsets_minutes=[0,n//2,n])
+        for start,n in (("2026-01-02T00:00:00Z",2),("2026-01-03T04:00:00Z",3))])
+    schedule_path = tmp_path/"schedule.json"
+    schedule_path.write_text(json.dumps(schedule))
+    def forbidden(*a, **k): raise AssertionError("Preparation invoked an analyzer/runtime/archive")
+    for owner, method in ((LocalExecutionRuntime,"execute"),(scan.CAUSAL_SNAPSHOT_AVAILABILITY,"analyze"),
+                          (SQLiteMissionArchive,"save"),(scan.strategy.XAUUSD_CAUSAL_LIQUIDITY_REVERSAL,"analyze")):
+        monkeypatch.setattr(owner,method,forbidden)
+    return paths, load_dataset(*paths[:2]), paths[2].read_text(), schedule, schedule_path
+
+
+def test_schedule_multiple_blocks_determinism_windows_and_observations(schedule_inputs):
+    paths, data, raw, schedule, _ = schedule_inputs
+    before = deepcopy(schedule)
+    sealed = scan.prepare_plan(data,raw,schedule=schedule)
+    assert scan.prepare_plan(data,raw,schedule=deepcopy(schedule)) == sealed
+    assert schedule == before
+    plan = sealed["plan"]
+    assert len(plan["batch_plan"]["points"]) == 14 and len(plan["negative_control_point_ids"]) == 12
+    assert scan.validate_plan(plan,data) == plan
+    for block in schedule["blocks"]:
+        start = parse_timestamp(block["founding_start"])
+        points = [p for p in plan["batch_plan"]["points"] if p["session_id"] == block["founding_start"]]
+        n = (parse_timestamp(block["founding_end"])-start)//timedelta(minutes=1)
+        assert [(p["run"]["T"],p["run"]["strategy_definition"]["direction"]) for p in points] == [
+            (stamp(start+timedelta(minutes=m)),d) for m in range(n+1) for d in ("LONG","SHORT")]
+        for p in points:
+            run, config = p["run"], p["run"]["strategy_definition"]["configuration"]
+            assert config["founding_end"] == block["founding_end"]
+            assert run["K"] == run["relationship_available_at"] == json.loads(raw)["K"]
+            assert run["setup_ordinal"] == 0 and run["entry_validity_duration_seconds"] == 120
+            for tf,warmup in replay.WARMUP.items():
+                assert parse_timestamp(p["timeframe_starts"][tf]) == start-warmup*replay.execution_duration(tf)
+            assert (digest(p) in plan["negative_control_point_ids"]) == (
+                (parse_timestamp(run["T"])-start)//timedelta(minutes=1) in block["control_offsets_minutes"])
+    coverage = scan.preparation_coverage(data,plan["batch_plan"])
+    assert all(b["within_session"] and all(not c["missing_open_times"] for c in b["candidate"].values()) for b in coverage)
+    assert coverage[-1]["observation_M1"]["missing_open_times"]  # Does not block preparation.
+    changed = deepcopy(schedule)
+    changed["blocks"][-1].update(founding_end="2026-01-03T04:04:00Z",control_offsets_minutes=[0,2,4])
+    assert scan.prepare_plan(data,raw,schedule=changed)["plan_sha256"] != sealed["plan_sha256"]
+    assert not paths[3].exists()
+
+
+@pytest.mark.parametrize("rule", ["old", "new", "mixed", "wrong", "duplicate", "foreign"])
+def test_four_point_control_rule_compatibility(schedule_inputs, tmp_path, rule):
+    _, data, raw, schedule, _ = schedule_inputs
+    schedule["blocks"] = schedule["blocks"][-1:]  # Four minutes per direction: 0, 1, 2, 3.
+    sealed = scan.prepare_plan(data, raw, schedule=schedule)
+    plan = sealed["plan"]
+    points = plan["batch_plan"]["points"]
+    assert len(points) == 8
+    lower = [digest(p) for i,p in enumerate(points) if i//2 in (0,1,3)]
+    upper = [digest(p) for i,p in enumerate(points) if i//2 in (0,2,3)]
+    assert plan["negative_control_point_ids"] == lower
+    if rule == "old": plan["negative_control_point_ids"] = upper
+    elif rule == "mixed":
+        plan["negative_control_point_ids"] = [digest(p) for i,p in enumerate(points)
+            if i//2 in ((0,2,3) if p["run"]["strategy_definition"]["direction"] == "LONG" else (0,1,3))]
+    elif rule == "wrong": plan["negative_control_point_ids"] = [digest(p) for i,p in enumerate(points) if i//2 in (0,1,2)]
+    elif rule == "duplicate": plan["negative_control_point_ids"].append(lower[0])
+    elif rule == "foreign": plan["negative_control_point_ids"][0] = "0"*64
+    sealed["plan_sha256"] = digest(plan)
+    path = tmp_path/"sealed-v1-plan.json"
+    replay.atomic_json(path,sealed,create=True)
+    loaded = scan.json_text(path.read_text())
+    assert digest(loaded["plan"]) == loaded["plan_sha256"]
+    if rule in ("old", "new"):
+        assert scan.validate_plan(loaded["plan"],data) == plan
+    else:
+        with pytest.raises(ValueError,match="control point membership"):
+            scan.validate_plan(loaded["plan"],data)
+
+
+def test_legacy_control_plan_still_requires_original_hash(schedule_inputs,tmp_path):
+    paths, data, raw, schedule, _ = schedule_inputs
+    schedule["blocks"] = schedule["blocks"][-1:]
+    sealed = scan.prepare_plan(data,raw,schedule=schedule)
+    points = sealed["plan"]["batch_plan"]["points"]
+    sealed["plan"]["negative_control_point_ids"] = [digest(p) for i,p in enumerate(points) if i//2 in (0,2,3)]
+    sealed["plan_sha256"] = "0"*64
+    path = tmp_path/"tampered-hash.json"
+    replay.atomic_json(path,sealed,create=True)
+    output = tmp_path/"report.json"
+    with pytest.raises(ValueError,match="Scan plan hash mismatch"):
+        scan.run_scan(*paths[:2],path,output,paths[3])
+    assert not output.exists() and not paths[3].exists()
+
+
+@pytest.mark.parametrize("change", ["contract","empty","too_many","extra","unordered","duplicate","overlap",
+    "grid","naive","offset","seconds","short","long","step","directions","controls","bool_control"])
+def test_schedule_invalid_inputs_fail(schedule_inputs,change):
+    _,data,raw,schedule,_ = schedule_inputs
+    b = schedule["blocks"][0]
+    if change == "contract": schedule["contract"] = "unknown"
+    elif change == "empty": schedule["blocks"] = []
+    elif change == "too_many": schedule["blocks"] *= 9
+    elif change == "extra": b["approval"] = True
+    elif change == "unordered": schedule["blocks"].reverse()
+    elif change == "duplicate": schedule["blocks"][1] = deepcopy(b)
+    elif change == "overlap": b["founding_end"] = schedule["blocks"][1]["founding_end"]
+    elif change == "grid": b["founding_start"] = "2026-01-02T00:01:00Z"
+    elif change == "naive": b["founding_start"] = "2026-01-02T00:00:00"
+    elif change == "offset": b["founding_start"] = "2026-01-02T01:00:00+01:00"
+    elif change == "seconds": b["founding_end"] = "2026-01-02T00:02:01Z"
+    elif change == "short": b["founding_end"] = "2026-01-02T00:01:00Z"
+    elif change == "long": b["founding_end"] = "2026-01-02T00:31:00Z"
+    elif change == "step": b["measurement_step_seconds"] = True
+    elif change == "directions": b["directions"].reverse()
+    elif change == "controls": b["control_offsets_minutes"] = [0,2]
+    else: b["control_offsets_minutes"][0] = False
+    with pytest.raises(ValueError): scan.prepare_plan(data,raw,schedule=schedule)
+
+
+@pytest.mark.parametrize("tf,open_time", [("H4","2025-12-31T00:00:00Z"),("M1","2026-01-02T00:01:00Z")])
+def test_schedule_missing_candidate_reports_exact_open_before_publication(schedule_inputs,tmp_path,monkeypatch,capsys,tf,open_time):
+    import csv
+    import hashlib
+    paths,_,_,_,schedule_path = schedule_inputs
+    with paths[0].open() as stream:
+        reader = csv.DictReader(stream)
+        fields,rows = reader.fieldnames,list(reader)
+    with paths[0].open("w",newline="") as stream:
+        writer = csv.DictWriter(stream,fieldnames=fields); writer.writeheader()
+        writer.writerows(r for r in rows if not (r["timeframe"]==tf and r["timestamp"]==open_time))
+    manifest = json.loads(paths[1].read_text())
+    manifest["csv_sha256"] = hashlib.sha256(paths[0].read_bytes()).hexdigest()
+    paths[1].write_text(json.dumps(manifest))
+    output = tmp_path/"plan.json"
+    monkeypatch.setattr(scan.sys,"argv",["scan","--prepare",str(output),"--dataset",str(paths[0]),
+        "--manifest",str(paths[1]),"--run",str(paths[2]),"--schedule",str(schedule_path)])
+    assert scan.main() == 1
+    error = json.loads(capsys.readouterr().err)
+    assert error["error"] == "PreparationCoverageError"
+    assert error["coverage"][0]["block"] == "2026-01-02T00:00:00Z"
+    assert error["coverage"][0]["candidate"][tf]["missing_open_times"] == [open_time]
+    assert not output.exists() and not paths[3].exists()
+
+
+def test_schedule_session_boundary_is_rejected(schedule_inputs):
+    from dataclasses import replace
+    _,data,raw,schedule,_ = schedule_inputs
+    manifest = data.manifest
+    manifest["sessions"][0]["close"] = schedule["blocks"][0]["founding_end"]
+    with pytest.raises(scan.PreparationCoverageError) as exc:
+        scan.prepare_plan(replace(data,manifest_json=json.dumps(manifest)),raw,schedule=schedule)
+    assert not exc.value.coverage[0]["within_session"]
+
+
+@pytest.mark.parametrize("target", ["dataset","manifest","run","schedule","existing_output"])
+def test_schedule_cli_input_and_output_protection(schedule_inputs,tmp_path,monkeypatch,target):
+    paths,_,_,_,schedule_path = schedule_inputs
+    existing = tmp_path/"existing-plan.json"; existing.write_bytes(b"keep")
+    protected = [*paths[:3],schedule_path,existing]
+    before = {p:p.read_bytes() for p in protected}
+    output = dict(zip(["dataset","manifest","run","schedule","existing_output"],protected))[target]
+    monkeypatch.setattr(scan.sys,"argv",["scan","--prepare",str(output),"--dataset",str(paths[0]),
+        "--manifest",str(paths[1]),"--run",str(paths[2]),"--schedule",str(schedule_path)])
+    if target == "existing_output": assert scan.main() == 1
+    else:
+        with pytest.raises(SystemExit) as exc: scan.main()
+        assert exc.value.code == 2
+    assert all(p.read_bytes()==before[p] for p in protected)
+
+
+@pytest.mark.parametrize("mode", ["--scan","--demo"])
+def test_schedule_only_allowed_for_preparation(schedule_inputs,monkeypatch,mode):
+    *_,schedule_path = schedule_inputs
+    monkeypatch.setattr(scan.sys,"argv",["scan",mode,"unused","--schedule",str(schedule_path)])
+    with pytest.raises(SystemExit) as exc: scan.main()
+    assert exc.value.code == 2
 
 
 @pytest.fixture(scope="module", params=["LONG", "SHORT"])

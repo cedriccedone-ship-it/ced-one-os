@@ -535,3 +535,41 @@ no authority: all seven flags and execution are false. Archive schema, exact
 particular late declarations and missing M1 still censor R; no broker execution,
 financial return claim, source authentication or retrospective time rewrite is
 introduced. Real 186-point execution and full regression are separate operations.
+
+### Explicit scan preparation schedule
+
+`--prepare PLAN --schedule JSON` accepts the sealed-input preparation contract
+`trading.historical_candidate_scan_schedule.v1`. The JSON has exactly `contract`
+and `blocks`. Each of 1..16 chronologically ordered, unique, disjoint blocks has
+exactly `founding_start`, `founding_end`, `measurement_step_seconds: 60`,
+`directions: ["LONG", "SHORT"]` and `control_offsets_minutes: [0, N//2, N]`.
+Timestamps use canonical UTC `YYYY-MM-DDTHH:MM:00Z`; starts align to the export's
+H4 anchor, and N is the integer block duration, 2..30 minutes. Every minute from
+start through end is expanded LONG then SHORT. The fixed warmup, ordinal zero,
+120-second validity, original profile, K and declaration availability are retained.
+The existing batch/scan validators, source/profile/version hashes and exclusive
+atomic publication produce the same scan-plan grammar. The schedule's executable
+meaning is fully represented by the expanded points and control IDs; no separate
+schedule hash or archive schema is introduced. Identical inputs give identical
+plan hashes, independently of import time. At most 992 points are generated.
+
+Explicit preparation checks every expected closed candidate candle from each
+fixed warmup start through the block end. All measurement boundaries must lie
+inside one declared half-open session. Gaps, including session breaks inside
+native evidence windows, are never filled or skipped. Coverage errors return JSON
+with the block, timeframe and exact missing UTC opening times; no plan is
+published. Successful CLI output includes the coverage findings. Observation M1
+coverage is reported separately as the union `[block start - 1 minute,
+block end + 24 hours)` for all T in that block, including exact missing openings.
+Those gaps do not block candidate preparation and do not prove usable R evidence.
+Late declarations and observation gaps retain native reference censorship.
+
+`--schedule` is rejected with scan/demo execution and is protected from output
+overwrite, as are CSV, manifest and profile. Existing output plans cannot be
+overwritten. Preparation invokes no analyzers, executors or archive operations.
+Without `--schedule`, the original 186-point/18-control generator and hash remain
+unchanged, including its existing handling of incomplete research evidence. The
+scan control validator uses the lower middle point for even-length point arrays;
+its selection for the existing odd-length/default arrays is unchanged. Native
+strategy, scan execution, current governance, authority flags, 64-MiB record limit
+and reference semantics are unchanged.

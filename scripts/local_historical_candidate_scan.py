@@ -18,6 +18,7 @@ from ced_one.business_divisions.trading.historical_market_data import (
 from ced_one.memory.mission_store import ArchiveError, SQLiteMissionArchive, MAX_RECORD_BYTES
 
 CONTRACT = "trading.historical_candidate_scan.v1"
+SCHEDULE_CONTRACT = "trading.historical_candidate_scan_schedule.v1"
 STARTS = ("2026-09-18T12:00:00Z", "2026-09-23T16:00:00Z", "2026-09-25T20:00:00Z")
 AUTHORITY = dict.fromkeys(("quantity_selection", "budget_approval", "position_effect_compliance",
                           "margin_capital_approval", "trade_decision", "financial_risk", "execution"), False)
@@ -30,7 +31,9 @@ def seal_plan(dataset, batch, controls):
     return dict(plan=plan, plan_sha256=digest(plan))
 
 
-def prepare_plan(dataset, profile_text):
+def prepare_plan(dataset, profile_text, *, schedule=None):
+    if schedule is not None:
+        return prepare_scheduled_plan(dataset, profile_text, schedule)
     schedule = dict(contract=replay.SCHEDULE_CONTRACT, sessions=[
         dict(founding_start=s, T=stamp(parse_timestamp(s)+timedelta(minutes=30))) for s in STARTS])
     base = replay.scheduled_batch_plan(dataset, profile_text, schedule)
@@ -46,6 +49,85 @@ def prepare_plan(dataset, profile_text):
     return seal_plan(dataset, replay.batch_plan(dataset, profile_text, points), controls)
 
 
+class PreparationCoverageError(ValueError):
+    def __init__(self, coverage):
+        super().__init__("Incomplete candidate coverage or session boundary")
+        self.coverage = coverage
+
+
+def preparation_coverage(dataset, batch):
+    """Grid evidence only; observations are a union over all T in each block."""
+    manifest = dataset.manifest
+    opens = {tf: {parse_timestamp(c["timestamp"]) for c in h} for tf, h in dataset.histories.items()}
+    sessions = [(parse_timestamp(s["open"]), parse_timestamp(s["close"])) for s in manifest["sessions"]]
+    result, seen = [], set()
+    def coverage(tf, left, right):
+        duration = replay.execution_duration(tf)
+        expected, missing, tick = 0, [], left
+        while tick+duration <= right:
+            expected += 1
+            if tick not in opens[tf]:
+                missing.append(stamp(tick))
+            tick += duration
+        return dict(expected=expected, actual=expected-len(missing), missing_open_times=missing)
+    for point in batch["points"]:
+        if point["session_id"] in seen:
+            continue
+        seen.add(point["session_id"])
+        config = point["run"]["strategy_definition"]["configuration"]
+        start, end = (parse_timestamp(config[k]) for k in ("founding_start", "founding_end"))
+        candidate = {tf: coverage(tf, parse_timestamp(point["timeframe_starts"][tf]), end) for tf in replay.WARMUP}
+        result.append(dict(block=point["session_id"], founding_end=stamp(end),
+            within_session=any(a <= start and end < b for a, b in sessions), candidate=candidate,
+            observation_M1=dict(union_start=stamp(start-timedelta(minutes=1)), union_end=stamp(end+timedelta(hours=24)),
+                **coverage("M1", start-timedelta(minutes=1), end+timedelta(hours=24)))))
+    return result
+
+
+def prepare_scheduled_plan(dataset, profile_text, schedule):
+    exact(schedule, {"contract", "blocks"}, "Scan schedule")
+    blocks = schedule["blocks"]
+    if schedule["contract"] != SCHEDULE_CONTRACT or type(blocks) is not list or not 1 <= len(blocks) <= 16:
+        raise ValueError("Scan schedule requires 1..16 blocks and supported contract")
+    h4 = dataset.manifest["timeframes"].get("H4")
+    if h4 is None:
+        raise ValueError("Scan schedule requires an H4 grid")
+    anchor = parse_timestamp(h4["anchor"])
+    sessions, previous = [], None
+    for block in blocks:
+        exact(block, {"founding_start", "founding_end", "measurement_step_seconds", "directions", "control_offsets_minutes"}, "Scan block")
+        start, end = (parse_timestamp(block[k]) for k in ("founding_start", "founding_end"))
+        if any(type(block[k]) is not str or block[k] != at.strftime("%Y-%m-%dT%H:%M:00Z")
+               for k, at in (("founding_start", start), ("founding_end", end))):
+            raise ValueError("Scan blocks require canonical UTC minute boundaries")
+        duration = (end-start)//timedelta(minutes=1)
+        if (not 2 <= duration <= 30 or (start-anchor) % replay.execution_duration("H4") or
+                (previous is not None and start <= previous)):
+            raise ValueError("Scan blocks require chronological disjoint H4 starts and 2..30 minutes")
+        offsets = block["control_offsets_minutes"]
+        if (type(block["measurement_step_seconds"]) is not int or block["measurement_step_seconds"] != 60 or
+                type(block["directions"]) is not list or block["directions"] != ["LONG", "SHORT"] or
+                type(offsets) is not list or any(type(n) is not int for n in offsets) or offsets != [0, duration//2, duration]):
+            raise ValueError("Scan blocks require M1, LONG/SHORT and start/middle/end controls")
+        sessions.append(dict(founding_start=stamp(start), T=stamp(end)))
+        previous = end
+    base = replay.scheduled_batch_plan(dataset, profile_text, dict(contract=replay.SCHEDULE_CONTRACT, sessions=sessions))
+    coverage = preparation_coverage(dataset, base)
+    if any(not b["within_session"] or any(c["missing_open_times"] for c in b["candidate"].values()) for b in coverage):
+        raise PreparationCoverageError(coverage)
+    points, controls = [], []
+    for i, block in enumerate(blocks):
+        start, end = (parse_timestamp(block[k]) for k in ("founding_start", "founding_end"))
+        for minute in range((end-start)//timedelta(minutes=1)+1):
+            for template in base["points"][2*i:2*i+2]:
+                point = deepcopy(template)
+                point["run"]["T"] = stamp(start+timedelta(minutes=minute))
+                points.append(point)
+                if minute in block["control_offsets_minutes"]:
+                    controls.append(digest(point))
+    return seal_plan(dataset, replay.batch_plan(dataset, profile_text, points), controls)
+
+
 def validate_plan(plan, dataset):
     exact(plan, {"contract", "batch_plan", "negative_control_point_ids", "diagnostic_contract"}, "Scan plan")
     if plan["contract"] != CONTRACT or plan["diagnostic_contract"] != strategy.DIAGNOSTIC_CONTRACT:
@@ -57,12 +139,13 @@ def validate_plan(plan, dataset):
     for point in batch["points"]:
         key = point["session_id"], point["run"]["strategy_definition"]["direction"]
         groups.setdefault(key, []).append(point)
-    expected = set()
+    expected, legacy_expected = set(), set()
     for group in groups.values():
         ordered = sorted(group, key=lambda p: parse_timestamp(p["run"]["T"]))
-        expected.update(digest(ordered[i]) for i in (0, len(ordered)//2, len(ordered)-1))
+        expected.update(digest(ordered[i]) for i in (0, (len(ordered)-1)//2, len(ordered)-1))
+        legacy_expected.update(digest(ordered[i]) for i in (0, len(ordered)//2, len(ordered)-1))
     if (type(controls) is not list or any(type(k) is not str or k not in ids for k in controls) or
-            len(set(controls)) != len(controls) or set(controls) != expected):
+            len(set(controls)) != len(controls) or set(controls) not in (expected, legacy_expected)):
         raise ValueError("Invalid control point membership")
     return deepcopy(plan)
 
@@ -276,10 +359,12 @@ def main():
     modes.add_argument("--prepare", metavar="PLAN")
     modes.add_argument("--scan", metavar="PLAN")
     modes.add_argument("--demo", metavar="NEW_DIRECTORY")
-    for name in ("dataset", "manifest", "run", "report", "archive"):
+    for name in ("dataset", "manifest", "run", "report", "archive", "schedule"):
         parser.add_argument("--"+name)
     args = parser.parse_args()
     try:
+        if args.schedule and not args.prepare:
+            parser.error("--schedule is only valid with --prepare")
         if args.demo:
             if any((args.dataset, args.manifest, args.run, args.report, args.archive)):
                 parser.error("--demo requires no file inputs")
@@ -287,13 +372,20 @@ def main():
         elif args.prepare:
             if not all((args.dataset, args.manifest, args.run)) or args.report or args.archive:
                 parser.error("--prepare requires only --dataset, --manifest, --run")
-            if Path(args.prepare).resolve() in {Path(p).resolve() for p in (args.dataset, args.manifest, args.run)}:
+            inputs = [args.dataset, args.manifest, args.run] + ([args.schedule] if args.schedule else [])
+            if Path(args.prepare).resolve() in {Path(p).resolve() for p in inputs}:
                 parser.error("Plan cannot overwrite an input")
             dataset = load_dataset(args.dataset, args.manifest)
-            sealed = prepare_plan(dataset, read_bytes(args.run).decode("utf-8"))
+            schedule = json_text(read_bytes(args.schedule).decode("utf-8")) if args.schedule else None
+            if args.schedule and schedule is None:
+                raise ValueError("Scan schedule must be an object")
+            sealed = prepare_plan(dataset, read_bytes(args.run).decode("utf-8"), schedule=schedule)
+            coverage = preparation_coverage(dataset, sealed["plan"]["batch_plan"]) if args.schedule else None
             replay.atomic_json(args.prepare, sealed, create=True)
             result = dict(plan=args.prepare, plan_sha256=sealed["plan_sha256"], points=len(sealed["plan"]["batch_plan"]["points"]),
                           controls=len(sealed["plan"]["negative_control_point_ids"]), missions_executed=0)
+            if coverage is not None:
+                result["coverage"] = coverage
         else:
             if not all((args.dataset, args.manifest, args.report, args.archive)) or args.run:
                 parser.error("--scan requires --dataset, --manifest, --report, --archive; no --run")
@@ -303,7 +395,10 @@ def main():
         print(json.dumps(result))
         return 0 if not isinstance(result, dict) or result.get("status", "FINISHED") == "FINISHED" else 1
     except (ValueError, OSError, ArchiveError) as error:
-        print(json.dumps(dict(error=type(error).__name__)), file=sys.stderr)
+        result = dict(error=type(error).__name__)
+        if isinstance(error, PreparationCoverageError):
+            result["coverage"] = error.coverage
+        print(json.dumps(result), file=sys.stderr)
         return 1
 
 
