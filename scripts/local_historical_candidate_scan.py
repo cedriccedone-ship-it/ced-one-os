@@ -392,12 +392,79 @@ def demo(directory):
     return output
 
 
+def inspect_report(path):
+    """Summarize stored rows only; never load data, replay or open an archive."""
+    report = json_text(Path(path).read_text(encoding="utf-8"))
+    if (type(report) is not dict or report.get("contract") != CONTRACT or
+            type(report.get("rows")) is not list or type(report.get("status")) is not str):
+        raise ValueError("Invalid scan report")
+    completed = {"MATCH_CANDIDATE", "MATCH_NOT_FORMULATED", "MATCH_NO_CANDIDATE",
+                 "MISMATCH", "ARCHIVE_FAILED", "VERIFICATION_FAILED", "VERIFICATION_DENIED"}
+    statuses, verification, groups = Counter(), Counter(), {}
+    assessed = attempted = possible = confirmed = matched = 0
+    controls = required = outstanding_controls = pending = undetermined = 0
+    for row in report["rows"]:
+        if type(row) is not dict or any(type(row.get(k)) is not str for k in ("session_id", "direction", "status")):
+            raise ValueError("Invalid scan report row")
+        scanned, v = row.get("scan"), row.get("verification", {})
+        if (scanned is not None and type(scanned) is not dict) or type(v) is not dict:
+            raise ValueError("Invalid stored scan/verification")
+        assessment = scanned.get("assessment", {}) if scanned is not None else {}
+        diagnostics = scanned.get("diagnostics", {}) if scanned is not None else {}
+        if type(assessment) is not dict or type(diagnostics) is not dict:
+            raise ValueError("Invalid stored assessment/diagnostics")
+        events = diagnostics.get("events", [])
+        if type(events) is not list or any(type(event) is not dict for event in events):
+            raise ValueError("Invalid stored diagnostic events")
+        native_status, native_reason = assessment.get("status"), assessment.get("reason")
+        event = events[-2] if native_status == "WAITING" and len(events) > 1 else events[-1] if events else {}
+        phase = event.get("phase")
+        reason = event.get("reason", native_reason) if scanned is not None else row.get("error")
+        if scanned is None and row["status"] == "TECHNICAL_ERROR":
+            phase = "ERROR"
+        v_status = v.get("status", "NOT_RUN")
+        if any(value is not None and type(value) is not str for value in (native_status, native_reason, phase, reason)) or type(v_status) is not str:
+            raise ValueError("Invalid stored status/reason")
+        statuses[row["status"]] += 1
+        verification[v_status] += 1
+        assessed += native_status is not None
+        attempted += row["status"] != "PLANNED"
+        is_possible = scanned is not None and scanned.get("possible_c_eq_t") is True
+        is_control = row.get("control") is True
+        is_required = is_control or is_possible
+        possible += is_possible
+        confirmed += is_possible and v_status == "MATCH_CANDIDATE"
+        matched += v_status == "MATCH_CANDIDATE"
+        controls += is_control
+        required += is_required
+        outstanding_controls += is_control and v_status == "NOT_RUN"
+        pending += is_required and v_status == "NOT_RUN"
+        undetermined += row["status"] == "PLANNED" and not is_control
+        key = row["session_id"], row["direction"]
+        groups.setdefault(key, Counter())[(row["status"], native_status, native_reason, phase, reason)] += 1
+    return dict(phase=report["status"], planned_points=len(report["rows"]), attempted_points=attempted,
+        assessed_points=assessed, statuses=dict(sorted(statuses.items())),
+        possible_c_eq_t_points=possible, verified_c_eq_t_candidates=confirmed, matched_candidate_points=matched,
+        verification=dict(statuses=dict(sorted(verification.items())), control_points=controls,
+            known_required_points=required, outstanding_required_points=pending,
+            outstanding_controls=outstanding_controls, pending_required_points=pending,
+            additional_checks_undetermined_points=undetermined,
+            completed_outcomes={k: verification[k] for k in sorted(completed) if verification[k]},
+            not_run_outcomes={k: verification[k] for k in ("NOT_RUN_ABORTED", "NOT_RUN_SCAN_ERROR") if verification[k]}),
+        reasons_by_block_direction=[dict(session_id=key[0], direction=key[1], reasons=[
+            dict(row_status=values[0], native_status=values[1], native_reason=values[2],
+                 diagnostic_phase=values[3], diagnostic_reason=values[4], points=count)
+            for values, count in sorted(counts.items(), key=lambda item: json.dumps(item[0]))])
+            for key, counts in sorted(groups.items())])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group(required=True)
     modes.add_argument("--prepare", metavar="PLAN")
     modes.add_argument("--scan", metavar="PLAN")
     modes.add_argument("--demo", metavar="NEW_DIRECTORY")
+    modes.add_argument("--inspect-report", metavar="PATH", help="Summarize an existing scan report without execution")
     parser.add_argument("--h4-diagnostics", action="store_true",
                         help="Report causal H4 structure at each fixed block start with --prepare")
     for name in ("dataset", "manifest", "run", "report", "archive", "schedule"):
@@ -408,7 +475,11 @@ def main():
             parser.error("--schedule is only valid with --prepare")
         if args.h4_diagnostics and not args.prepare:
             parser.error("--h4-diagnostics is only valid with --prepare")
-        if args.demo:
+        if args.inspect_report:
+            if any((args.dataset, args.manifest, args.run, args.report, args.archive)):
+                parser.error("--inspect-report requires only the report path")
+            result = inspect_report(args.inspect_report)
+        elif args.demo:
             if any((args.dataset, args.manifest, args.run, args.report, args.archive)):
                 parser.error("--demo requires no file inputs")
             result = demo(args.demo)
