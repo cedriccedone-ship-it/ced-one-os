@@ -242,7 +242,10 @@ class _Replay:
             raise _Unknown("TRUNCATED_P1_CANDIDATES")
         blocks = [b for b in blocks_result["order_blocks"] if b["direction"] == self.direction and b["current_state"] == "unvisited"]
         if not blocks:
-            self.note(at, "FOUNDING", "NO_MATCHING_UNVISITED_P1")
+            self.note(at, "FOUNDING", "NO_MATCHING_UNVISITED_P1", dict(p1_counts=dict(
+                total_h1_order_blocks=len(blocks_result["order_blocks"]),
+                matching_direction=sum(b["direction"] == self.direction for b in blocks_result["order_blocks"]),
+                matching_unvisited=len(blocks))))
             return False
         latest = max(b["confirmed_at"] for b in blocks)
         blocks = [b for b in blocks if b["confirmed_at"] == latest]

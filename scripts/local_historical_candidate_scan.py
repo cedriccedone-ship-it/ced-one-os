@@ -401,6 +401,7 @@ def inspect_report(path):
     completed = {"MATCH_CANDIDATE", "MATCH_NOT_FORMULATED", "MATCH_NO_CANDIDATE",
                  "MISMATCH", "ARCHIVE_FAILED", "VERIFICATION_FAILED", "VERIFICATION_DENIED"}
     statuses, verification, groups = Counter(), Counter(), {}
+    p1_fields = ("total_h1_order_blocks", "matching_direction", "matching_unvisited")
     assessed = attempted = possible = confirmed = matched = 0
     controls = required = outstanding_controls = pending = undetermined = 0
     for row in report["rows"]:
@@ -425,6 +426,17 @@ def inspect_report(path):
         v_status = v.get("status", "NOT_RUN")
         if any(value is not None and type(value) is not str for value in (native_status, native_reason, phase, reason)) or type(v_status) is not str:
             raise ValueError("Invalid stored status/reason")
+        p1_counts = None
+        if reason == "NO_MATCHING_UNVISITED_P1":
+            evidence = event.get("evidence", {})
+            if type(evidence) is not dict:
+                raise ValueError("Invalid stored P1 evidence")
+            detail = evidence.get("p1_counts")
+            if detail is not None:
+                if (type(detail) is not dict or set(detail) != set(p1_fields) or
+                        any(type(detail[name]) is not int or detail[name] < 0 for name in p1_fields)):
+                    raise ValueError("Invalid stored P1 counts")
+                p1_counts = tuple(detail[name] for name in p1_fields)
         statuses[row["status"]] += 1
         verification[v_status] += 1
         assessed += native_status is not None
@@ -441,7 +453,7 @@ def inspect_report(path):
         pending += is_required and v_status == "NOT_RUN"
         undetermined += row["status"] == "PLANNED" and not is_control
         key = row["session_id"], row["direction"]
-        groups.setdefault(key, Counter())[(row["status"], native_status, native_reason, phase, reason)] += 1
+        groups.setdefault(key, Counter())[(row["status"], native_status, native_reason, phase, reason, p1_counts)] += 1
     return dict(phase=report["status"], planned_points=len(report["rows"]), attempted_points=attempted,
         assessed_points=assessed, statuses=dict(sorted(statuses.items())),
         possible_c_eq_t_points=possible, verified_c_eq_t_candidates=confirmed, matched_candidate_points=matched,
@@ -453,7 +465,9 @@ def inspect_report(path):
             not_run_outcomes={k: verification[k] for k in ("NOT_RUN_ABORTED", "NOT_RUN_SCAN_ERROR") if verification[k]}),
         reasons_by_block_direction=[dict(session_id=key[0], direction=key[1], reasons=[
             dict(row_status=values[0], native_status=values[1], native_reason=values[2],
-                 diagnostic_phase=values[3], diagnostic_reason=values[4], points=count)
+                 diagnostic_phase=values[3], diagnostic_reason=values[4], points=count,
+                 **(dict(p1_counts=dict(zip(p1_fields, values[5])) if values[5] is not None else None)
+                    if values[4] == "NO_MATCHING_UNVISITED_P1" else {}))
             for values, count in sorted(counts.items(), key=lambda item: json.dumps(item[0]))])
             for key, counts in sorted(groups.items())])
 
